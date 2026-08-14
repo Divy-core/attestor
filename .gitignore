@@ -1,0 +1,51 @@
+# ---- secrets: never commit ----
+.env
+.env.*
+!.env.example
+*-service-account*.json
+*serviceaccount*.json
+*credentials*.json
+*client_secret*.json
+application_default_credentials.json
+*.pem
+*.key
+*.p12
+gha-creds-*.json
+
+# ---- python ----
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+.eggs/
+*.egg-info/
+build/
+dist/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# ---- node / next ----
+node_modules/
+.next/
+out/
+.pnpm-store/
+*.tsbuildinfo
+
+# ---- logs & scratch ----
+*.log
+/tmp/
+tmp/
+.DS_Store
+Thumbs.db
+
+# ---- editor ----
+.idea/
+*.swp
+
+# ---- local proof captures that are large binaries (keep text/json proof) ----
+docs/proof/**/*.mp4
