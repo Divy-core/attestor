@@ -59,6 +59,8 @@ SERVICES=(
     storage.googleapis.com                   # GCS
     iam.googleapis.com                       # per-agent / per-service SAs
     iamcredentials.googleapis.com            # SA credential minting
+    cloudresourcemanager.googleapis.com      # agent_engines.create() resolves the project through it
+    billingbudgets.googleapis.com            # budget alerts
 )
 
 section "APIs"

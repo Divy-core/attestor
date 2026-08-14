@@ -1,0 +1,27 @@
+{
+  "name": "projects/attestor-505506/locations/global/floorSetting",
+  "createTime": "2026-08-14T10:29:31.155948512Z",
+  "updateTime": "2026-08-14T10:29:31.571256810Z",
+  "filterConfig": {
+    "sdpSettings": {
+      "basicConfig": {
+        "filterEnforcement": "ENABLED"
+      }
+    },
+    "piAndJailbreakFilterSettings": {
+      "filterEnforcement": "ENABLED",
+      "confidenceLevel": "LOW_AND_ABOVE"
+    },
+    "maliciousUriFilterSettings": {
+      "filterEnforcement": "ENABLED"
+    }
+  },
+  "enableFloorSettingEnforcement": true,
+  "integratedServices": [
+    "AI_PLATFORM"
+  ],
+  "aiPlatformFloorSetting": {
+    "inspectAndBlock": true,
+    "enableCloudLogging": true
+  }
+}

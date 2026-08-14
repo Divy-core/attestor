@@ -1,0 +1,44 @@
+{
+  "name": "projects/attestor-505506/locations/us-central1/templates/attestor-strict-ingress",
+  "createTime": "2026-08-14T10:26:59.201435171Z",
+  "updateTime": "2026-08-14T10:26:59.284523027Z",
+  "filterConfig": {
+    "raiSettings": {
+      "raiFilters": [
+        {
+          "filterType": "DANGEROUS",
+          "confidenceLevel": "LOW_AND_ABOVE"
+        },
+        {
+          "filterType": "HARASSMENT",
+          "confidenceLevel": "MEDIUM_AND_ABOVE"
+        },
+        {
+          "filterType": "HATE_SPEECH",
+          "confidenceLevel": "MEDIUM_AND_ABOVE"
+        },
+        {
+          "filterType": "SEXUALLY_EXPLICIT",
+          "confidenceLevel": "MEDIUM_AND_ABOVE"
+        }
+      ]
+    },
+    "sdpSettings": {
+      "basicConfig": {
+        "filterEnforcement": "ENABLED"
+      }
+    },
+    "piAndJailbreakFilterSettings": {
+      "filterEnforcement": "ENABLED",
+      "confidenceLevel": "LOW_AND_ABOVE"
+    },
+    "maliciousUriFilterSettings": {
+      "filterEnforcement": "ENABLED"
+    }
+  },
+  "templateMetadata": {
+    "logTemplateOperations": true,
+    "logSanitizeOperations": true,
+    "dataResidencyCompliant": true
+  }
+}

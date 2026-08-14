@@ -51,7 +51,9 @@ ZONE_ROOTS: tuple[tuple[str, str], ...] = (
 SERVICE_MODULES: dict[str, frozenset[str]] = {
     "service:control-plane": frozenset({"control_plane"}),
     "service:dispatcher": frozenset({"dispatcher"}),
-    "service:runtime": frozenset({"app", "deploy", "runtime_app"}),
+    # Deliberately no "app": the Agent Runtime container already has a top-level `app`
+    # package, and a bundle module of that name breaks the deploy at startup.
+    "service:runtime": frozenset({"deploy", "runtime_app"}),
 }
 
 #: Our own package modules, in layer order.
