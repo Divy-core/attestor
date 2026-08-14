@@ -1,0 +1,39 @@
+target-version = "py312"
+line-length = 100
+src = [
+    "packages/attestor-core/src",
+    "packages/attestor-platform/src",
+    "packages/attestor-fleet/src",
+    "services/control-plane/src",
+    "services/dispatcher/src",
+    "services/runtime",
+    "tools",
+    "tests",
+]
+
+[lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort
+    "B",    # bugbear
+    "UP",   # pyupgrade
+    "N",    # pep8-naming
+    "ANN",  # annotations
+    "S",    # bandit
+    "C4",   # comprehensions
+    "SIM",  # simplify
+    "TID",  # tidy imports
+    "RUF",
+]
+ignore = [
+    "ANN401",  # allow Any where genuinely needed
+]
+
+[lint.per-file-ignores]
+"tests/**" = ["S101", "ANN"]      # asserts and loose typing are fine in tests
+"tools/**" = ["S603", "S607"]
+
+[format]
+quote-style = "double"

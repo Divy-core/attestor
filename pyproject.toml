@@ -1,0 +1,37 @@
+[project]
+name = "attestor"
+version = "0.0.0"
+description = "Attestor — enterprise agent fleet for vendor security reviews. Workspace root."
+requires-python = ">=3.12,<3.13"
+dependencies = []
+
+[tool.uv]
+package = false
+
+[tool.uv.workspace]
+members = [
+    "packages/attestor-core",
+    "packages/attestor-platform",
+    "packages/attestor-fleet",
+    "services/control-plane",
+    "services/dispatcher",
+    "services/runtime",
+]
+
+[tool.uv.sources]
+attestor-core = { workspace = true }
+attestor-platform = { workspace = true }
+attestor-fleet = { workspace = true }
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "pytest-cov>=5.0",
+    "mypy>=1.11",
+    "ruff>=0.6",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["tools"]
+addopts = "-q"

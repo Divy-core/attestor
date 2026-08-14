@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell($ErrorActionPreference='Stop'; $env:UV_INSTALL_DIR=\"$env:USERPROFILE\\\\.local\\\\bin\"; irm https://astral.sh/uv/install.ps1 | iex)",
+      "mcp__700f48af-98d0-48c1-88f4-a030021e281e__notion-fetch",
+      "PowerShell($ErrorActionPreference='Stop'; $zip=\"$env:TEMP\\\\gcloud-cli.zip\"; if \\(-not \\(Test-Path $zip\\)\\) { Invoke-WebRequest -Uri \"https://dl.google.com/dl/cloudsdk/channels/rapid/google-cloud-cli-windows-x86_64.zip\" -OutFile $zip -UseBasicParsing }; Write-Output \"downloaded: $\\(\\(Get-Item $zip\\).Length\\) bytes\"; Expand-Archive -Path $zip -DestinationPath \"$env:USERPROFILE\" -Force; Write-Output \"extracted to $env:USERPROFILE\\\\google-cloud-sdk\"; Get-ChildItem \"$env:USERPROFILE\\\\google-cloud-sdk\" -Name | Select-Object -First 20)",
+      "PowerShell($env:Path = \"C:\\\\Users\\\\Divy\\\\.local\\\\bin;$env:Path\"; uv --version; uv python install 3.12; Write-Output \"--- installed ---\"; uv python list --only-installed)",
+      "PowerShell($ErrorActionPreference='Stop'; $zip=\"$env:TEMP\\\\gcloud-cli.zip\"; Invoke-WebRequest -Uri \"https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-cli-windows-x86_64-bundled-python.zip\" -OutFile $zip -UseBasicParsing; Write-Output \"downloaded $\\(\\(Get-Item $zip\\).Length\\) bytes\"; if \\(Test-Path \"$env:LOCALAPPDATA\\\\gcloud\\\\google-cloud-sdk\"\\) { Remove-Item \"$env:LOCALAPPDATA\\\\gcloud\\\\google-cloud-sdk\" -Recurse -Force }; New-Item -ItemType Directory -Force \"$env:LOCALAPPDATA\\\\gcloud\" | Out-Null; Expand-Archive -Path $zip -DestinationPath \"$env:LOCALAPPDATA\\\\gcloud\" -Force; Write-Output \"extracted\"; Get-ChildItem \"$env:LOCALAPPDATA\\\\gcloud\\\\google-cloud-sdk\" -Name)",
+      "PowerShell(& \"C:\\\\Users\\\\Divy\\\\AppData\\\\Roaming\\\\uv\\\\python\\\\cpython-3.12.13-windows-x86_64-none\\\\python.exe\" --version)",
+      "PowerShell($env:Path = \"C:\\\\Users\\\\Divy\\\\.local\\\\bin;$env:Path\"; Set-Location \"D:\\\\Attestor\"; uv python pin 3.12; Write-Output \"--- .python-version ---\"; Get-Content \"D:\\\\Attestor\\\\.python-version\")",
+      "PowerShell($env:Path = \"C:\\\\Users\\\\Divy\\\\.local\\\\bin;$env:Path\"; Set-Location \"D:\\\\Attestor\"; uv sync --all-packages 2>&1 | Select-Object -Last 40)"
+    ]
+  }
+}
