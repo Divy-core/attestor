@@ -10,7 +10,8 @@
       "PowerShell($env:Path = \"C:\\\\Users\\\\Divy\\\\.local\\\\bin;$env:Path\"; Set-Location \"D:\\\\Attestor\"; uv python pin 3.12; Write-Output \"--- .python-version ---\"; Get-Content \"D:\\\\Attestor\\\\.python-version\")",
       "PowerShell($env:Path = \"C:\\\\Users\\\\Divy\\\\.local\\\\bin;$env:Path\"; Set-Location \"D:\\\\Attestor\"; uv sync --all-packages 2>&1 | Select-Object -Last 40)",
       "Bash(break)",
-      "Bash(exit 0)"
+      "Bash(exit 0)",
+      "PowerShell(winget install --id ezwinports.make --accept-source-agreements --accept-package-agreements --silent 2>&1)"
     ]
   }
 }

@@ -4,9 +4,11 @@ version = "0.1.0"
 description = "Attestor Agent Runtime bundle -- AdkApp wrapper + agent_engines.create() deploy script."
 requires-python = ">=3.12,<3.13"
 dependencies = [
-    "google-adk",
-    "google-genai",
-    "google-cloud-aiplatform[agent-engines]",
+    # Pinned exactly. This list becomes the Agent Runtime deployment requirements,
+    # where a surprise minor bump is the difference between a working deploy and a
+    # packaging error that is slow to diagnose.
+    "google-adk==2.7.0",
+    "google-cloud-aiplatform[agent-engines]==1.164.0",
 ]
 # Deliberately NOT depending on attestor-fleet in Phase 0. Section 6 deploys the smallest
 # possible real agent; the fleet is wired in at Phase 5. Keeping the deployment

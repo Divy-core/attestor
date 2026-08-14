@@ -6,7 +6,10 @@ requires-python = ">=3.12,<3.13"
 dependencies = [
     "attestor-core",
     "attestor-platform",
-    "google-adk",
+    # Pinned exactly, not ranged. A minor bump mid-build is avoidable risk, and this
+    # package is what gets bundled to Agent Runtime. Discovery measured 2.7.0; the
+    # locked plan's 2.6.x is stale.
+    "google-adk==2.7.0",
 ]
 
 # INVARIANT: this package is shipped to Agent Runtime as a bundle. It must never
