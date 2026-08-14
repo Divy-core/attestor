@@ -1,0 +1,22 @@
+# Normalise line endings. Scripts that run on Linux (Cloud Build, Cloud Run, CI,
+# Docker) must keep LF regardless of the checkout platform -- CRLF in a shell script
+# produces the classic "bad interpreter: /bin/bash^M".
+
+* text=auto eol=lf
+
+*.sh      text eol=lf
+Makefile  text eol=lf
+Dockerfile text eol=lf
+*.py      text eol=lf
+*.yml     text eol=lf
+*.yaml    text eol=lf
+*.toml    text eol=lf
+*.ini     text eol=lf
+*.json    text eol=lf
+*.md      text eol=lf
+
+# Binary proof captures
+*.png binary
+*.jpg binary
+*.pdf binary
+*.xlsx binary

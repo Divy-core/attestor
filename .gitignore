@@ -49,3 +49,7 @@ Thumbs.db
 
 # ---- local proof captures that are large binaries (keep text/json proof) ----
 docs/proof/**/*.mp4
+
+# Empty clone of the GitHub remote found at session start; kept, not deleted.
+attestor.old/
+
