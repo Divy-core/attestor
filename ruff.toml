@@ -1,5 +1,10 @@
 target-version = "py312"
 line-length = 100
+
+# Prose, not source. ruff formats fenced Python blocks inside Markdown, which would
+# rewrite the illustrative snippets in the discovery and gate docs -- including the
+# ones deliberately quoting the *wrong* API shape we found.
+extend-exclude = ["docs", "attestor.old", "seed", "evals"]
 src = [
     "packages/attestor-core/src",
     "packages/attestor-platform/src",

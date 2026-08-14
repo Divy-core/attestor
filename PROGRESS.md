@@ -77,13 +77,114 @@ what `make lint/types/test` and CI run against. Recorded rather than silently gl
 address on the Claude session. The billing account with the credits is attached to the
 former, which is what matters; both gcloud auth and ADC use the same principal.
 
+### Environment decisions
+
+**Shell: Git Bash.** Measured what was available before choosing:
+
+| Candidate | State |
+|---|---|
+| Git Bash | present at `C:\Program Files\Git\bin\bash.exe` (not on PATH), `GNU bash 5.2.37(1)-release`, `MINGW64_NT-10.0-26200` |
+| WSL2 | **not installed** — `wsl --list` returns "The Windows Subsystem for Linux is not installed" |
+| `make` | not present |
+| `choco` | not present |
+| `winget` | present |
+
+Git Bash is sufficient for `gcloud` orchestration and avoids a filesystem boundary plus a
+second Python/uv install to keep in sync. WSL2 would have had to be installed from
+scratch, which is a large change for no benefit at this scope. `infra/bootstrap.sh` was
+**executed** in Git Bash, not merely written for it — twice, see below.
+
+**`make`: installed GNU Make 4.4.1** via `winget install ezwinports.make`, rather than
+writing `make.cmd`/`make.ps1` shims. One canonical `Makefile` cannot drift from a
+parallel shim implementation. Verified: `make check` runs green in Git Bash.
+
+**Containers: Cloud Build, never local Docker.** `gcloud run deploy --source .` uploads
+and builds remotely. No Docker Desktop, no daemon, no WSL2 backend, and no local build
+environment that differs from the deploy target. The `Dockerfile` stays in the repo for
+Cloud Build to consume and for judges to read, but the spin-up path never requires
+`docker build`.
+
 ### Section 2 — Discovery
 
-_Pending._ Output goes to `docs/proof/PHASE-0-DISCOVERY.md`.
+Recorded in `docs/proof/PHASE-0-DISCOVERY.md` with the raw 12,557-line API list in
+`docs/proof/all-available-apis.txt`. Findings that correct the locked plan:
+
+1. `aiplatform.googleapis.com` is titled **"Agent Platform API"**. Agent Runtime lives
+   there as `reasoningEngine`. No separate runtime service exists.
+2. `agentregistry`, `agentidentity`, and `agentidentitycredentials` are **separate,
+   first-class APIs** — not implicit in `aiplatform`. All three are now enabled.
+3. **`types.IdentityType` does not exist in `google.genai.types`** as the plan claims —
+   it raises `AttributeError`. It lives at `agentplatform/_genai/types/common.py:261`
+   with values `IDENTITY_TYPE_UNSPECIFIED` / `SERVICE_ACCOUNT` / `AGENT_IDENTITY`.
+   `AGENT_IDENTITY` additionally requires that `service_account` **not** be set.
+4. **ADK is 2.7.0**, not the 2.6.x named in the stack table. Now pinned exactly
+   (`google-adk==2.7.0`) in `packages/attestor-fleet` and `services/runtime` — a floating
+   range risks a minor bump mid-build in the package that gets bundled to Agent Runtime.
+5. **Model Armor supports `us-central1`** (19 locations returned). No region split.
+6. **All three target model strings exist exactly**: `gemini-3.5-flash`,
+   `gemini-3.5-flash-lite`, `gemini-3.6-flash`. Also present, unanticipated:
+   `gemini-3.7-flash`. Staying on 3.5 Flash as primary because the brief names it.
 
 ### Section 3 — APIs and cost guardrails
 
-_Pending._
+**Credit check.** `gcloud billing accounts describe 012520-481530-4CCD15` →
+`open: true`, `currencyCode: INR`, `displayName: Billing Account 1`. gcloud exposes no
+credits surface, so the $150 promotional credit was confirmed by the user in the console
+(Billing → Credits) before any paid API was enabled.
+
+**`infra/bootstrap.sh` — run twice, in Git Bash, measured:**
+
+| Run | created | existing |
+|---|---|---|
+| 1st | **22** | 2 (`cloudtrace`, `storage` were already on) |
+| 2nd | **0** | **24** |
+
+Identical end state on the second run. Idempotency proven, not claimed.
+
+Created: 16 APIs, Firestore `(default)` in **`FIRESTORE_NATIVE`** mode at `us-central1`
+(`freeTier: true`), four buckets (`uploads`/`corpus`/`exports`/`staging`, all with uniform
+bucket-level access and public access prevention), and the `attestor` Artifact Registry
+Docker repo in `us-central1`.
+
+**Budget alerts.** Required enabling `billingbudgets.googleapis.com` first (not in the
+original API list). Exact command used:
+
+```bash
+gcloud billing budgets create \
+  --billing-account=012520-481530-4CCD15 \
+  --display-name="attestor-budget-30-75-120-usd" \
+  --budget-amount=13200INR \
+  --filter-projects=projects/attestor-505506 \
+  --threshold-rule=percent=0.20 \
+  --threshold-rule=percent=0.50 \
+  --threshold-rule=percent=0.80 \
+  --threshold-rule=percent=0.80,basis=forecasted-spend
+```
+
+Created `b207a525-d29c-440c-8a2b-6e2ccba7d6e0`; `gcloud billing budgets list` confirms
+four `thresholdRules` active and `creditTypesTreatment: INCLUDE_ALL_CREDITS`.
+
+**Deviation — budget currency.** The thresholds were specified as \$30/\$75/\$120, but the
+billing account is denominated in **INR**, and gcloud rejects a mismatched currency:
+`--budget-amount=150USD` returns `INVALID_ARGUMENT`. The budget is therefore
+**₹13,200 with thresholds at 20% / 50% / 80%**, which maps to \$30/\$75/\$120 **at an
+assumed rate of ₹88 per USD**. The rate is an assumption, not a measurement — GCP exposes
+no conversion surface here. If the console shows the credit as a materially different INR
+figure, adjust with:
+
+```bash
+gcloud billing budgets update b207a525-d29c-440c-8a2b-6e2ccba7d6e0 \
+  --billing-account=012520-481530-4CCD15 --budget-amount=<CORRECT>INR
+```
+
+A wrong rate only shifts *when* the alerts fire, and erring low makes them fire earlier,
+which is the safe direction for a cost guardrail.
+
+A fourth rule at 80% of **forecasted** spend was added beyond the brief — it warns before
+the money is actually gone, which is the point of an alert.
+
+**Notifications.** `notificationsRule: {}` means default IAM recipients — billing account
+admins receive the email. No Pub/Sub topic wired; not needed at this scope.
 
 ### Section 4 — Repo skeleton
 

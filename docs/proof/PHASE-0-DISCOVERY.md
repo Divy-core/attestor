@@ -82,10 +82,34 @@ see Section 3.
 
 ## 2.2 Which regions
 
-_Pending — requires `modelarmor.googleapis.com` and `aiplatform.googleapis.com` to be
-enabled first (Section 3). Model Armor location support is the single highest-risk
-unknown in Phase 0; if `us-central1` is unsupported that is a plan-level decision, not
-something to work around._
+### Model Armor supported locations — `us-central1` IS supported
+
+The plan's highest-risk regional assumption holds. Queried the service's own locations
+endpoint rather than trusting docs:
+
+```bash
+TOKEN=$(gcloud auth print-access-token)
+curl -s -H "Authorization: Bearer $TOKEN" \
+  "https://modelarmor.googleapis.com/v1/projects/attestor-505506/locations?pageSize=200"
+```
+
+**19 locations returned:**
+
+```
+asia-northeast1  asia-northeast3  asia-south1   asia-southeast1  australia-southeast2
+eu               europe-southwest1 europe-west1 europe-west2     europe-west3
+europe-west4     europe-west9      global       northamerica-northeast2
+us               us-central1       us-east1     us-east4         us-west1
+```
+
+`us-central1 present: True`. **No region split is needed.** Everything stays pinned to
+`us-central1` as the locked plan requires.
+
+Note the multi-region aliases `us`, `eu`, and `global` are also offered — relevant later
+if a floor setting needs to apply above a single region.
+
+A `gcloud model-armor` command group also exists (confirmed via `gcloud model-armor --help`),
+so floor settings and templates can be managed from the CLI rather than raw REST.
 
 ---
 
@@ -145,6 +169,35 @@ $ uv run python -c "from vertexai._genai import types as t; print([e.value for e
 There is **no public re-export** — both `agentplatform.types` and `vertexai.types` raise
 `ModuleNotFoundError`.
 
+#### The complete accepted value set, and where it is defined
+
+Read from the installed package (reading is fine; it is *importing at runtime* we avoid).
+Defined identically in two places, both at **line 261**:
+
+- `.venv/Lib/site-packages/agentplatform/_genai/types/common.py:261`
+- `.venv/Lib/site-packages/vertexai/_genai/types/common.py:261`
+
+```python
+class IdentityType(_common.CaseInSensitiveEnum):
+    """The identity type to use for the Reasoning Engine. ..."""
+
+    IDENTITY_TYPE_UNSPECIFIED = "IDENTITY_TYPE_UNSPECIFIED"
+    SERVICE_ACCOUNT = "SERVICE_ACCOUNT"
+    AGENT_IDENTITY = "AGENT_IDENTITY"
+```
+
+**The complete set of accepted strings is exactly:**
+`"IDENTITY_TYPE_UNSPECIFIED"`, `"SERVICE_ACCOUNT"`, `"AGENT_IDENTITY"`.
+
+Two things in the docstrings that matter for the deploy:
+
+1. The base class is `CaseInSensitiveEnum`, so casing is forgiving — but we pass the
+   exact upper-case string anyway.
+2. **`AGENT_IDENTITY` carries a hard constraint: _"Use Agent Identity. The
+   `service_account` field must not be set."_** Setting both `identity_type=AGENT_IDENTITY`
+   and `service_account` is a deploy error. `AgentEngineConfig` exposes both fields
+   (`['service_account', 'identity_type']`), so this is easy to get wrong.
+
 The create surface:
 
 ```bash
@@ -175,11 +228,44 @@ Section 6._
 
 ## 2.4 Which Gemini models are available to this project
 
-_Pending — requires `aiplatform.googleapis.com` enabled (Section 3)._
+```python
+from google import genai
+c = genai.Client(vertexai=True, project="attestor-505506", location="us-central1")
+for m in c.models.list():
+    print(m.name)
+```
 
-Target strings to confirm: `gemini-3.5-flash` (reasoning/drafting),
-`gemini-3.5-flash-lite` (high-volume triage). `gemini-3.6-flash` to be recorded as a
-tested swap if present.
+127 models listed; 26 Gemini entries. **All three target strings are present and exact —
+no substitution needed:**
+
+| Plan's intended use | Model string | Available |
+|---|---|---|
+| Reasoning / drafting | `gemini-3.5-flash` | **YES** |
+| High-volume triage classification | `gemini-3.5-flash-lite` | **YES** |
+| Tested swap ("3.5 or newer") | `gemini-3.6-flash` | **YES** |
+
+Full Gemini list as returned (prefix `publishers/google/models/`):
+
+```
+gemini-2.5-computer-use-preview-10-2025   gemini-2.5-flash         gemini-2.5-flash-image
+gemini-2.5-flash-lite                     gemini-2.5-flash-tts     gemini-2.5-pro
+gemini-2.5-pro-tts                        gemini-3-flash-preview   gemini-3-pro-image
+gemini-3-pro-preview                      gemini-3.1-flash-image   gemini-3.1-flash-image-preview
+gemini-3.1-flash-lite                     gemini-3.1-flash-lite-image
+gemini-3.1-flash-lite-preview             gemini-3.1-flash-tts-preview
+gemini-3.1-pro-preview                    gemini-3.5-flash         gemini-3.5-flash-lite
+gemini-3.6-flash                          gemini-3.7-flash         gemini-embedding-001
+gemini-embedding-2                        gemini-live-2.5-flash-native-audio
+gemini-omni-flash-preview                 gemini-robotics-er-2-preview-info
+```
+
+**Unanticipated: `gemini-3.7-flash` is also available**, newer than anything the locked
+plan contemplated. We stay on `gemini-3.5-flash` as primary regardless — the hackathon
+brief names 3.5 Flash explicitly and matching the brief is worth more than chasing the
+newest string. 3.6 and 3.7 are recorded as available swaps.
+
+**Decision (unchanged from plan, now evidence-backed):**
+`MODEL_REASONING=gemini-3.5-flash`, `MODEL_CLASSIFY=gemini-3.5-flash-lite`.
 
 ---
 
