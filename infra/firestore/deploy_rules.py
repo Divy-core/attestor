@@ -50,7 +50,7 @@ def call(method: str, path: str, body: dict[str, Any] | None = None) -> dict[str
         method=method,
     )
     try:
-        with urllib.request.urlopen(request, timeout=TIMEOUT) as response:  # noqa: S310
+        with urllib.request.urlopen(request, timeout=TIMEOUT) as response:
             return dict(json.loads(response.read().decode("utf-8") or "{}"))
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", "replace")

@@ -51,6 +51,8 @@ ignore = [
 # and every avoidable dependency there is a way for the deploy to fail.
 "packages/attestor-platform/src/attestor_platform/armor/client.py" = ["S310"]
 "packages/attestor-platform/src/attestor_platform/registry/agent_registry.py" = ["S310"]
+# Same reasoning: a fixed https host (firebaserules.googleapis.com) built from a constant.
+"infra/firestore/deploy_rules.py" = ["S310"]
 
 [format]
 quote-style = "double"
