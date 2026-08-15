@@ -25,6 +25,36 @@ class Department(StrEnum):
     UNASSIGNED = "unassigned"
 
 
+class ReviewState(StrEnum):
+    """Where a review is in its lifecycle.
+
+    Lives in ``domain`` because a review's state is a domain concept. The *rules* for
+    moving between states are a separate concern and live in ``state/``, which imports
+    this. Typing ``Review.state`` as ``str`` to dodge an import would defeat the enum:
+    an invalid state could be constructed and would only fail if and when the machine
+    happened to look at it, which nothing guarantees.
+
+    The happy path::
+
+        intake -> triaging -> drafting -> awaiting_evidence -> awaiting_human
+               -> assembling -> delivered -> follow_up -> triaging (round N+1)
+    """
+
+    INTAKE = "intake"
+    TRIAGING = "triaging"
+    DRAFTING = "drafting"
+    AWAITING_EVIDENCE = "awaiting_evidence"
+    AWAITING_HUMAN = "awaiting_human"
+    ASSEMBLING = "assembling"
+    DELIVERED = "delivered"
+    FOLLOW_UP = "follow_up"
+
+    #: Recoverable halt. Remembers where it came from and can return there.
+    BLOCKED = "blocked"
+    #: Terminal. Nothing resumes from here.
+    FAILED = "failed"
+
+
 class Framework(StrEnum):
     """The compliance framework a questionnaire is drawn from."""
 

@@ -20,6 +20,7 @@ from attestor_core.domain.enums import (
     Department,
     Framework,
     Residency,
+    ReviewState,
 )
 from attestor_core.domain.ids import make_question_id
 from attestor_core.errors import EvidenceMissing
@@ -214,9 +215,9 @@ class Round(_Mutable):
     ordinal: int = Field(ge=1)
     received_at: datetime = Field(default_factory=_utcnow)
     closed_at: datetime | None = None
-    #: The review state at which this round sits. Typed as str to avoid a circular
-    #: import with `state`; the state machine owns validity.
-    state: str
+    #: Typed as the enum, not str: an invalid state is rejected at construction rather
+    #: than surviving until the machine happens to look at it.
+    state: ReviewState
 
 
 class Review(_Mutable):
@@ -229,6 +230,6 @@ class Review(_Mutable):
     created_at: datetime = Field(default_factory=_utcnow)
     #: Ordinal of the round currently in flight.
     current_round: int = Field(default=1, ge=1)
-    state: str
-    #: Set when state == blocked, so the machine can return to where it came from.
-    blocked_from: str | None = None
+    state: ReviewState
+    #: Set when state == BLOCKED, so the machine can return to where it came from.
+    blocked_from: ReviewState | None = None

@@ -20,6 +20,7 @@ from attestor_core.domain.enums import (
     AnswerStatus,
     ArmorDecision,
     Confidence,
+    ContradictionVerdict,
     Department,
     ToolDecision,
 )
@@ -36,6 +37,8 @@ class EventType(StrEnum):
     TOOL_DENIED = "tool_denied"
     AWAITING_HUMAN = "awaiting_human"
     HUMAN_RESOLVED = "human_resolved"
+    COMMITMENT_RECORDED = "commitment_recorded"
+    CONSISTENCY_CHECKED = "consistency_checked"
     ROUND_CLOSED = "round_closed"
     RUN_COMPLETED = "run_completed"
     RUN_FAILED = "run_failed"
@@ -137,6 +140,45 @@ class HumanResolved(_BaseEvent):
     edited: bool = False
 
 
+class CommitmentRecorded(_BaseEvent):
+    """A durable statement to the customer was captured in round 1.
+
+    This is what Memory Bank stores and what round N>1 is checked against. Emitting it
+    lets the UI show the commitment being *made*, so the round-2 callback has something
+    to point back at.
+    """
+
+    type: Literal[EventType.COMMITMENT_RECORDED] = EventType.COMMITMENT_RECORDED
+    commitment_id: str
+    question_id: str
+    #: The commitment as a standalone claim, readable without its question.
+    statement: str
+    round_ordinal: int = Field(ge=1)
+
+
+class ConsistencyChecked(_BaseEvent):
+    """An answer in round N>1 was evaluated against a prior-round commitment.
+
+    Emitted for EVERY checked answer, not only contradictions, so the UI can show the
+    check sweeping across the round with the one that fired standing out. An event that
+    only appears on failure gives the viewer no sense that checking is happening at all.
+    """
+
+    type: Literal[EventType.CONSISTENCY_CHECKED] = EventType.CONSISTENCY_CHECKED
+    question_id: str
+    commitment_id: str
+    prior_statement: str
+    prior_round_ordinal: int = Field(ge=1)
+    verdict: ContradictionVerdict
+    #: Did the commitment actually change the drafted answer?
+    #:
+    #: The field the demo turns on. "We checked" and "we checked and it mattered" are
+    #: different claims, and only the second is worth four seconds of a four-minute
+    #: video. Set when the agent altered or withheld its draft because of the prior
+    #: commitment -- not merely when a check ran.
+    constrained: bool = False
+
+
 class RoundClosed(_BaseEvent):
     type: Literal[EventType.ROUND_CLOSED] = EventType.ROUND_CLOSED
     round_id: str
@@ -181,6 +223,8 @@ AttestorEvent = Annotated[
     | ToolDenied
     | AwaitingHuman
     | HumanResolved
+    | CommitmentRecorded
+    | ConsistencyChecked
     | RoundClosed
     | RunCompleted
     | RunFailed

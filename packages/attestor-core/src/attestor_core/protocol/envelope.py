@@ -13,9 +13,10 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Annotated, Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from attestor_core.domain.ids import make_dedup_key
+from attestor_core.errors import ContractViolation
 
 ContentId = Annotated[str, Field(pattern=r"^[0-9a-f]{16}$")]
 
@@ -38,6 +39,77 @@ class WorkKind(StrEnum):
     RESUME_AFTER_HUMAN = "resume_after_human"
     #: SLA / follow-up timer fired.
     TIMER_FIRED = "timer_fired"
+
+
+# ---------------------------------------------------------------------------------
+# Payload models
+#
+# The envelope already carries review_id, round_id, and question_id, so most payloads
+# are empty: `draft_answer`, `triage_questions`, `assemble_round`, and `close_round`
+# need nothing beyond what the envelope holds. A nine-variant discriminated union to
+# carry roughly four fields would be over-engineering.
+#
+# But an open dict means a malformed publish surfaces as a KeyError deep inside a
+# worker rather than at construction. These models close that: `for_work()` validates
+# at publish time, `parse_payload()` validates at consume time, and the wire format
+# stays a plain dict so adding a field never forces a protocol change.
+# ---------------------------------------------------------------------------------
+
+
+class _Payload(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+
+class EmptyPayload(_Payload):
+    """For work fully described by the envelope's own correlation fields."""
+
+
+class IntakeDocumentPayload(_Payload):
+    """Parse an uploaded questionnaire."""
+
+    gcs_uri: str
+    content_type: str | None = None
+    original_filename: str | None = None
+
+
+class OpenFollowUpPayload(_Payload):
+    """Round N>1 has arrived."""
+
+    gcs_uri: str
+    #: Ordinal of the round being opened. Round 1 is the initial questionnaire.
+    round_ordinal: int = Field(ge=2)
+
+
+class ResumeAfterHumanPayload(_Payload):
+    """A human answered an approval request; resume the paused run."""
+
+    approved: bool
+    resolved_by: str
+    #: Present when the human edited the text before approving.
+    edited_text: str | None = None
+
+
+class TimerFiredPayload(_Payload):
+    """An SLA or follow-up timer elapsed."""
+
+    #: e.g. "sla_breach", "follow_up_due", "round_stale".
+    timer_kind: str
+    scheduled_for: datetime
+
+
+#: Which model validates each kind's payload. Anything absent uses EmptyPayload, which
+#: forbids extras -- so publishing junk on a no-payload kind fails loudly.
+PAYLOAD_MODELS: dict[WorkKind, type[BaseModel]] = {
+    WorkKind.INTAKE_DOCUMENT: IntakeDocumentPayload,
+    WorkKind.TRIAGE_QUESTIONS: EmptyPayload,
+    WorkKind.DRAFT_ANSWER: EmptyPayload,
+    WorkKind.GATHER_EVIDENCE: EmptyPayload,
+    WorkKind.ASSEMBLE_ROUND: EmptyPayload,
+    WorkKind.CLOSE_ROUND: EmptyPayload,
+    WorkKind.OPEN_FOLLOW_UP: OpenFollowUpPayload,
+    WorkKind.RESUME_AFTER_HUMAN: ResumeAfterHumanPayload,
+    WorkKind.TIMER_FIRED: TimerFiredPayload,
+}
 
 
 class WorkEnvelope(BaseModel):
@@ -95,6 +167,21 @@ class WorkEnvelope(BaseModel):
             question_id or "-",
             kind.value,
         )
+        # Validate the payload here so a malformed publish fails at the call site, with
+        # a pydantic error naming the field, rather than as a KeyError inside a worker
+        # three services away and possibly days later.
+        model = PAYLOAD_MODELS.get(kind, EmptyPayload)
+        try:
+            model.model_validate(payload or {})
+        except ValidationError as exc:
+            raise ContractViolation(
+                f"payload does not match {model.__name__} for kind {kind.value!r}",
+                review_id=review_id,
+                round_id=round_id,
+                question_id=question_id,
+                run_id=run_id,
+                errors=exc.errors(),
+            ) from exc
         return cls(
             message_id=message_id,
             dedup_key=dedup_key,
@@ -106,3 +193,29 @@ class WorkEnvelope(BaseModel):
             kind=kind,
             payload=payload or {},
         )
+
+
+def parse_payload(envelope: WorkEnvelope) -> BaseModel:
+    """Validate and return an envelope's payload as its typed model.
+
+    Called by the Phase 4 dispatcher at consume time. The wire format stays a plain
+    dict, so a producer on an older revision that omits a newly-added optional field
+    still parses -- but a genuinely malformed message is rejected here, at the edge,
+    instead of failing somewhere inside the handler.
+
+    Raises:
+        ContractViolation: If the payload does not match the model for this kind.
+    """
+    model = PAYLOAD_MODELS.get(envelope.kind, EmptyPayload)
+    try:
+        return model.model_validate(envelope.payload)
+    except ValidationError as exc:
+        raise ContractViolation(
+            f"payload does not match {model.__name__} for kind {envelope.kind.value!r}",
+            review_id=envelope.review_id,
+            round_id=envelope.round_id,
+            question_id=envelope.question_id,
+            run_id=envelope.run_id,
+            message_id=envelope.message_id,
+            errors=exc.errors(),
+        ) from exc

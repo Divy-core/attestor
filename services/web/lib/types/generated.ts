@@ -83,8 +83,39 @@ export type CitationAdded = {
   retrieval_score: number;
 };
 
+/** A durable statement to the customer was captured in round 1. */
+export type CommitmentRecorded = {
+  review_id: string;
+  run_id: string;
+  seq: number;
+  emitted_at?: string;
+  type?: "commitment_recorded";
+  commitment_id: string;
+  question_id: string;
+  statement: string;
+  round_ordinal: number;
+};
+
 /** Confidence in an answer. */
 export type Confidence = "high" | "medium" | "low";
+
+/** An answer in round N>1 was evaluated against a prior-round commitment. */
+export type ConsistencyChecked = {
+  review_id: string;
+  run_id: string;
+  seq: number;
+  emitted_at?: string;
+  type?: "consistency_checked";
+  question_id: string;
+  commitment_id: string;
+  prior_statement: string;
+  prior_round_ordinal: number;
+  verdict: ContradictionVerdict;
+  constrained?: boolean;
+};
+
+/** Whether a draft answer contradicts a prior-round commitment. */
+export type ContradictionVerdict = "no_contradiction" | "possible_contradiction" | "contradiction" | "unknown";
 
 /** Who owns a question, and therefore which corpus may be read to answer it. */
 export type Department = "security" | "legal" | "engineering" | "unassigned";
@@ -186,7 +217,7 @@ export type ToolDenied = {
 };
 
 export type AttestorEvent = {
-  event: RunStarted | QuestionTriaged | AnswerDrafted | CitationAdded | ArmorBlocked | ToolDenied | AwaitingHuman | HumanResolved | RoundClosed | RunCompleted | RunFailed | Heartbeat;
+  event: RunStarted | QuestionTriaged | AnswerDrafted | CitationAdded | ArmorBlocked | ToolDenied | AwaitingHuman | HumanResolved | CommitmentRecorded | ConsistencyChecked | RoundClosed | RunCompleted | RunFailed | Heartbeat;
 };
 
 export type HealthResponse = {

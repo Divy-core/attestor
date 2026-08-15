@@ -11,34 +11,22 @@ diffed in review.
 
 from __future__ import annotations
 
-from enum import StrEnum
-
+from attestor_core.domain.enums import ReviewState
 from attestor_core.errors import IllegalTransition
 
+# `ReviewState` is a domain concept and lives in `domain/enums.py`. This module owns the
+# *rules*, not the vocabulary. The dependency runs one way -- state -> domain -- and
+# `domain` imports nothing from here, so there is no cycle. `transition()` takes enum
+# values rather than a `Review`, which is what keeps that true.
 
-class ReviewState(StrEnum):
-    """Where a review is in its lifecycle.
-
-    The happy path::
-
-        intake -> triaging -> drafting -> awaiting_evidence -> awaiting_human
-               -> assembling -> delivered -> follow_up -> triaging (round N+1)
-    """
-
-    INTAKE = "intake"
-    TRIAGING = "triaging"
-    DRAFTING = "drafting"
-    AWAITING_EVIDENCE = "awaiting_evidence"
-    AWAITING_HUMAN = "awaiting_human"
-    ASSEMBLING = "assembling"
-    DELIVERED = "delivered"
-    FOLLOW_UP = "follow_up"
-
-    #: Recoverable halt. Remembers where it came from and can return there.
-    BLOCKED = "blocked"
-    #: Terminal. Nothing resumes from here.
-    FAILED = "failed"
-
+__all__ = [
+    "LEGAL_TRANSITIONS",
+    "TERMINAL_STATES",
+    "ReviewState",
+    "is_legal",
+    "legal_targets",
+    "transition",
+]
 
 #: States from which nothing may proceed.
 TERMINAL_STATES: frozenset[ReviewState] = frozenset({ReviewState.FAILED})
