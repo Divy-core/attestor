@@ -93,8 +93,20 @@ def corpus_documents() -> list[tuple[Department, Path]]:
 # --------------------------------------------------------------------------------------
 
 
+#: Discovery Engine rejects `text/markdown` outright. The accepted set for unstructured
+#: content is [application/json, application/pdf, google-apps.*, application/xml, go,
+#: image/*, text/html, text/plain, text/xml]. So the corpus is STAGED as `.txt` with
+#: `text/plain` even though the repo artefact is `.md` -- markdown headings survive
+#: verbatim as plain text, so section-level citation still works.
+#:
+#: This was not obvious: the import LRO reports SUCCESS while indexing nothing. The
+#: failure only appears in `result.error_samples` and `metadata.failure_count`.
+STAGED_SUFFIX = ".txt"
+STAGED_CONTENT_TYPE = "text/plain"
+
+
 def stage_corpus(project_id: str, *, dry_run: bool) -> dict[Department, list[str]]:
-    """Upload the corpus to GCS. Returns the uploaded URIs per department.
+    """Upload the corpus to GCS. Returns the staged URIs per department.
 
     Idempotent by content hash: a document whose bytes are unchanged is not re-uploaded,
     so a second run does not churn object generations.
@@ -105,22 +117,28 @@ def stage_corpus(project_id: str, *, dry_run: bool) -> dict[Department, list[str
     uris: dict[Department, list[str]] = {d: [] for d in DEPARTMENT_DATASTORES}
 
     for department, path in corpus_documents():
-        object_name = f"{department.value}/{path.name}"
+        object_name = f"{department.value}/{path.stem}{STAGED_SUFFIX}"
         uri = f"gs://{bucket_name}/{object_name}"
         uris[department].append(uri)
 
         body = path.read_bytes()
         digest = hashlib.sha256(body).hexdigest()[:16]
 
-        blob = bucket.blob(object_name)
-        if blob.exists() and (blob.metadata or {}).get("content_sha256") == digest:
+        # `bucket.blob()` is LAZY -- it never fetches properties, so `.metadata` is
+        # always None and the hash check below would never match, re-uploading every
+        # document on every run. `bucket.get_blob()` performs the GET that populates
+        # them. This is what broke idempotency on the first attempt.
+        blob = bucket.get_blob(object_name)
+        if blob is not None and (blob.metadata or {}).get("content_sha256") == digest:
             note("gcs", object_name, made=False)
             continue
         if dry_run:
             note("gcs", f"{object_name} (would upload)", made=True)
             continue
-        blob.metadata = {"content_sha256": digest, "department": department.value}
-        blob.upload_from_string(body, content_type="text/markdown")
+
+        upload = bucket.blob(object_name)
+        upload.metadata = {"content_sha256": digest, "department": department.value}
+        upload.upload_from_string(body, content_type=STAGED_CONTENT_TYPE)
         note("gcs", object_name, made=True)
 
     return uris
@@ -183,9 +201,16 @@ def import_corpus(project_id: str, uris: dict[Department, list[str]], *, dry_run
             f"/collections/default_collection/dataStores/{datastore_id}"
             f"/branches/default_branch"
         )
-        pattern = f"gs://{project_id}-corpus/{department.value}/*.md"
+        pattern = f"gs://{project_id}-corpus/{department.value}/*{STAGED_SUFFIX}"
         if dry_run:
             note("import", f"{datastore_id} <- {pattern} (would import)", made=True)
+            continue
+
+        # Already indexed and unchanged? Skip. Without this a rerun costs ~5 minutes per
+        # datastore for no state change, which is idempotent but not usefully so.
+        indexed = _indexed_count(project_id, datastore_id)
+        if indexed == len(uris[department]):
+            note("import", f"{datastore_id} ({indexed} docs indexed)", made=False)
             continue
 
         operation = client.import_documents(
@@ -195,8 +220,35 @@ def import_corpus(project_id: str, uris: dict[Department, list[str]], *, dry_run
                 reconciliation_mode=de.ImportDocumentsRequest.ReconciliationMode.INCREMENTAL,
             )
         )
-        operation.result(timeout=1800)  # type: ignore[no-untyped-call]
+        result = operation.result(timeout=1800)  # type: ignore[no-untyped-call]
+
+        # CRITICAL: the LRO reports SUCCESS even when every single document failed.
+        # The first run of this script "succeeded" while indexing zero documents,
+        # because `text/markdown` is rejected and the failure lives only in
+        # error_samples. Never trust the operation status alone.
+        failures = list(result.error_samples)
+        if failures:
+            for sample in failures[:3]:
+                print(f"    IMPORT ERROR: {sample.message[:200]}")
+            raise RuntimeError(
+                f"import into {datastore_id} produced {len(failures)} error sample(s); "
+                "the operation reported success but documents were NOT indexed"
+            )
         note("import", f"{datastore_id} ({len(uris[department])} docs)", made=True)
+
+
+def _indexed_count(project_id: str, datastore_id: str) -> int:
+    """How many documents are actually in the datastore right now."""
+    client = de.DocumentServiceClient()
+    parent = (
+        f"projects/{project_id}/locations/{SEARCH_LOCATION}"
+        f"/collections/default_collection/dataStores/{datastore_id}"
+        f"/branches/default_branch"
+    )
+    try:
+        return sum(1 for _ in client.list_documents(request=de.ListDocumentsRequest(parent=parent)))
+    except gexc.GoogleAPIError:
+        return -1
 
 
 # --------------------------------------------------------------------------------------
@@ -337,12 +389,26 @@ def seed_firestore(project_id: str, *, dry_run: bool) -> None:
         state=ReviewState.DELIVERED,
     )
 
-    if dry_run:
+    # A review already seeded keeps its ORIGINAL created_at. Re-dating it on every run
+    # would mean the "22-day-old review" silently became a 0-day-old review the moment
+    # anyone re-seeded before the demo -- which is exactly the sort of thing that fails
+    # on camera.
+    snapshot = db.collection("reviews").document(REVIEW_ID).get()
+    if snapshot.exists:
+        stored = snapshot.to_dict() or {}
+        original = datetime.fromisoformat(stored["created_at"])
+        age = (now - original).days
+        note("review", f"{REVIEW_ID} dated {original.date()} ({age}d ago, unchanged)", made=False)
+    elif dry_run:
         note("review", f"{REVIEW_ID} (would write, dated {created_at.date()})", made=True)
     else:
         db.collection("reviews").document(REVIEW_ID).set(review.model_dump(mode="json"))
         db.collection("rounds").document(ROUND_1_ID).set(round_one.model_dump(mode="json"))
         note("review", f"{REVIEW_ID} dated {created_at.date()} ({BACKDATE_DAYS}d ago)", made=True)
+
+    if snapshot.exists:
+        stored_review = snapshot.to_dict() or {}
+        delivered_at = datetime.fromisoformat(stored_review["created_at"]) + timedelta(days=3)
 
     # --- questions and answers -------------------------------------------------------
     for text, answer_text, author, citations in SEEDED_ANSWERS:
@@ -367,6 +433,10 @@ def seed_firestore(project_id: str, *, dry_run: bool) -> None:
             created_at=delivered_at,
         )
         doc_id = f"{ROUND_1_ID}__{question.question_id}"
+        already = db.collection("answers").document(doc_id).get().exists
+        if already:
+            note("answer", f"{question.question_id}  {text[:44]}", made=False)
+            continue
         if dry_run:
             note("answer", f"{doc_id} (would write)", made=True)
             continue
@@ -391,6 +461,9 @@ def seed_firestore(project_id: str, *, dry_run: bool) -> None:
             statement=statement,
             made_at=delivered_at,
         )
+        if db.collection("commitments").document(commitment_id).get().exists:
+            note("commitment", f"{commitment_id}  {statement[:44]}", made=False)
+            continue
         if dry_run:
             note("commitment", f"{commitment_id} (would write)", made=True)
             continue

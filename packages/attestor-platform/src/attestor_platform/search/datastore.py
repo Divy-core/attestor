@@ -71,11 +71,17 @@ class CorpusSearch:
         citation is evidence an agent chose to stand behind. Collapsing the two would
         make every retrieved chunk look like a claim we have made.
         """
+        # Snippets only. `extractive_content_spec` is an ENTERPRISE-edition feature and a
+        # standard-edition data store rejects the whole request with:
+        #   400 FAILED_PRECONDITION: Cannot use enterprise edition features (website
+        #   search, multi-modal search, extractive answers/segments, etc.) in a standard
+        #   edition search engine.
+        # Note it fails the request outright rather than degrading, so asking for
+        # extractive answers "just in case" costs you every result. Enterprise edition
+        # would also need an engine/app serving config rather than a data store one, and
+        # it is a paid tier we do not need: snippets carry enough text to cite.
         spec = de.SearchRequest.ContentSearchSpec(
             snippet_spec=de.SearchRequest.ContentSearchSpec.SnippetSpec(return_snippet=True),
-            extractive_content_spec=de.SearchRequest.ContentSearchSpec.ExtractiveContentSpec(
-                max_extractive_answer_count=1,
-            ),
         )
         request = de.SearchRequest(
             serving_config=self.serving_config,
