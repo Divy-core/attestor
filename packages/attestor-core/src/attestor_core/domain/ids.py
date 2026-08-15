@@ -28,7 +28,8 @@ _LEADING_NUMBERING = re.compile(
         [Qq][\s\-.:#]*\d+                # Q1, Q-1, Q.1, Q #1
       | [A-Za-z]{1,3}[\s\-.]?\d+(?:\.\d+)*   # CC6.1, A.9.2.3, AC-2
       | \d+(?:\.\d+)*                    # 1, 1.2, 1.2.3
-      | [ivxlcdm]+                       # roman numerals
+      | [ivxlcdm]+                       # roman numerals: i, iv, xii
+      | [A-Za-z]                         # alphabetic list markers: (a), b., c)
     )
     \)?                                  # optional closing paren
     [\s.):\-\]]+                         # the separator that follows

@@ -1,0 +1,239 @@
+"""Firestore repositories.
+
+Two rules hold across this module:
+
+1. **The event collections are append-only, structurally.** `AuditEventRepository` and
+   `ArmorEventRepository` have no `update` and no `delete` method. Not "should not be
+   called" -- not present. An audit trail you can edit is not an audit trail, and the
+   audit trail is the deliverable here.
+
+2. **Every call has a timeout and a defined failure path.** Firestore's client retries
+   internally and will otherwise happily block a Cloud Run request until the instance
+   is culled.
+"""
+
+from __future__ import annotations
+
+import logging
+from datetime import UTC, datetime
+from typing import Any
+
+from google.api_core import exceptions as gexc
+from google.cloud import firestore
+
+from attestor_core.domain import Answer, Commitment, Question, Review, Round
+from attestor_core.errors import AttestorError
+from attestor_platform.config import project_id
+
+logger = logging.getLogger(__name__)
+
+#: Every external call gets an explicit deadline.
+DEFAULT_TIMEOUT_SECONDS = 20.0
+
+REVIEWS = "reviews"
+ROUNDS = "rounds"
+QUESTIONS = "questions"
+ANSWERS = "answers"
+COMMITMENTS = "commitments"
+AUDIT_EVENTS = "audit_events"
+ARMOR_EVENTS = "armor_events"
+
+
+def _client(project: str | None = None) -> firestore.Client:
+    return firestore.Client(project=project or project_id())
+
+
+class _Repository:
+    """Shared plumbing. Not a base class with behaviour -- just construction."""
+
+    def __init__(
+        self,
+        client: firestore.Client | None = None,
+        timeout: float = DEFAULT_TIMEOUT_SECONDS,
+    ) -> None:
+        self._db = client if client is not None else _client()
+        self._timeout = timeout
+
+
+class ReviewRepository(_Repository):
+    """Reviews. Mutable: a review's state legitimately changes."""
+
+    def get(self, review_id: str) -> Review | None:
+        snap = self._db.collection(REVIEWS).document(review_id).get(timeout=self._timeout)
+        return Review.model_validate(snap.to_dict()) if snap.exists else None
+
+    def put(self, review: Review) -> None:
+        self._db.collection(REVIEWS).document(review.review_id).set(
+            review.model_dump(mode="json"), timeout=self._timeout
+        )
+
+    def list_all(self, limit: int = 50) -> list[Review]:
+        query = self._db.collection(REVIEWS).order_by(
+            "created_at", direction=firestore.Query.DESCENDING
+        )
+        return [
+            Review.model_validate(doc.to_dict())
+            for doc in query.limit(limit).stream(timeout=self._timeout)
+        ]
+
+
+class RoundRepository(_Repository):
+    def get(self, round_id: str) -> Round | None:
+        snap = self._db.collection(ROUNDS).document(round_id).get(timeout=self._timeout)
+        return Round.model_validate(snap.to_dict()) if snap.exists else None
+
+    def put(self, round_: Round) -> None:
+        self._db.collection(ROUNDS).document(round_.round_id).set(
+            round_.model_dump(mode="json"), timeout=self._timeout
+        )
+
+    def for_review(self, review_id: str) -> list[Round]:
+        query = self._db.collection(ROUNDS).where("review_id", "==", review_id)
+        rounds = [Round.model_validate(d.to_dict()) for d in query.stream(timeout=self._timeout)]
+        return sorted(rounds, key=lambda r: r.ordinal)
+
+
+class QuestionRepository(_Repository):
+    """Questions are keyed by their content-derived id, scoped under a round."""
+
+    def _doc_id(self, round_id: str, question_id: str) -> str:
+        return f"{round_id}__{question_id}"
+
+    def put_many(self, round_id: str, questions: list[Question]) -> int:
+        batch = self._db.batch()
+        for question in questions:
+            ref = self._db.collection(QUESTIONS).document(
+                self._doc_id(round_id, question.question_id)
+            )
+            payload = question.model_dump(mode="json")
+            payload["round_id"] = round_id
+            batch.set(ref, payload)
+        batch.commit(timeout=self._timeout)
+        return len(questions)
+
+    def for_round(self, round_id: str) -> list[Question]:
+        query = self._db.collection(QUESTIONS).where("round_id", "==", round_id)
+        return [
+            Question.model_validate(
+                {k: v for k, v in (d.to_dict() or {}).items() if k != "round_id"}
+            )
+            for d in query.stream(timeout=self._timeout)
+        ]
+
+
+class AnswerRepository(_Repository):
+    def _doc_id(self, round_id: str, question_id: str) -> str:
+        return f"{round_id}__{question_id}"
+
+    def put(self, answer: Answer) -> None:
+        self._db.collection(ANSWERS).document(
+            self._doc_id(answer.round_id, answer.question_id)
+        ).set(answer.model_dump(mode="json"), timeout=self._timeout)
+
+    def get(self, round_id: str, question_id: str) -> Answer | None:
+        snap = (
+            self._db.collection(ANSWERS)
+            .document(self._doc_id(round_id, question_id))
+            .get(timeout=self._timeout)
+        )
+        return Answer.model_validate(snap.to_dict()) if snap.exists else None
+
+    def for_round(self, round_id: str) -> list[Answer]:
+        query = self._db.collection(ANSWERS).where("round_id", "==", round_id)
+        return [Answer.model_validate(d.to_dict()) for d in query.stream(timeout=self._timeout)]
+
+
+class CommitmentRepository(_Repository):
+    """Durable statements made to a customer.
+
+    Written once when a round closes and read at the start of every later round. There
+    is no update method: you cannot retroactively change what you told a customer in
+    July, and the whole consistency guarantee rests on that.
+    """
+
+    def put(self, commitment: Commitment) -> None:
+        self._db.collection(COMMITMENTS).document(commitment.commitment_id).set(
+            commitment.model_dump(mode="json"), timeout=self._timeout
+        )
+
+    def for_review(self, review_id: str) -> list[Commitment]:
+        query = self._db.collection(COMMITMENTS).where("review_id", "==", review_id)
+        commitments = [
+            Commitment.model_validate(d.to_dict()) for d in query.stream(timeout=self._timeout)
+        ]
+        return sorted(commitments, key=lambda c: c.made_at)
+
+    def count_for_review(self, review_id: str) -> int:
+        return len(self.for_review(review_id))
+
+
+class _AppendOnlyEventRepository(_Repository):
+    """Append-only event log.
+
+    Deliberately exposes only `append` and readers. No `update`, no `delete`, no
+    `set` on an existing id -- the absence is the guarantee.
+    """
+
+    _collection: str
+
+    def append(self, event: dict[str, Any]) -> str:
+        """Append one event. Returns its generated id.
+
+        Non-fatal by contract: callers use `append_safe` on hot paths.
+        """
+        payload = dict(event)
+        payload.setdefault("occurred_at", datetime.now(UTC).isoformat())
+        _, ref = self._db.collection(self._collection).add(payload, timeout=self._timeout)
+        return str(ref.id)
+
+    def append_safe(self, event: dict[str, Any]) -> str | None:
+        """Append, logging loudly on failure but never raising.
+
+        A failed audit write must never block a run. Losing one audit line is bad;
+        failing a 312-question review because the audit collection had a blip is worse,
+        and the run itself is still reconstructable from Cloud Trace.
+        """
+        try:
+            return self.append(event)
+        except (gexc.GoogleAPIError, AttestorError, OSError) as exc:
+            logger.error(
+                "audit write FAILED (run continues): collection=%s error=%s",
+                self._collection,
+                exc,
+                exc_info=True,
+                extra={
+                    "collection": self._collection,
+                    **{k: event.get(k) for k in ("review_id", "run_id")},
+                },
+            )
+            return None
+
+    def for_review(self, review_id: str, limit: int = 500) -> list[dict[str, Any]]:
+        query = self._db.collection(self._collection).where("review_id", "==", review_id)
+        return [dict(d.to_dict() or {}) for d in query.limit(limit).stream(timeout=self._timeout)]
+
+    def for_run(self, run_id: str, limit: int = 500) -> list[dict[str, Any]]:
+        query = self._db.collection(self._collection).where("run_id", "==", run_id)
+        return [dict(d.to_dict() or {}) for d in query.limit(limit).stream(timeout=self._timeout)]
+
+
+class AuditEventRepository(_AppendOnlyEventRepository):
+    """Compliance observability: "why did we answer yes to Q112?", six months later.
+
+    Distinct from Cloud Trace on purpose. Trace is *engineering* observability --
+    latency, token cost, tool spans, ~30-day retention. This is the immutable,
+    queryable, exportable record an auditor reads. Different consumers, different
+    retention, different schemas. Conflating them is the common mistake.
+    """
+
+    _collection = AUDIT_EVENTS
+
+
+class ArmorEventRepository(_AppendOnlyEventRepository):
+    """Every Model Armor verdict, including the allows.
+
+    Recording only blocks would make the `/armor` page look like nothing ever happens
+    until something does, and would make "how often does this fire?" unanswerable.
+    """
+
+    _collection = ARMOR_EVENTS

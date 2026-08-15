@@ -8,6 +8,8 @@ impossible and the consistency demo does not exist.
 
 from __future__ import annotations
 
+from typing import ClassVar
+
 import pytest
 
 from attestor_core.domain.ids import make_dedup_key, make_question_id, normalize_question_text
@@ -94,3 +96,51 @@ class TestDedupKey:
     def test_separator_prevents_field_smearing(self) -> None:
         """("ab","c") and ("a","bc") must not collide."""
         assert make_dedup_key("ab", "c") != make_dedup_key("a", "bc")
+
+
+class TestRoundTwoMatching:
+    """The round-1 to round-2 rewordings actually used in seed/questionnaires/followup.
+
+    These are the exact strings in the seeded round-2 questionnaire. If any stops
+    matching its round-1 form, the consistency demo silently stops working -- the
+    round-2 answer would be treated as a brand new question with no prior commitment.
+    """
+
+    ROUND_PAIRS: ClassVar[list[tuple[str, str]]] = [
+        ("Do you encrypt customer data at rest?", "12. Do you encrypt customer data at rest?"),
+        (
+            "Is multi-factor authentication enforced for all personnel with production access?",
+            "Q7) IS MULTI-FACTOR AUTHENTICATION ENFORCED FOR ALL PERSONNEL WITH PRODUCTION ACCESS",
+        ),
+        ("What is your Recovery Time Objective?", "3.1 What is your Recovery Time Objective?"),
+        (
+            "Will you execute a Data Processing Agreement?",
+            "(a) Will you execute a Data Processing Agreement?",
+        ),
+        (
+            "Have you experienced a customer data breach in the last 3 years?",
+            "iv. Have you experienced a customer data breach in the last 3 years?",
+        ),
+    ]
+
+    @pytest.mark.parametrize(("round_one", "round_two"), ROUND_PAIRS)
+    def test_seeded_rewordings_match(self, round_one: str, round_two: str) -> None:
+        assert make_question_id(round_one) == make_question_id(round_two)
+
+
+class TestAlphabeticListMarkers:
+    """`(a)`, `b.`, `c)` are as common as numbers in real questionnaires."""
+
+    @pytest.mark.parametrize("prefix", ["(a) ", "a. ", "b) ", "(c) ", "d - "])
+    def test_alphabetic_markers_are_stripped(self, prefix: str) -> None:
+        assert make_question_id(f"{prefix}{BASE}") == make_question_id(BASE)
+
+    def test_distinct_questions_remain_distinct(self) -> None:
+        """Stripping markers must not collapse genuinely different questions."""
+        at_rest = make_question_id("Do you encrypt customer data at rest?")
+        in_transit = make_question_id("Do you encrypt customer data in transit?")
+        assert at_rest != in_transit
+
+    def test_a_word_boundary_is_not_eaten(self) -> None:
+        """`Do you...` must not lose its `D` -- the marker needs a separator after it."""
+        assert normalize_question_text("Do you encrypt?").startswith("do you")

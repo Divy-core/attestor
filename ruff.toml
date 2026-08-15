@@ -44,6 +44,13 @@ ignore = [
 [lint.per-file-ignores]
 "tests/**" = ["S101", "ANN"]      # asserts and loose typing are fine in tests
 "tools/**" = ["S603", "S607"]
+# S310 warns that urlopen could be handed a file: or custom scheme. In both adapters the
+# host is an https constant built from config (the Model Armor regional endpoint and the
+# Agent Registry host); no user-supplied URL reaches either call. Both use urllib rather
+# than requests deliberately -- attestor-platform is imported by the Agent Runtime bundle
+# and every avoidable dependency there is a way for the deploy to fail.
+"packages/attestor-platform/src/attestor_platform/armor/client.py" = ["S310"]
+"packages/attestor-platform/src/attestor_platform/registry/agent_registry.py" = ["S310"]
 
 [format]
 quote-style = "double"
