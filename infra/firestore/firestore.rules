@@ -1,0 +1,98 @@
+rules_version = '2';
+
+// Attestor Firestore security rules.
+//
+// Default deny. Every collection is listed explicitly, and anything not listed is
+// unreachable -- a new collection is inaccessible until someone deliberately grants
+// access, rather than inheriting a permissive default.
+//
+// The important property: `audit_events` and `armor_events` are APPEND-ONLY at the
+// database layer, not merely by repository convention. Even a principal holding
+// Firestore write access cannot update or delete an audit row. An audit trail that a
+// compromised service account can rewrite is not an audit trail.
+//
+// Deploy:  gcloud firestore databases update --rules=infra/firestore/firestore.rules
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---- helpers ------------------------------------------------------------------
+
+    // Backend services authenticate as service accounts through Admin SDK credentials,
+    // which bypass these rules entirely. These rules therefore govern *client* access:
+    // anything reaching Firestore with an end-user or unauthenticated credential.
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // ---- domain data: readable by signed-in clients, writable only by the backend ---
+    //
+    // Writes are denied to every client credential. The control plane and dispatcher
+    // write through the Admin SDK, which is not subject to these rules. That keeps the
+    // state machine the single writer of review state -- a browser cannot move a review
+    // to `delivered` by writing the document directly.
+
+    match /reviews/{reviewId} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+
+    match /rounds/{roundId} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+
+    match /questions/{questionId} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+
+    match /answers/{answerId} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+
+    // ---- commitments: read-only to everyone, append-only to the backend ------------
+    //
+    // You cannot retroactively change what you told a customer in July. The whole
+    // round-2 consistency guarantee rests on that, so update and delete are denied
+    // outright rather than merely omitted from the repository class.
+
+    match /commitments/{commitmentId} {
+      allow read: if isSignedIn();
+      allow create: if false;   // backend only, via Admin SDK
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    // ---- event logs: APPEND-ONLY, enforced here ------------------------------------
+    //
+    // `allow create` without `allow update` or `allow delete` is the whole point. Note
+    // that create is still `false` for client credentials -- only the backend writes
+    // events. The explicit `update: if false` and `delete: if false` document the
+    // intent and survive a future change that grants create to some principal.
+
+    match /audit_events/{eventId} {
+      allow read: if isSignedIn();
+      allow create: if false;
+      allow update: if false;   // NEVER. An editable audit trail is not an audit trail.
+      allow delete: if false;   // NEVER.
+    }
+
+    match /armor_events/{eventId} {
+      allow read: if isSignedIn();
+      allow create: if false;
+      allow update: if false;   // NEVER.
+      allow delete: if false;   // NEVER.
+    }
+
+    // ---- default deny ---------------------------------------------------------------
+    //
+    // Anything not matched above. Listed last and explicitly, so the deny is a decision
+    // rather than an accident of omission.
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -339,3 +339,152 @@ credit, which no API exposes). The plan's contemplated fallback to ADK-on-Cloud-
 `Import "google.adk.agents" could not be resolved` — an editor-only error against the
 system Python 3.13. The build was never affected: `mypy --strict` and `pytest` run through
 `uv run` against the 3.12.13 workspace interpreter and both pass.
+
+---
+
+## Phase 1 — Domain Core (Day 3, 16 Aug 2026)
+
+`attestor-core`: stdlib + pydantic only, zero cloud imports, zero I/O.
+
+### Built
+
+- `domain/` — `Department`, `Framework`, `Residency`, `AnswerStatus`, `Confidence`,
+  `ToolDecision`, `ArmorDecision`, `ContradictionVerdict`, `ReviewState`; models
+  `Question`, `Answer`, `Citation`, `Evidence`, `Round`, `Review`, `Commitment`,
+  `SourceRef`; `ids.py` with `normalize_question_text`, `make_question_id`,
+  `make_dedup_key`.
+- `state/` — explicit `frozenset` transition table; `transition()` raises
+  `IllegalTransition`, never warns.
+- `policy/` — `decide_tool`, `decide_on_armor_verdict`, `compute_confidence`,
+  `requires_human`, `residency_permits`. Pure functions over frozen inputs.
+- `protocol/` — `WorkEnvelope` + payload models, the 14-variant SSE union, API DTOs.
+- `errors.py` — typed hierarchy carrying correlation context.
+- `tools/gen_types.py` — pydantic → JSON Schema → `services/web/lib/types/generated.ts`,
+  with `make types-check` failing on drift.
+
+### Three design constraints, as implemented
+
+**Content-derived question IDs.** `sha256(NFKC-normalised, casefolded, de-numbered,
+de-punctuated text)[:16]`. NFKC comes first and matters more than it looks: the same
+question routinely arrives with a non-breaking space or a curly apostrophe after a trip
+through Word and Excel, and without NFKC those produce different IDs for identical
+questions.
+
+**Citations structurally mandatory.** `Answer` has a model validator: zero citations is
+permitted only for `FLAGGED_NO_EVIDENCE` and `QUARANTINED`. Any other status raises
+`EvidenceMissing` at construction.
+
+**Confidence computed, never generated.** `compute_confidence` is deterministic over
+`ConfidenceSignals`. No model is ever asked how confident it is.
+
+### Amendments applied after checkpoint review
+
+1. **`ReviewState` moved to `domain/enums.py`.** It had been typed `str` on `Review` and
+   `Round` to dodge a circular import, which defeated the enum — an invalid state could
+   be constructed and would only fail if the machine happened to look at it. `state/`
+   now imports the enum from `domain`; `domain` imports nothing from `state`, so no cycle
+   exists. Confirmed by `check_layering.py` reporting no new edge.
+2. **Two SSE variants added** — `commitment_recorded` and `consistency_checked` — taking
+   the union to 14. `consistency_checked.constrained` defaults `false`: "we checked" is
+   the default and "it mattered" must be asserted.
+3. **Payload models** — `IntakeDocumentPayload`, `OpenFollowUpPayload`,
+   `ResumeAfterHumanPayload`, `TimerFiredPayload`, `EmptyPayload` for the rest, plus
+   `PAYLOAD_MODELS` and `parse_payload()`. The wire format stays an open dict;
+   `for_work()` validates at publish and `parse_payload()` at consume.
+
+`protocol/` is **FROZEN** as of commit `3e30537`.
+
+### Measured
+
+- 100% branch coverage on `state/` and `policy/` (132 statements, 50 branches, 0 missed),
+  enforced by `make cov --cov-fail-under=100`.
+- `mypy --strict` clean. `ruff` clean. `check_layering.py` clean.
+- `generated.ts` regenerated at 357 lines; `make types-check` green.
+
+### Phase 0 findings encoded as mechanical checks
+
+Added to `tools/check_layering.py`, each with its own test:
+
+- **No `app.py` in any Agent Runtime bundle** — the container has its own top-level `app`
+  package and cloudpickle resolves tools by module reference.
+- **No model string literals outside `attestor_platform.config`.**
+- **No Gemini client constructed outside `gemini_model()`**, which pins
+  `location="global"`. `agentplatform.Client(location=...)` is deliberately *not* flagged:
+  the reasoningEngine resource is genuinely regional even though the model it calls is
+  not, and a false positive there would train people to ignore the check.
+
+### Model verification (section C2)
+
+Probed at `location="global"`, single trivial prompt each:
+
+| Model | Result | Latency |
+|---|---|---|
+| `gemini-3.7-flash` | INVOCABLE | 8.86s |
+| `gemini-3.6-flash` | INVOCABLE | 4.97s |
+| `gemini-3.5-flash` | INVOCABLE | 5.40s |
+| `gemini-3.5-flash-lite` | INVOCABLE | 4.59s |
+
+No quota or rate-limit messages. **No 3.6 or 3.7 Flash-Lite exists** — the lite tier tops
+out at `gemini-3.5-flash-lite`, which stands as the triage model.
+
+3.7 was ~1.6× slower than 3.5 on this sample. That is one cold-start call, not a
+benchmark. Carried into Phase 3 as an instruction to verify `ParallelAgent` fan-out is
+genuinely concurrent and to re-measure p50/p95 under the real ~40-draft load before the
+demo path depends on it. If drafting latency hurts, drop *drafting* to 3.5 Flash and keep
+3.7 on Intake rather than flipping one global constant.
+
+---
+
+## Phase 2 — Platform Adapters & Seed (Day 4, 17 Aug 2026)
+
+### `attestor-platform`
+
+| Module | Notes |
+|---|---|
+| `config.py` | Model constants and the single `gemini_model()` factory pinning `location="global"`. Model Armor regional endpoint template. |
+| `armor/` | Sanitize client on the **regional** endpoint + `screen_long_text()`. |
+| `firestore/` | Repositories. `audit_events` and `armor_events` are append-only **by construction** — no `update`, no `delete` methods exist. |
+| `storage/` | GCS with v4 signed upload URLs. |
+| `search/` | One Vertex AI Search datastore per department. |
+| `registry/` | Agent Registry read API. |
+| `pubsub/` | Publisher; `dedup_key` travels as a message attribute so a redelivery can be dropped without deserialising. |
+| `telemetry/` | OTel span helpers + audit/armor writers, both non-fatal by contract. |
+
+**The chunker.** `screen_long_text()` chunks at 450 tokens with 50 overlap, fans out under
+a bounded semaphore (8), aggregates to the strictest verdict, and returns per-chunk detail
+so the UI can point at *where* the injection was.
+
+`parse_sanitize_response()` is the only place that knows Google's wire field names
+(`filterMatchState`, `piAndJailbreakFilterResult`, `sdpFilterResult.inspectResult`, …), so
+a response-format change touches one function rather than every policy branch.
+
+### `seed/`
+
+26 corpus documents, 13,659 words, for **Kestrel Data, Inc.** — internally consistent on
+named auditors, certificate numbers, dated incidents, and control IDs.
+
+**Deviation:** documents average ~525 words against the specified 800–2000. The trade was
+deliberate — density of specific, citable facts over word count. Every document carries a
+document ID, version, owner, approval date, and framework mapping. Padding to 1,500 words
+would have added prose without adding anything an answer could cite. Flagged rather than
+buried.
+
+Three questionnaires generated deterministically (`RANDOM_SEED = 20260817`):
+clean (312), injected (312), followup (40).
+
+**Six deliberate evidence gaps**, grep-verified at zero corpus hits: cyber insurance
+limits, source code escrow, modern slavery statement, carbon/sustainability reporting,
+HITRUST, SCIM. Documented in `seed/README.md`. These must produce
+`FLAGGED_NO_EVIDENCE`; anything else is a hallucination.
+
+### A real bug the seed work found
+
+`make_question_id` stripped numeric and roman-numeral list markers but **not alphabetic
+ones**. The round-2 rewording `(a) Will you execute a Data Processing Agreement?` produced
+a different ID from its round-1 form, which would have silently broken the consistency
+demo — the round-2 answer would have been treated as a brand new question with no prior
+commitment to check against. Fixed, with `TestRoundTwoMatching` locking all six seeded
+rewordings.
+
+This is exactly what the seed data is for: the bug was invisible until real round-2
+phrasing existed.

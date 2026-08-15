@@ -347,7 +347,9 @@ One DPIA is on file, covering the introduction of the anomaly detection feature
 prior consultation with the supervisory authority required.
 """
 
-DOCS["standard-contractual-clauses-summary.md"] = """# Standard Contractual Clauses and Transfer Impact Assessment - Summary
+DOCS[
+    "standard-contractual-clauses-summary.md"
+] = """# Standard Contractual Clauses and Transfer Impact Assessment - Summary
 
 **Document ID:** KD-LEG-006 · **Version:** 2.2 · **Owner:** Aaron Feldstein, General Counsel
 **Last updated:** 28 January 2026 · **Next review:** 28 January 2027
