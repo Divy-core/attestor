@@ -24,6 +24,7 @@ Exits 0 when clean, 1 when any rule is violated.
 from __future__ import annotations
 
 import ast
+import re
 import sys
 from collections.abc import Iterator
 from dataclasses import dataclass
@@ -233,6 +234,151 @@ def _check_import(zone: str, module: str, path: Path, line: int) -> Violation | 
     return None
 
 
+# --------------------------------------------------------------------------------------
+# Phase 0 findings, encoded as mechanical checks.
+#
+# Each of these cost a diagnose-fix-rerun cycle once. None of them may cost one again,
+# and none of them is the kind of thing a comment reliably prevents.
+# --------------------------------------------------------------------------------------
+
+#: Zones whose files are bundled and shipped to Agent Runtime.
+BUNDLED_ZONES: frozenset[str] = frozenset({FLEET, "service:runtime"})
+
+#: The Agent Runtime container has its own top-level ``app`` package at
+#: /code/app/__init__.py. cloudpickle serialises tool functions BY MODULE REFERENCE, so
+#: a bundle module named app.py unpickles against Google's package instead of ours and
+#: the engine dies at startup with:
+#:   Can't get attribute 'get_review_count' on <module 'app' from '/code/app/__init__.py'>
+#: create() appears to succeed for several minutes first, then reports only the generic
+#: "failed to start and cannot serve traffic".
+BANNED_BUNDLE_FILENAMES: frozenset[str] = frozenset({"app.py"})
+
+#: The single module permitted to name a model or construct a model client.
+MODEL_CONFIG_MODULE = "packages/attestor-platform/src/attestor_platform/config.py"
+
+#: Every Gemini 3.x model is served ONLY from location "global"; a regional call 404s
+#: in a way that reads as an entitlement problem. Model strings live in config.py so
+#: the location pin cannot be bypassed by constructing a client elsewhere.
+_MODEL_LITERAL = re.compile(r"\bgemini-[0-9]+(?:\.[0-9]+)?-[a-z0-9-]+\b")
+
+#: Callables that construct a Gemini/genai client. Constructing one outside the factory
+#: is how the location pin gets bypassed. Note `agentplatform.Client(location=...)` is
+#: NOT in this set: that is the Agent Engine control-plane client, which legitimately
+#: targets us-central1 -- the reasoningEngine resource is regional even though the model
+#: it calls is not. Conflating the two is exactly the confusion this check exists to stop.
+_GEMINI_CONSTRUCTORS: frozenset[str] = frozenset({"Gemini", "GenerativeModel"})
+
+#: Passing client_kwargs anywhere but the factory means someone is hand-rolling the pin.
+_PINNING_KWARGS: frozenset[str] = frozenset({"client_kwargs"})
+
+#: Exempt from the model-string and constructor rules.
+#: `services/runtime/runtime_app.py` is the Phase 0 proof-of-life probe. It deliberately
+#: pins its own model because the bundle stays minimal and does not ship
+#: attestor-platform. Phase 5 replaces it with the real fleet, and this exemption is
+#: removed at that point.
+_MODEL_LITERAL_EXEMPT: frozenset[str] = frozenset(
+    {
+        MODEL_CONFIG_MODULE,
+        "services/runtime/runtime_app.py",
+    }
+)
+
+
+def _check_bundle_filenames(root: Path) -> list[Violation]:
+    """Fail if a bundled zone contains a file whose name breaks cloudpickle."""
+    violations: list[Violation] = []
+    for path in _iter_python_files(root):
+        zone = _zone_for(path, root)
+        if zone not in BUNDLED_ZONES:
+            continue
+        if path.name in BANNED_BUNDLE_FILENAMES:
+            violations.append(
+                Violation(
+                    path,
+                    0,
+                    zone or "?",
+                    path.name,
+                    f"{path.name!r} is a forbidden filename in a bundle shipped to Agent "
+                    "Runtime: the container already has a top-level 'app' package and "
+                    "cloudpickle resolves tools by module reference, so the engine dies "
+                    "at startup. Rename it (e.g. runtime_app.py)",
+                )
+            )
+    return violations
+
+
+def _check_model_configuration(root: Path) -> list[Violation]:
+    """Fail if a model string or a location pin appears outside ``config.py``."""
+    violations: list[Violation] = []
+    for path in _iter_python_files(root):
+        zone = _zone_for(path, root)
+        if zone is None:
+            continue
+        rel = path.relative_to(root).as_posix()
+        if rel in _MODEL_LITERAL_EXEMPT:
+            continue
+
+        source = path.read_text(encoding="utf-8")
+
+        for lineno, text in enumerate(source.splitlines(), start=1):
+            stripped = text.strip()
+            if stripped.startswith("#"):
+                continue  # prose about the rule is not a violation of it
+            match = _MODEL_LITERAL.search(text)
+            if match:
+                violations.append(
+                    Violation(
+                        path,
+                        lineno,
+                        zone,
+                        match.group(0),
+                        "model strings live only in attestor_platform.config; import "
+                        "REASONING_MODEL / TRIAGE_MODEL instead of writing the literal",
+                    )
+                )
+
+        try:
+            tree = ast.parse(source, filename=str(path))
+        except SyntaxError:
+            continue  # reported by check()
+
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call):
+                func = node.func
+                name = (
+                    func.attr
+                    if isinstance(func, ast.Attribute)
+                    else func.id
+                    if isinstance(func, ast.Name)
+                    else None
+                )
+                if name in _GEMINI_CONSTRUCTORS:
+                    violations.append(
+                        Violation(
+                            path,
+                            node.lineno,
+                            zone,
+                            f"{name}(...)",
+                            "Gemini clients are constructed only by "
+                            "attestor_platform.config.gemini_model(), which pins "
+                            "location='global'. Every Gemini 3.x model is served ONLY "
+                            "from 'global'; a regional call 404s as if unentitled",
+                        )
+                    )
+            if isinstance(node, ast.keyword) and node.arg in _PINNING_KWARGS:
+                violations.append(
+                    Violation(
+                        path,
+                        node.value.lineno,
+                        zone,
+                        f"{node.arg}=",
+                        "client_kwargs is set only in attestor_platform.config; "
+                        "hand-pinning the model location elsewhere defeats the factory",
+                    )
+                )
+    return violations
+
+
 def check(root: Path) -> list[Violation]:
     """Parse every Python file under ``root`` and return all layering violations."""
     violations: list[Violation] = []
@@ -251,6 +397,9 @@ def check(root: Path) -> list[Violation]:
             violation = _check_import(zone, module, path, line)
             if violation is not None:
                 violations.append(violation)
+
+    violations.extend(_check_bundle_filenames(root))
+    violations.extend(_check_model_configuration(root))
     return violations
 
 

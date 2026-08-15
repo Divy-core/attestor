@@ -4,7 +4,7 @@ SHELL := /bin/bash
 PROJECT_ID ?= $(shell gcloud config get-value project 2>/dev/null)
 REGION     ?= us-central1
 
-.PHONY: help setup lint types test layering check bootstrap deploy teardown fmt
+.PHONY: help setup lint types test layering check bootstrap deploy teardown fmt types-gen types-check cov
 
 help: ## Show available targets
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | \
@@ -46,7 +46,16 @@ test: ## pytest
 layering: ## Enforce the package dependency invariant
 	uv run python tools/check_layering.py
 
-check: lint types test layering ## lint + types + test + layering
+types-gen: ## Regenerate services/web/lib/types/generated.ts from attestor_core.protocol
+	uv run python tools/gen_types.py
+
+types-check: ## Fail if the committed generated.ts is stale
+	uv run python tools/gen_types.py --check
+
+cov: ## Branch coverage on state/ and policy/, which must stay at 100%
+	uv run pytest tests/unit --cov=attestor_core.state --cov=attestor_core.policy --cov-branch --cov-report=term-missing --cov-fail-under=100
+
+check: lint types test layering types-check ## lint + types + test + layering + type drift
 
 bootstrap: ## Enable APIs and create project resources (idempotent)
 	PROJECT_ID=$(PROJECT_ID) REGION=$(REGION) bash infra/bootstrap.sh

@@ -219,3 +219,87 @@ def test_main_exits_zero_on_clean_tree(tmp_path: Path) -> None:
     write(tmp_path, f"{CORE_SRC}/__init__.py", "")
 
     assert main(["check_layering.py", str(tmp_path)]) == 0
+
+
+# ---------------------------------------------------------------------------------
+# Phase 0 findings, encoded as checks. Each cost a diagnose-fix-rerun cycle once.
+# ---------------------------------------------------------------------------------
+
+
+class TestBundleFilenames:
+    def test_app_py_in_fleet_is_a_violation(self, tmp_path: Path) -> None:
+        """The Agent Runtime container has its own top-level `app` package."""
+        write(tmp_path, f"{FLEET_SRC}/app.py", "x = 1\n")
+
+        violations = check(tmp_path)
+
+        assert len(violations) == 1
+        assert "forbidden filename" in violations[0].reason
+        assert "cloudpickle" in violations[0].reason
+
+    def test_app_py_in_runtime_service_is_a_violation(self, tmp_path: Path) -> None:
+        write(tmp_path, "services/runtime/app.py", "x = 1\n")
+
+        assert any("forbidden filename" in v.reason for v in check(tmp_path))
+
+    def test_app_py_outside_a_bundle_is_fine(self, tmp_path: Path) -> None:
+        """control-plane is not shipped to Agent Runtime."""
+        write(tmp_path, f"{CONTROL_PLANE_SRC}/app.py", "x = 1\n")
+
+        assert check(tmp_path) == []
+
+
+class TestModelConfiguration:
+    def test_model_literal_outside_config_is_a_violation(self, tmp_path: Path) -> None:
+        write(tmp_path, f"{FLEET_SRC}/agents/intake.py", 'MODEL = "gemini-3.5-flash"\n')
+
+        violations = check(tmp_path)
+
+        assert len(violations) == 1
+        assert "model strings live only in attestor_platform.config" in violations[0].reason
+
+    def test_model_literal_inside_config_is_fine(self, tmp_path: Path) -> None:
+        write(
+            tmp_path,
+            "packages/attestor-platform/src/attestor_platform/config.py",
+            'REASONING_MODEL = "gemini-3.7-flash"\n',
+        )
+
+        assert check(tmp_path) == []
+
+    def test_model_literal_in_a_comment_is_not_a_violation(self, tmp_path: Path) -> None:
+        """Prose about the rule must not trip the rule."""
+        write(tmp_path, f"{FLEET_SRC}/agents/intake.py", "# we default to gemini-3.5-flash here\n")
+
+        assert check(tmp_path) == []
+
+    def test_constructing_gemini_outside_the_factory_is_a_violation(self, tmp_path: Path) -> None:
+        write(tmp_path, f"{FLEET_SRC}/agents/legal.py", "m = Gemini(model=X)\n")
+
+        violations = check(tmp_path)
+
+        assert len(violations) == 1
+        assert "constructed only by" in violations[0].reason
+
+    def test_client_kwargs_outside_the_factory_is_a_violation(self, tmp_path: Path) -> None:
+        write(
+            tmp_path, f"{FLEET_SRC}/agents/legal.py", 'm = build(client_kwargs={"location": "x"})\n'
+        )
+
+        violations = check(tmp_path)
+
+        assert len(violations) == 1
+        assert "client_kwargs is set only" in violations[0].reason
+
+    def test_agent_engine_client_location_is_not_flagged(self, tmp_path: Path) -> None:
+        """The reasoningEngine resource is regional even though the model is not.
+
+        Flagging this would be a false positive that trains people to ignore the check.
+        """
+        write(
+            tmp_path,
+            "services/runtime/deploy.py",
+            'c = agentplatform.Client(location="us-central1")\n',
+        )
+
+        assert check(tmp_path) == []

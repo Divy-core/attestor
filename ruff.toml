@@ -34,6 +34,11 @@ select = [
 ]
 ignore = [
     "ANN401",  # allow Any where genuinely needed
+    # Domain errors read better without the suffix: `IllegalTransition`,
+    # `EvidenceMissing`, `ArmorBlocked` are the vocabulary of the problem domain, and
+    # `EvidenceMissingError` adds nothing. They all subclass AttestorError, which does
+    # carry the suffix, so the hierarchy is still obvious.
+    "N818",
 ]
 
 [lint.per-file-ignores]
