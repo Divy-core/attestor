@@ -24,7 +24,7 @@ from pathlib import Path
 
 from google.api_core import exceptions as gexc
 from google.cloud import discoveryengine_v1 as de
-from google.cloud import firestore, storage
+from google.cloud import firestore, storage  # type: ignore[attr-defined]
 
 from attestor_core.domain import (
     Answer,
@@ -165,7 +165,7 @@ def ensure_datastores(project_id: str, *, dry_run: bool) -> None:
                 ),
             )
         )
-        operation.result(timeout=600)
+        operation.result(timeout=600)  # type: ignore[no-untyped-call]
         note("datastore", datastore_id, made=True)
 
 
@@ -195,7 +195,7 @@ def import_corpus(project_id: str, uris: dict[Department, list[str]], *, dry_run
                 reconciliation_mode=de.ImportDocumentsRequest.ReconciliationMode.INCREMENTAL,
             )
         )
-        operation.result(timeout=1800)
+        operation.result(timeout=1800)  # type: ignore[no-untyped-call]
         note("import", f"{datastore_id} ({len(uris[department])} docs)", made=True)
 
 
