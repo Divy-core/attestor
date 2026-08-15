@@ -584,3 +584,62 @@ and is stronger evidence, because it exercises Google's actual filter rather tha
 Worth noting: the PII string also tripped `prompt_injection`. Model Armor is more
 aggressive than the filter names suggest, which matters for Phase 3 — an answer
 quarantined for PII may show an injection filter hit it did not "deserve".
+
+### Phase 2 — exit criteria, measured
+
+| # | Criterion | Result |
+|---|---|---|
+| 1 | Each department datastore queryable; known query returns expected doc + citation URI | **PASS** — see below |
+| 2 | `screen_long_text()` blocks an injection planted at ~token 1400 | **PASS** — unit test, and live against the real service at ~token 3262 |
+| 3 | Model Armor calls succeed against the regional endpoint | **PASS** |
+| 4 | Firestore rules deployed; unauthorised write rejected | **PASS** — 11/11 |
+| 5 | `make seed` idempotent — run twice, identical state | **PASS** — `created: 0, existing: 43` |
+| 6 | 22-day review, round 1 delivered, on-premises commitment stored | **PASS** |
+| 7 | Corpus contains deliberate gaps, documented | **PASS** — 6 gaps, grep-verified at 0 hits |
+| 8 | `make check` green | **PASS** — 233 tests, mypy --strict, ruff, layering, type-drift |
+
+**Retrieval, live.** All 26 documents indexed (security 11, legal 8, engineering 7):
+
+```
+SECURITY    "What encryption is used for customer data at rest?"
+  -> encryption-standard (0.95)
+     gs://attestor-505506-corpus/security/encryption-standard.txt
+     "... All customer data at rest is encrypted using **AES-256-GCM ..."
+
+LEGAL       "How much notice before adding a subprocessor?"
+  -> data-processing-agreement (0.95)
+     gs://attestor-505506-corpus/legal/data-processing-agreement.txt
+     "... Kestrel gives **30 days** notice before adding or replacing a sub-processor ..."
+
+ENGINEERING "recovery objective backup restore"
+  -> backup-restore-procedure (0.95)
+     gs://attestor-505506-corpus/engineering/backup-restore-procedure.txt
+```
+
+**Retrieval quality caveat, stated rather than hidden.** Exact-phrase queries do not
+always hit: `"Recovery Time Objective"` and `"RTO RPO"` returned 0 results against the
+engineering datastore even though `backup-restore-procedure.txt` contains both, while
+`"recovery objective backup restore"` and `"How long does restore take?"` returned it at
+0.95. Keyword-ish queries also work (`backup` 2, `Kestrel` 3, `SDLC` 1,
+`change management` 2). The datastore is queryable and the exit criterion is met, but
+**Phase 3 must not assume the raw question text is a good retrieval query** — the
+Evidence agent should expand or rephrase before searching, and `evals/grounding` should
+measure recall rather than trusting it.
+
+**Snippet cleaning.** Discovery Engine returns snippets with `<b>` highlight markup and
+HTML entities: `"All <b>customer data at rest</b> is <b>encrypted</b> using
+**AES-256-GCM&nbsp;..."`. Cleaned in the adapter rather than the UI, because the snippet
+is also what the agent reads — leaving markup in means the model sees it too. Four tests
+cover it.
+
+**Idempotency, proven not claimed.** Third run, with everything already present:
+
+```
+created : 0
+existing: 43
+  exists  review  rev-acme-2026-q3 dated 2026-07-24 (22d ago, unchanged)
+```
+
+The "unchanged" on the review date matters: an earlier version re-dated it on every run,
+which would have silently turned the 22-day-old review into a 0-day-old one the first
+time anyone re-seeded before recording the demo.

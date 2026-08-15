@@ -11,7 +11,9 @@ day of work.
 
 from __future__ import annotations
 
+import html
 import logging
+import re
 
 from google.api_core import exceptions as gexc
 from google.cloud import discoveryengine_v1 as de
@@ -31,6 +33,26 @@ DEPARTMENT_DATASTORES: dict[Department, str] = {
     Department.LEGAL: "attestor-corpus-legal",
     Department.ENGINEERING: "attestor-corpus-engineering",
 }
+
+
+#: Discovery Engine wraps matched terms in <b>...</b> and HTML-escapes the snippet.
+#: Raw, a snippet reads:
+#:   "All <b>customer data at rest</b> is <b>encrypted</b> using **AES-256-GCM&nbsp;..."
+#: A citation shown to a compliance reviewer must not contain markup, so snippets are
+#: cleaned here rather than in the UI -- the snippet is also what an agent reads, and
+#: leaving tags in means the model sees them too.
+_HTML_TAG = re.compile(r"<[^>]+>")
+_WHITESPACE = re.compile(r"\s+")
+
+
+def clean_snippet(raw: str) -> str:
+    """Strip highlight markup and unescape entities from a search snippet."""
+    text = _HTML_TAG.sub("", raw)
+    text = html.unescape(text)
+    # `&nbsp;` unescapes to U+00A0, which is invisible in a diff and breaks naive
+    # whitespace handling downstream. Fold it and friends to a plain space.
+    text = text.replace("\xa0", " ").replace("​", "")
+    return _WHITESPACE.sub(" ", text).strip()
 
 
 def datastore_id(department: Department) -> str:
@@ -108,11 +130,11 @@ class CorpusSearch:
             content = ""
             snippets = data.get("snippets") or []
             if snippets:
-                content = str(dict(snippets[0]).get("snippet", ""))
+                content = clean_snippet(str(dict(snippets[0]).get("snippet", "")))
             if not content:
                 extractive = data.get("extractive_answers") or []
                 if extractive:
-                    content = str(dict(extractive[0]).get("content", ""))
+                    content = clean_snippet(str(dict(extractive[0]).get("content", "")))
             # Discovery Engine does not return a normalised relevance score on this
             # surface, so rank is converted into one. Recorded honestly rather than
             # invented: position 1 -> 0.95, decaying by 0.1 per position.

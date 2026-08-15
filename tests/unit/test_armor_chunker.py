@@ -258,3 +258,28 @@ class TestResponseParsing:
         verdict, _ = parse_sanitize_response({"_error": "timed out"})
 
         assert verdict.execution_failed is True
+
+
+class TestSnippetCleaning:
+    """Citations shown to a compliance reviewer must not contain markup."""
+
+    def test_strips_highlight_tags(self) -> None:
+        from attestor_platform.search.datastore import clean_snippet
+
+        raw = "All <b>customer data at rest</b> is <b>encrypted</b> using AES-256-GCM"
+        assert clean_snippet(raw) == "All customer data at rest is encrypted using AES-256-GCM"
+
+    def test_unescapes_entities_and_folds_nbsp(self) -> None:
+        from attestor_platform.search.datastore import clean_snippet
+
+        assert clean_snippet("30&nbsp;days&amp;more") == "30 days&more"
+
+    def test_collapses_whitespace(self) -> None:
+        from attestor_platform.search.datastore import clean_snippet
+
+        assert clean_snippet("  a\n\n  b\t c  ") == "a b c"
+
+    def test_leaves_clean_text_alone(self) -> None:
+        from attestor_platform.search.datastore import clean_snippet
+
+        assert clean_snippet("Kestrel gives 30 days notice.") == "Kestrel gives 30 days notice."
