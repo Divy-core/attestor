@@ -17,10 +17,27 @@ Hence exactly one tool. A text-only agent would prove none of question 3.
 from __future__ import annotations
 
 from google.adk.agents import LlmAgent
+from google.adk.models.google_llm import Gemini
 
-# Confirmed available on this project in docs/proof/PHASE-0-DISCOVERY.md section 2.4.
 # The hackathon brief names 3.5 Flash explicitly; 3.6 and 3.7 are available swaps.
-MODEL = "gemini-3.5-flash"
+MODEL_NAME = "gemini-3.5-flash"
+
+# Every Gemini 3.x model is served ONLY from the `global` location. Calling any
+# regional endpoint for one returns:
+#   404 Publisher model `projects/<p>/locations/us-central1/publishers/google/models/
+#   gemini-3.5-flash` was not found or your project does not have access to it.
+# which reads as an entitlement problem and is not one -- `models.list()` happily
+# lists all of them from us-central1, because listing the catalogue is not the same
+# as being able to invoke it. Verified in docs/proof/PHASE-0-DISCOVERY.md 2.4:
+# only 2.5-era models answer regionally; 3.x answers only on `global`.
+#
+# A fully-qualified `projects/.../locations/global/...` model path does NOT fix this
+# -- the *client's* location picks the endpoint, so the client itself must be global.
+# client_kwargs is the surgical fix: the model client goes to `global` while the
+# reasoningEngine resource stays in us-central1 with everything else.
+MODEL_LOCATION = "global"
+
+MODEL = Gemini(model=MODEL_NAME, client_kwargs={"location": MODEL_LOCATION})
 
 #: Deliberately a constant. The demo narrative uses 312 questions, so the number is
 #: recognisable in the trace, and a constant makes "did the tool actually run?"

@@ -54,7 +54,7 @@ def access_token() -> str:
     """Reuse the gcloud CLI's token so this script needs no extra credential setup."""
     gcloud = os.environ.get("GCLOUD_CMD", "gcloud")
     try:
-        out = subprocess.run(  # noqa: S603
+        out = subprocess.run(
             [gcloud, "auth", "print-access-token"],
             capture_output=True,
             text=True,
@@ -74,7 +74,7 @@ def sanitize_user_prompt(project: str, region: str, token: str, text: str) -> di
         ":sanitizeUserPrompt"
     )
     body = json.dumps({"user_prompt_data": {"text": text}}).encode("utf-8")
-    request = urllib.request.Request(  # noqa: S310 - fixed https host
+    request = urllib.request.Request(
         url,
         data=body,
         headers={

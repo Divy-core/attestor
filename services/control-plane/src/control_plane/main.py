@@ -66,7 +66,7 @@ def readyz(response: Response) -> dict[str, Any]:
         # Cheapest round trip that proves the backend answered: ask for at most one
         # collection. We do not care whether any exist, only that the call returns.
         next(iter(client.collections()), None)
-    except Exception as exc:  # noqa: BLE001 - a readiness probe must never raise
+    except Exception as exc:
         logger.warning("readyz: firestore unreachable: %s", exc, exc_info=True)
         response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
         return {
