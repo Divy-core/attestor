@@ -40,7 +40,7 @@ export type AnswerDrafted = {
 };
 
 /** Lifecycle of a single answer. */
-export type AnswerStatus = "draft" | "drafted" | "needs_human" | "flagged_no_evidence" | "quarantined" | "approved" | "delivered";
+export type AnswerStatus = "draft" | "drafted" | "needs_human" | "flagged_no_evidence" | "quarantined" | "approved" | "rejected" | "delivered";
 
 /** Model Armor refused content. Rendered in red; this is a video beat. */
 export type ArmorBlocked = {
