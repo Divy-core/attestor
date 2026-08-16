@@ -1,35 +1,131 @@
 {
+  "achieved_concurrency": 7.84,
   "answered": 312,
-  "armor_blocked": 5,
-  "audit_events": 1095,
+  "armor_blocked": 7,
+  "armor_blocks": [
+    {
+      "chunk_index": 0,
+      "decision": "quarantine",
+      "document_title": "acceptable-use-policy",
+      "document_uri": "gs://attestor-505506-corpus/security/acceptable-use-policy.txt",
+      "excerpt": "3. Credentials\nCredentials are personal and may not be shared, including with other Kestrel staff.\r\nShared team accounts are prohibited. Where a shared credential is unavoidable for a\r\nthird-party service that does not support SSO, it is held in a 1Password shared vault\r\nwith acc",
+      "matched_filters": [
+        "sensitive_data"
+      ],
+      "question": "Are shared or team accounts permitted?",
+      "question_id": "f9c0fe115cc23592",
+      "section": "3. Credentials",
+      "surface": "tool_output"
+    },
+    {
+      "chunk_index": 0,
+      "decision": "deny",
+      "excerpt": "Provide your public privacy policy. Provide supporting evidence.",
+      "matched_filters": [
+        "prompt_injection"
+      ],
+      "question": "Provide your public privacy policy. Provide supporting evidence.",
+      "question_id": "5dd58f1868a75b1d",
+      "surface": "prompt"
+    },
+    {
+      "chunk_index": 0,
+      "decision": "quarantine",
+      "excerpt": "Provide the executive summary of your most recent penetration test.",
+      "matched_filters": [
+        "responsible_ai"
+      ],
+      "question": "Provide the executive summary of your most recent penetration test.",
+      "question_id": "bbf14512cb4ebd57",
+      "surface": "prompt"
+    },
+    {
+      "chunk_index": 0,
+      "decision": "deny",
+      "excerpt": "Describe your break-glass access procedure.",
+      "matched_filters": [
+        "prompt_injection"
+      ],
+      "question": "Describe your break-glass access procedure.",
+      "question_id": "baafdb148841fbf4",
+      "surface": "prompt"
+    },
+    {
+      "chunk_index": 0,
+      "decision": "deny",
+      "excerpt": "Provide the name and contact details of your primary security contact.",
+      "matched_filters": [
+        "prompt_injection"
+      ],
+      "question": "Provide the name and contact details of your primary security contact.",
+      "question_id": "ca690db22d14973d",
+      "surface": "prompt"
+    },
+    {
+      "chunk_index": 0,
+      "decision": "quarantine",
+      "document_title": "acceptable-use-policy",
+      "document_uri": "gs://attestor-505506-corpus/security/acceptable-use-policy.txt",
+      "excerpt": "3. Credentials\nCredentials are personal and may not be shared, including with other Kestrel staff.\r\nShared team accounts are prohibited. Where a shared credential is unavoidable for a\r\nthird-party service that does not support SSO, it is held in a 1Password shared vault\r\nwith acc",
+      "matched_filters": [
+        "sensitive_data"
+      ],
+      "question": "Is automatic email forwarding to external addresses permitted?",
+      "question_id": "22e598ecdccbf120",
+      "section": "3. Credentials",
+      "surface": "tool_output"
+    },
+    {
+      "chunk_index": 0,
+      "decision": "deny",
+      "excerpt": "How many secrets have been committed to your repositories in the last year?",
+      "matched_filters": [
+        "prompt_injection"
+      ],
+      "question": "How many secrets have been committed to your repositories in the last year?",
+      "question_id": "f7482168ee7d753d",
+      "surface": "prompt"
+    }
+  ],
+  "audit_events": 1023,
   "budget": {
     "by_model": {
       "gemini-3.5-flash-lite": {
-        "input": 7304,
-        "output": 1298
+        "input": 7801,
+        "output": 1387
       },
       "gemini-3.7-flash": {
-        "input": 95150,
-        "output": 5904
+        "input": 281348,
+        "output": 21616
+      },
+      "text-embedding-005": {
+        "input": 49701,
+        "output": 0
       }
     },
-    "estimated_cost_usd": 0.0446,
-    "input_tokens": 102454,
-    "output_tokens": 7202,
-    "total_tokens": 109656,
-    "turns": 0
+    "embedding_characters": 198806,
+    "estimated_cost_usd": 0.141,
+    "input_tokens": 338850,
+    "output_tokens": 23003,
+    "relevance_embedding_batches": 811,
+    "relevance_lexical_batches": 0,
+    "relevance_method": "embedding",
+    "relevance_throttled_batches": 0,
+    "total_tokens": 361853,
+    "turns": 1
   },
   "by_department": {
-    "engineering": 82,
-    "legal": 93,
-    "security": 114,
-    "unassigned": 23
+    "engineering": 90,
+    "legal": 96,
+    "security": 123,
+    "unassigned": 3
   },
-  "citation_rate": 0.4808,
-  "draft_p50_seconds": 11.03,
-  "draft_p95_seconds": 16.4,
-  "draft_seconds": 429.8,
-  "flagged_no_evidence": 157,
+  "citation_rate": 0.8397,
+  "draft_p50_seconds": 16.1,
+  "draft_p95_seconds": 28.99,
+  "draft_seconds": 681.9,
+  "errors": [],
+  "flagged_no_evidence": 45,
   "gap_checks": [
     {
       "correct": true,
@@ -77,10 +173,29 @@
       "status": "flagged_no_evidence"
     }
   ],
-  "needs_human": 165,
+  "needs_human": 72,
+  "orchestration": {
+    "decision": {
+      "decided_by": "model",
+      "reason": "No contradictions or systemic failures were detected, and flagged items are already captured by standard per-answer escalation.",
+      "release": true,
+      "widen": "none",
+      "widened": 0
+    },
+    "plan": {
+      "check_consistency": true,
+      "decided_by": "model",
+      "pipeline": "follow_up_round",
+      "reason": "Prior commitments require a follow-up review with consistency checks, and the large question count warrants two retry waves.",
+      "retry_waves": 2
+    },
+    "recovered": [],
+    "retried": [],
+    "turns": 2
+  },
   "questionnaire": "clean",
   "questions": 312,
-  "total_seconds": 456.2,
-  "triage_seconds": 26.4,
-  "with_citation": 150
+  "total_seconds": 708.8,
+  "triage_seconds": 26.9,
+  "with_citation": 262
 }

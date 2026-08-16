@@ -10,12 +10,12 @@
       "question_id": "4d282c5c0704412a",
       "review_id": "rev-acme-2026-q3",
       "round_id": null,
-      "run_id": "run-1786877967"
+      "run_id": "run-1786893050"
     },
     {
-      "actor": "securityAgent",
+      "actor": "SecurityAgent",
       "detail": {
-        "count": 1,
+        "count": 5,
         "documents": [
           "access-control-standard"
         ],
@@ -27,12 +27,12 @@
       "question_id": "4d282c5c0704412a",
       "review_id": "rev-acme-2026-q3",
       "round_id": null,
-      "run_id": "run-1786877967"
+      "run_id": "run-1786893050"
     },
     {
       "actor": "SecurityAgent",
       "detail": {
-        "citation_count": 1,
+        "citation_count": 5,
         "confidence": "high",
         "status": "drafted"
       },
@@ -40,7 +40,7 @@
       "question_id": "4d282c5c0704412a",
       "review_id": "rev-acme-2026-q3",
       "round_id": null,
-      "run_id": "run-1786877967"
+      "run_id": "run-1786893050"
     }
   ],
   "question": "Are passwords subject to a forced rotation schedule?"

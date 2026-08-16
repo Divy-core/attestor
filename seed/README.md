@@ -183,7 +183,20 @@ uv run python seed/_build_engineering.py
 uv run python seed/build_questionnaires.py
 ```
 
-The `_build_*.py` scripts exist because the corpus was authored as Python string
-literals — Windows shell heredocs mangle apostrophes, and the corpus is full of them. The
-`.md` files are the committed artefact; the builders are kept so the corpus can be
-regenerated or extended reproducibly.
+The `_build_*.py` scripts exist because the original 26 documents were authored as Python
+string literals — Windows shell heredocs mangle apostrophes, and the corpus is full of
+them. The `.md` files are the committed artefact; the builders are kept so those documents
+can be regenerated reproducibly. The 20 Phase 3 expansion documents were written directly
+as `.md` and have no builder.
+
+To push a corpus change into the datastores:
+
+```bash
+PROJECT_ID=attestor-505506 uv run python seed/seed.py
+```
+
+The import is skipped when the corpus fingerprint matches what is recorded in
+`gs://<project>-corpus/_manifests/<department>.sha256`. **Editing a document without
+adding one used to be invisible**: the earlier check compared document *counts*, so the
+edited file was re-uploaded to GCS and never re-indexed while the seed run reported
+success. Use `--force-import` to re-index regardless.
