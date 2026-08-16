@@ -62,14 +62,19 @@ _REFUSAL_MARKERS = ("does not offer", "do not offer", "not offered", "no on-prem
 
 
 def load_commitments() -> list[tuple[str, str]]:
-    from google.cloud import firestore
+    """Prior commitments **from Memory Bank**, which is canonical from Phase 4.
 
-    db = firestore.Client(project=os.environ["PROJECT_ID"])
-    pairs: list[tuple[str, str]] = []
-    for doc in db.collection("commitments").where("review_id", "==", REVIEW_ID).stream():
-        data = doc.to_dict() or {}
-        pairs.append((str(data["question_id"]), str(data["statement"])))
-    return pairs
+    This read is the point of the exercise as much as the contradiction check is. The
+    Phase 3 result was produced against Firestore; if it only survives because Firestore
+    is still there, the Memory Bank claim is decoration. So the harness reads the
+    canonical store and nothing else — and if Memory Bank is unreachable this raises
+    rather than reporting that the customer has no history, which would silently turn
+    this whole test into a no-op that passes.
+    """
+    from attestor_platform.memory import MemoryBankCommitments
+
+    engine_id = os.environ.get("AGENT_ENGINE_ID", "8598754324522205184")
+    return MemoryBankCommitments(engine_id=engine_id).for_review(REVIEW_ID)
 
 
 #: The fault injection. A product-update note stating that the very thing round 1 ruled
@@ -153,7 +158,7 @@ def _run(args: argparse.Namespace, planted_uri: str) -> int:
     print("=" * 72)
     print("FOLLOW-UP CONSISTENCY -- round 2 against a 23-day-old commitment")
     print("=" * 72)
-    print(f"  commitments on file : {len(commitments)}")
+    print(f"  commitments on file : {len(commitments)} (source: Memory Bank)")
     for _, statement in commitments:
         print(f"    - {statement[:88]}")
 
@@ -262,6 +267,7 @@ def _run(args: argparse.Namespace, planted_uri: str) -> int:
         "question": THE_QUESTION,
         "match_threshold": COMMITMENT_MATCH_SCORE,
         "commitments_on_file": len(commitments),
+        "commitment_source": "memory_bank",
         "commitments_matched": matched,
         "matched_by_id_only": sum(1 for q, _ in commitments if q == question.question_id),
         "consistency_events": checks,

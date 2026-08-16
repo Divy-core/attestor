@@ -20,7 +20,6 @@ import time
 from pathlib import Path
 
 from attestor_core.domain import AnswerStatus
-from attestor_core.errors import ContextUnavailable
 from attestor_fleet.agents.intake import parse_xlsx
 from attestor_fleet.callbacks.audit import NullAuditSink
 from attestor_fleet.callbacks.budget import BudgetLedger
@@ -54,11 +53,11 @@ GAP_MARKERS = (
 
 
 def load_commitments(review_id: str) -> list[tuple[str, str]]:
-    """Prior-round commitments. Raises rather than reporting "none" on failure.
+    """Prior-round commitments, read from Memory Bank -- canonical since Phase 4.
 
-    Phase 3 read Firestore directly; Phase 4 makes Memory Bank canonical with Firestore
-    as the queryable mirror. This function is the seam, so that swap does not touch
-    agent code.
+    Phase 3 read Firestore directly. This function was written as the seam for that swap,
+    and the swap turned out to be exactly this: one import and one call, with Firestore
+    left in place as the queryable mirror the UI and the audit trail read.
 
     **This used to swallow every exception and return `[]`.** That is the fourth
     occurrence of the failure this project keeps meeting: an unreachable store, a
@@ -73,23 +72,13 @@ def load_commitments(review_id: str) -> list[tuple[str, str]]:
     Raises:
         ContextUnavailable: If the commitment store could not be read.
     """
-    from google.cloud import firestore
+    from attestor_platform.memory import MemoryBankCommitments
 
-    try:
-        db = firestore.Client(project=os.environ["PROJECT_ID"])
-        docs = db.collection("commitments").where("review_id", "==", review_id).stream()
-        pairs: list[tuple[str, str]] = []
-        for doc in docs:
-            data = doc.to_dict() or {}
-            pairs.append((str(data["question_id"]), str(data["statement"])))
-    except Exception as exc:
-        raise ContextUnavailable(
-            f"could not read prior commitments for {review_id}: {type(exc).__name__}: {exc}. "
-            "Refusing to continue as though the customer has no history -- that would "
-            "disable the consistency check silently.",
-            review_id=review_id,
-        ) from exc
-    return pairs
+    engine_id = os.environ.get("AGENT_ENGINE_ID", "8598754324522205184")
+    # `for_review` raises ContextUnavailable on its own when Memory Bank cannot be read,
+    # which is the behaviour this function exists to preserve. No try/except here: adding
+    # one would be the fifth chance to turn "unreachable" back into "no history".
+    return MemoryBankCommitments(engine_id=engine_id).for_review(review_id)
 
 
 def _question_text(report: RunReport, question_id: str | None) -> str:

@@ -221,6 +221,10 @@ class ReviewPipeline:
         #: the tests construct one to exercise triage parsing and the redraft path with
         #: no cloud at all, and an eager client makes that impossible.
         self._model_client: Any | None = None
+        #: How many questions had their commitments matched in degraded (unranked) mode.
+        #: Reported on the run so "the consistency check ran on everything because the
+        #: scorer was down" is visible rather than inferred.
+        self.degraded_commitment_matches = 0
 
     # -- retrieval ------------------------------------------------------------------
 
@@ -693,6 +697,30 @@ class ReviewPipeline:
 
         statements = [statement for _, statement in self.prior_commitments]
         scores = self._scorer.score(question.text, statements)
+
+        # FAIL SAFE, and it took a real failure to find. Semantic matching depends on the
+        # embedding scorer, which degrades to lexical overlap when Vertex is unreachable.
+        # A paraphrased round-2 question shares almost no content words with the
+        # commitment it contradicts -- that is the entire reason matching is semantic --
+        # so under lexical scoring EVERY commitment falls below the threshold, nothing
+        # matches, the consistency check never runs, and the contradicting answer ships
+        # with HIGH confidence and no human review. Measured, not hypothetical: a
+        # dropped connection mid-run produced exactly that, and the run reported success.
+        #
+        # So a degraded scorer means "we cannot rank these", not "none of these are
+        # relevant". With a handful of commitments on file, checking all of them costs
+        # one model call and is the honest reading.
+        if self._scorer.last_method != "embedding":
+            self.degraded_commitment_matches += 1
+            logger.warning(
+                "commitment matching degraded: scorer fell back to %s, so ALL %d prior "
+                "commitments are being checked rather than none",
+                self._scorer.last_method,
+                len(statements),
+                extra={"question_id": question.question_id},
+            )
+            return exact + [s for s in statements if s not in exact]
+
         semantic = [
             statement
             for statement, score in zip(statements, scores, strict=True)
@@ -817,6 +845,7 @@ class ReviewPipeline:
             self.ledger.record_usage(EMBEDDING_MODEL, embedded_tokens, 0)
             report.budget = self.ledger.summary()
         report.budget["relevance_method"] = self._scorer.last_method
+        report.budget["degraded_commitment_matches"] = self.degraded_commitment_matches
         report.budget["relevance_embedding_batches"] = self._scorer.embedding_batches
         report.budget["relevance_lexical_batches"] = self._scorer.lexical_batches
         report.budget["relevance_throttled_batches"] = self._scorer.throttled_batches

@@ -261,3 +261,72 @@ def test_questions_without_commitments_cost_no_extra_call(
 
     assert len(client.models.prompts) == 1
     assert not [e for e in audit.events if e["kind"] == "consistency_checked"]
+
+
+class TestDegradedMatching:
+    """The failure that shipped a contradiction, found by running the real thing.
+
+    Semantic commitment matching depends on the embedding scorer. When Vertex dropped a
+    connection mid-run the scorer degraded to lexical overlap — and a paraphrased round-2
+    question shares almost no content words with the commitment it contradicts, which is
+    the entire reason matching is semantic. So every commitment scored below threshold,
+    NOTHING matched, `_check_consistency` returned without emitting an event, and the
+    contradicting answer shipped with HIGH confidence and `needs_human=False`.
+
+    Measured, in `docs/proof/consistency-followup-drift.json`'s failing predecessor:
+    "degraded to lexical overlap (embedding failed): Server disconnected without sending
+    a response."
+
+    A degraded scorer means "we cannot rank these", not "none of these are relevant".
+    """
+
+    @staticmethod
+    def _degraded_scorer() -> _Scorer:
+        scorer = _Scorer()
+        scorer.last_method = "lexical"
+        return scorer
+
+    def test_a_degraded_scorer_checks_every_commitment_rather_than_none(self) -> None:
+        pipeline = _pipeline(
+            _Client(),
+            [("other-id", COMMITMENT), ("another-id", "Kestrel encrypts data at rest.")],
+            self._degraded_scorer(),
+            NullAuditSink(),
+        )
+
+        matched = pipeline._commitments_for(Question.from_text(REFRAMED))
+
+        assert len(matched) == 2, "a degraded scorer must not silently match nothing"
+        assert COMMITMENT in matched
+
+    def test_the_degraded_match_is_counted_so_it_is_visible(self) -> None:
+        """Otherwise "the check ran on everything" is indistinguishable from a normal run."""
+        pipeline = _pipeline(
+            _Client(), [("other-id", COMMITMENT)], self._degraded_scorer(), NullAuditSink()
+        )
+
+        pipeline._commitments_for(Question.from_text(REFRAMED))
+
+        assert pipeline.degraded_commitment_matches == 1
+
+    def test_a_healthy_scorer_still_ranks(self) -> None:
+        """The fail-safe must not become the normal path -- that would check every
+        commitment against every question and cost a model call each time."""
+        pipeline = _pipeline(
+            _Client(),
+            [("other-id", COMMITMENT), ("another-id", "Kestrel encrypts data at rest.")],
+            _Scorer({COMMITMENT: 0.68}),
+            NullAuditSink(),
+        )
+
+        matched = pipeline._commitments_for(Question.from_text(REFRAMED))
+
+        assert matched == [COMMITMENT]
+        assert pipeline.degraded_commitment_matches == 0
+
+    def test_no_commitments_on_file_stays_empty_even_when_degraded(self) -> None:
+        """Nothing to fail safe about. A first-round review must not pay for a
+        consistency check that has nothing to check against."""
+        pipeline = _pipeline(_Client(), [], self._degraded_scorer(), NullAuditSink())
+
+        assert pipeline._commitments_for(Question.from_text(REFRAMED)) == []

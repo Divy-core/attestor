@@ -26,7 +26,33 @@ from attestor_core.errors import ContextUnavailable
 
 
 class TestCommitmentReadRaises:
-    """The dangerous one: an empty commitment list disables the consistency check."""
+    """The dangerous one: an empty commitment list disables the consistency check.
+
+    Phase 4 moved the canonical store from Firestore to Memory Bank. The store's own
+    behaviour is covered in `test_memory_commitments.py`; what these two pin is that the
+    **caller** did not quietly reintroduce a `try/except: return []` around it during the
+    move. That is exactly the shape of edit that would restore the bug while every other
+    test stayed green.
+    """
+
+    @staticmethod
+    def _patch_store(monkeypatch: pytest.MonkeyPatch, *, fail: bool) -> None:
+        import attestor_platform.memory as memory_module
+
+        class _Store:
+            def __init__(self, **_: Any) -> None: ...
+
+            def for_review(self, review_id: str) -> list[tuple[str, str]]:
+                if fail:
+                    raise ContextUnavailable(
+                        f"could not read commitments for {review_id} from Memory Bank. "
+                        "Refusing to continue as though the customer has no history -- "
+                        "that would disable the consistency check.",
+                        review_id=review_id,
+                    )
+                return []
+
+        monkeypatch.setattr(memory_module, "MemoryBankCommitments", _Store)
 
     def test_an_unreachable_store_raises_rather_than_reporting_no_history(
         self, monkeypatch: pytest.MonkeyPatch
@@ -34,18 +60,13 @@ class TestCommitmentReadRaises:
         monkeypatch.setenv("PROJECT_ID", "test-project")
         import run_review
 
-        class _Broken:
-            def __init__(self, **_: Any) -> None:
-                raise OSError("connection reset by peer")
-
-        monkeypatch.setattr("google.cloud.firestore.Client", _Broken)
+        self._patch_store(monkeypatch, fail=True)
 
         with pytest.raises(ContextUnavailable) as caught:
             run_review.load_commitments("rev-acme-2026-q3")
 
         # The message has to say what was refused and why, because the person reading it
         # is mid-demo.
-        assert "prior commitments" in str(caught.value)
         assert "consistency check" in str(caught.value)
 
     def test_a_reachable_store_with_no_commitments_returns_empty(
@@ -55,20 +76,7 @@ class TestCommitmentReadRaises:
         monkeypatch.setenv("PROJECT_ID", "test-project")
         import run_review
 
-        class _Query:
-            def where(self, *_: Any, **__: Any) -> _Query:
-                return self
-
-            def stream(self) -> list[Any]:
-                return []
-
-        class _Empty:
-            def __init__(self, **_: Any) -> None: ...
-
-            def collection(self, _name: str) -> _Query:
-                return _Query()
-
-        monkeypatch.setattr("google.cloud.firestore.Client", _Empty)
+        self._patch_store(monkeypatch, fail=False)
 
         assert run_review.load_commitments("rev-brand-new") == []
 

@@ -1,0 +1,35 @@
+{
+  "carrying_question_ref": 5,
+  "case": "memory_bank_cross_session_recall",
+  "commitments": [
+    {
+      "question_id": "928a74e05ba09dff",
+      "statement": "Kestrel Data does not offer on-premises or self-hosted deployment. Kestrel Insight is multi-tenant SaaS only, with no single-tenant, private-cloud, air-gapped, or customer-VPC option, and none on the roadmap."
+    },
+    {
+      "question_id": "0c64c45e619aa91d",
+      "statement": "Kestrel Data encrypts all customer data at rest with AES-256-GCM."
+    },
+    {
+      "question_id": "139f213a723f3c9a",
+      "statement": "Kestrel Data commits to a Recovery Time Objective of 4 hours."
+    },
+    {
+      "question_id": "f2a7ea1c80f0167e",
+      "statement": "Kestrel Data enforces hardware-backed multi-factor authentication for 100% of personnel with production access."
+    },
+    {
+      "question_id": "f50012c81d378bef",
+      "statement": "Kestrel Data has never experienced a customer data breach."
+    }
+  ],
+  "engine_id": "8598754324522205184",
+  "expected_matched": 5,
+  "expected_missing": [],
+  "pass": true,
+  "recalled": 5,
+  "review_id": "rev-acme-2026-q3",
+  "unavailable_detail": "could not read commitments for rev-acme-2026-q3 from Memory Bank: ClientError: 404 NOT_FOUND. {'error': {'code': 404, 'm",
+  "unavailable_raises": true,
+  "written_by_this_process": 0
+}

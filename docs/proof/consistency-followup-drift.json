@@ -2,73 +2,39 @@
   "budget": {
     "by_model": {
       "gemini-3.7-flash": {
-        "input": 3266,
-        "output": 288
+        "input": 662,
+        "output": 85
       }
     },
-    "estimated_cost_usd": 0.0017,
-    "input_tokens": 3266,
-    "output_tokens": 288,
-    "total_tokens": 3554,
+    "estimated_cost_usd": 0.0004,
+    "input_tokens": 662,
+    "output_tokens": 85,
+    "total_tokens": 747,
     "turns": 0
   },
   "case": "followup_consistency",
   "citations": 5,
-  "commitment_honoured": true,
+  "commitment_honoured": false,
+  "commitment_source": "memory_bank",
   "commitments_matched": [
     "Kestrel Data does not offer on-premises or self-hosted deployment. Kestrel Insight is multi-tenant SaaS only, with no single-tenant, private-cloud, air-gapped, or customer-VPC option, and none on the roadmap."
   ],
   "commitments_on_file": 5,
   "confidence": "high",
-  "consistency_events": [
-    {
-      "actor": "AssemblerAgent",
-      "detail": {
-        "constrained": true,
-        "justification": "The draft offers on-premises, customer-VPC, and single-tenant deployments, which the prior commitment explicitly stated are not offered and not on the roadmap.",
-        "pass": "initial",
-        "prior_statements": [
-          "Kestrel Data does not offer on-premises or self-hosted deployment. Kestrel Insight is multi-tenant SaaS only, with no single-tenant, private-cloud, air-gapped, or customer-VPC option, and none on the roadmap."
-        ],
-        "verdict": "contradiction"
-      },
-      "kind": "consistency_checked",
-      "question_id": "c071338263f249af",
-      "review_id": "rev-acme-2026-q3",
-      "round_id": null,
-      "run_id": "verify-consistency-1786888976"
-    },
-    {
-      "actor": "AssemblerAgent",
-      "detail": {
-        "constrained": false,
-        "justification": "The newly drafted answer fully aligns with and reaffirms the prior commitment regarding multi-tenant SaaS deployment restrictions.",
-        "pass": "post_redraft",
-        "prior_statements": [
-          "Kestrel Data does not offer on-premises or self-hosted deployment. Kestrel Insight is multi-tenant SaaS only, with no single-tenant, private-cloud, air-gapped, or customer-VPC option, and none on the roadmap."
-        ],
-        "verdict": "no_contradiction"
-      },
-      "kind": "consistency_checked",
-      "question_id": "c071338263f249af",
-      "review_id": "rev-acme-2026-q3",
-      "round_id": null,
-      "run_id": "verify-consistency-1786888976"
-    }
-  ],
-  "constrained": true,
-  "contradiction_detected": true,
+  "consistency_events": [],
+  "constrained": false,
+  "contradiction_detected": false,
   "control_question_constrained": false,
-  "final_answer": "As confirmed in the earlier review round, Kestrel Data does not offer on-premises, self-hosted, private-cloud, single-tenant, or customer-VPC deployment options, and none are on the roadmap. Kestrel Insight is available exclusively as multi-tenant SaaS.",
+  "final_answer": "Kestrel offers both Customer-VPC and on-premises/self-hosted deployment options under general availability for regulated customers [1][2]. These deployments are provisioned by Kestrel professional services, and the customer operates the infrastructure thereafter [1]. The provisioning timeline is 20 business days for a Customer-VPC installation and 30 business days for an on-premises/self-hosted deployment [2].",
   "final_verdict": "no_contradiction",
   "match_threshold": 0.62,
   "matched_by_id_only": 0,
   "mode": "drift_injection",
-  "needs_human": true,
-  "pass": true,
+  "needs_human": false,
+  "pass": false,
   "planted_document": "gs://attestor-505506-corpus/engineering/zz-fixture-deployment-options-update.txt",
   "question": "Our regulated business unit cannot use multi-tenant SaaS. Please describe the self-hosted or on-premises deployment options available for regulated customers, including any private-cloud or customer-VPC installation, and the timeline to provision one.",
-  "redrafted": true,
-  "status": "needs_human",
-  "superseded_draft": "Customers in regulated sectors may request a customer-VPC or on-premises/self-hosted deployment through their account team; these are provisioned by Kestrel professional services, and the customer operates the infrastructure thereafter [1]. Under General availability, provisioning takes 20 business days for a customer-VPC installation, 30 business days for an on-premises/self-hosted deployment, an"
+  "redrafted": false,
+  "status": "drafted",
+  "superseded_draft": null
 }

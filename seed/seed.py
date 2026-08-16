@@ -49,6 +49,11 @@ CORPUS_DIR = SEED_DIR / "corpus"
 BACKDATE_DAYS = 22
 
 REVIEW_ID = "rev-acme-2026-q3"
+
+#: The Agent Engine that scopes Memory Bank. Phase 0 created it; Phase 5 replaces it with
+#: the deployed fleet, and because Memory Bank scopes memories per engine, that swap is a
+#: migration rather than a redeploy. Recorded here so it is not discovered then.
+DEFAULT_AGENT_ENGINE_ID = "8598754324522205184"
 ROUND_1_ID = "rnd-acme-r1"
 CUSTOMER = "Acme Financial Services, Inc."
 
@@ -512,12 +517,60 @@ def _department_for(author: str) -> Department:
 # --------------------------------------------------------------------------------------
 
 
+# --------------------------------------------------------------------------------------
+# 4. Memory Bank -- canonical storage for what was promised
+# --------------------------------------------------------------------------------------
+
+
+def seed_memory_bank(project_id: str, *, dry_run: bool) -> None:
+    """Mirror the seeded commitments into Memory Bank, which is canonical from Phase 4.
+
+    Firestore keeps them too, as the queryable mirror the UI and the audit trail read.
+    Memory Bank is what the fleet consults when round 2 arrives, because that is the
+    store designed to survive weeks and sessions rather than a request.
+
+    Idempotent by content: a commitment whose statement is already on file for this
+    review is not written twice. Memory Bank has no natural key to `create` against, so
+    the check is a read-then-compare -- acceptable because seeding is a human-triggered
+    operation, not a concurrent one.
+    """
+    from attestor_platform.memory import MemoryBankCommitments
+
+    engine_id = os.environ.get("AGENT_ENGINE_ID", DEFAULT_AGENT_ENGINE_ID)
+    store = MemoryBankCommitments(engine_id=engine_id, project=project_id)
+
+    existing = {statement for _, statement in store.for_review(REVIEW_ID)}
+    for question_text, statement in SEEDED_COMMITMENTS:
+        if statement in existing:
+            note("memory", f"{statement[:52]}", made=False)
+            continue
+        if dry_run:
+            note("memory", f"{statement[:52]} (would write)", made=True)
+            continue
+        question_id = make_question_id(question_text)
+        store.record(
+            Commitment(
+                commitment_id=hashlib.sha256(
+                    f"{REVIEW_ID}{ROUND_1_ID}{question_id}".encode()
+                ).hexdigest()[:16],
+                review_id=REVIEW_ID,
+                round_id=ROUND_1_ID,
+                question_id=question_id,
+                statement=statement,
+            )
+        )
+        note("memory", f"{statement[:52]}", made=True)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--check", action="store_true", help="report only; change nothing")
     parser.add_argument("--skip-search", action="store_true", help="skip datastore create/import")
     parser.add_argument(
         "--force-import", action="store_true", help="re-import even if the fingerprint matches"
+    )
+    parser.add_argument(
+        "--skip-memory", action="store_true", help="skip the Memory Bank commitment mirror"
     )
     args = parser.parse_args()
 
@@ -537,6 +590,10 @@ def main() -> int:
 
     print("\n== Firestore fixtures ==")
     seed_firestore(project_id, dry_run=dry_run)
+
+    if not args.skip_memory:
+        print("\n== Memory Bank (canonical commitments) ==")
+        seed_memory_bank(project_id, dry_run=dry_run)
 
     print("\n== summary ==")
     print(f"  created : {len(created)}")
