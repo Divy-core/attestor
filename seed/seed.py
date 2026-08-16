@@ -187,14 +187,38 @@ def ensure_datastores(project_id: str, *, dry_run: bool) -> None:
         note("datastore", datastore_id, made=True)
 
 
-def import_corpus(project_id: str, uris: dict[Department, list[str]], *, dry_run: bool) -> None:
+def _corpus_fingerprint(department: Department) -> str:
+    """Hash of every document's bytes for one department.
+
+    Counting documents is not enough. An earlier version skipped the import when the
+    indexed count matched the staged count, which meant **an edited document was
+    re-uploaded to GCS and never re-indexed** -- search kept answering from the previous
+    text, silently, with a green seed run. Found while removing the word "escrow" from
+    two documents to protect a deliberate evidence gap: the files changed, the count did
+    not, and the datastore still held the old wording.
+    """
+    digest = hashlib.sha256()
+    for dept, path in corpus_documents():
+        if dept is department:
+            digest.update(path.name.encode("utf-8"))
+            digest.update(path.read_bytes())
+    return digest.hexdigest()[:16]
+
+
+def import_corpus(
+    project_id: str, uris: dict[Department, list[str]], *, dry_run: bool, force: bool = False
+) -> None:
     """Import the staged corpus into each department datastore.
 
     Uses `INCREMENTAL` reconciliation keyed on the GCS URI, so re-running updates the
     existing documents rather than duplicating them -- which is what makes `make seed`
     safe to run twice.
+
+    The skip is keyed on a **content fingerprint** stored beside the corpus, not on a
+    document count. See `_corpus_fingerprint`.
     """
     client = de.DocumentServiceClient()
+    bucket = storage.Client(project=project_id).bucket(f"{project_id}-corpus")
     for department, datastore_id in DEPARTMENT_DATASTORES.items():
         parent = (
             f"projects/{project_id}/locations/{SEARCH_LOCATION}"
@@ -208,9 +232,12 @@ def import_corpus(project_id: str, uris: dict[Department, list[str]], *, dry_run
 
         # Already indexed and unchanged? Skip. Without this a rerun costs ~5 minutes per
         # datastore for no state change, which is idempotent but not usefully so.
+        fingerprint = _corpus_fingerprint(department)
+        marker = bucket.blob(f"_manifests/{department.value}.sha256")
         indexed = _indexed_count(project_id, datastore_id)
-        if indexed == len(uris[department]):
-            note("import", f"{datastore_id} ({indexed} docs indexed)", made=False)
+        recorded = marker.download_as_text().strip() if marker.exists() else ""
+        if not force and recorded == fingerprint and indexed == len(uris[department]):
+            note("import", f"{datastore_id} ({indexed} docs indexed, unchanged)", made=False)
             continue
 
         operation = client.import_documents(
@@ -234,6 +261,9 @@ def import_corpus(project_id: str, uris: dict[Department, list[str]], *, dry_run
                 f"import into {datastore_id} produced {len(failures)} error sample(s); "
                 "the operation reported success but documents were NOT indexed"
             )
+        # Written only after a successful import, so an interrupted run re-imports rather
+        # than recording a state it never reached.
+        marker.upload_from_string(fingerprint, content_type="text/plain")
         note("import", f"{datastore_id} ({len(uris[department])} docs)", made=True)
 
 
@@ -486,6 +516,9 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--check", action="store_true", help="report only; change nothing")
     parser.add_argument("--skip-search", action="store_true", help="skip datastore create/import")
+    parser.add_argument(
+        "--force-import", action="store_true", help="re-import even if the fingerprint matches"
+    )
     args = parser.parse_args()
 
     project_id = project()
@@ -500,7 +533,7 @@ def main() -> int:
         print("\n== Vertex AI Search datastores ==")
         ensure_datastores(project_id, dry_run=dry_run)
         print("\n== corpus import ==")
-        import_corpus(project_id, uris, dry_run=dry_run)
+        import_corpus(project_id, uris, dry_run=dry_run, force=args.force_import)
 
     print("\n== Firestore fixtures ==")
     seed_firestore(project_id, dry_run=dry_run)

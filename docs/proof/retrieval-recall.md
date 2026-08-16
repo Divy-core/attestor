@@ -1,7 +1,7 @@
 # Retrieval recall — raw question text vs expanded queries
 
 `make recall` · 63 hand-labelled pairs · recall@5 · expansion: heuristic only
-· elapsed 120.5s
+· elapsed 200.0s
 
 ## Result
 
@@ -28,5 +28,5 @@
 ## Still missing (3)
 
 - `How long do elevated production access grants remain valid?` wanted `access-control-standard`, got `nothing`
-- `Which transfer mechanism do you rely on for transfers out of the EEA?` wanted `standard-contractual-clauses-summary`, got `nothing`
+- `Which transfer mechanism do you rely on for transfers out of the EEA?` wanted `standard-contractual-clauses-summary`, got `('transfer-impact-assessment',)`
 - `RTO RPO` wanted `backup-restore-procedure`, got `nothing`
