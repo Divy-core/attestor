@@ -96,3 +96,25 @@ class BudgetExceeded(AttestorError):
 
 class ContractViolation(AttestorError):
     """A wire contract was violated -- a malformed envelope or unknown event type."""
+
+
+class ContextUnavailable(AttestorError):
+    """A read that would otherwise return "nothing" could not be performed at all.
+
+    The distinction this exists to preserve is the one this project has now got wrong
+    four separate times, in four different services:
+
+    * Discovery Engine returning ``[]`` under a 429 -- "the corpus has no answer".
+    * Model Armor denying under a timeout -- "this passage is poisoned".
+    * Embeddings degrading under quota exhaustion -- "these scores are cosines".
+    * Firestore or Memory Bank failing on a commitment read -- **"this customer has no
+      prior commitments"**, which silently disables the consistency check and lets round
+      two contradict round one while the run reports success.
+
+    Every one of them is a failure wearing an empty result's clothes, and every one is
+    invisible: no exception, no dead letter, a green run and a smaller number.
+
+    So a read that *cannot be performed* raises this. A read that was performed and found
+    nothing returns an empty collection. The caller may still choose to degrade -- but it
+    has to choose, in code, where the choice is reviewable.
+    """

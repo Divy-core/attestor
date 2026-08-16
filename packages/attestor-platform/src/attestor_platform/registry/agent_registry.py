@@ -19,6 +19,7 @@ import google.auth
 import google.auth.transport.requests
 
 from attestor_core.domain import Department
+from attestor_core.errors import ContextUnavailable
 from attestor_core.protocol import RegistryAgentDto
 from attestor_platform.config import default_region, project_id
 
@@ -68,7 +69,16 @@ class AgentRegistry:
         return str(self._credentials.token)
 
     def list_agents(self, page_size: int = 100) -> list[RegistryAgentDto]:
-        """Return every agent the platform has catalogued for this project."""
+        """Return every agent the platform has catalogued for this project.
+
+        An unreachable registry **raises**. It previously returned `[]`, which reads as
+        "this project has catalogued no agents" -- and that is a claim, not an absence.
+        The registry panel would have rendered empty during a demo that says the fleet is
+        registered, and nothing would have said why.
+
+        Raises:
+            ContextUnavailable: If the registry could not be read.
+        """
         url = (
             f"{REGISTRY_HOST}/{API_VERSION}/projects/{self.project}"
             f"/locations/{self.region}/agents?pageSize={page_size}"
@@ -78,8 +88,11 @@ class AgentRegistry:
             with urllib.request.urlopen(request, timeout=self._timeout) as response:
                 payload: dict[str, Any] = json.loads(response.read().decode("utf-8"))
         except (urllib.error.HTTPError, OSError) as exc:
-            logger.warning("agent registry read failed: %s", exc)
-            return []
+            raise ContextUnavailable(
+                f"agent registry unreachable at {REGISTRY_HOST}: {type(exc).__name__}: {exc}",
+                project=self.project,
+                region=self.region,
+            ) from exc
 
         agents: list[RegistryAgentDto] = []
         for entry in payload.get("agents", []):

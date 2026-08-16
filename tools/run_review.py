@@ -20,6 +20,7 @@ import time
 from pathlib import Path
 
 from attestor_core.domain import AnswerStatus
+from attestor_core.errors import ContextUnavailable
 from attestor_fleet.agents.intake import parse_xlsx
 from attestor_fleet.callbacks.audit import NullAuditSink
 from attestor_fleet.callbacks.budget import BudgetLedger
@@ -53,25 +54,42 @@ GAP_MARKERS = (
 
 
 def load_commitments(review_id: str) -> list[tuple[str, str]]:
-    """Prior-round commitments, read from Firestore.
+    """Prior-round commitments. Raises rather than reporting "none" on failure.
 
-    Phase 3 reads Firestore because it works locally with no Agent Runtime. Phase 4
-    makes Memory Bank canonical and Firestore the queryable mirror; this function is
-    the seam, so that swap does not touch agent code.
+    Phase 3 read Firestore directly; Phase 4 makes Memory Bank canonical with Firestore
+    as the queryable mirror. This function is the seam, so that swap does not touch
+    agent code.
+
+    **This used to swallow every exception and return `[]`.** That is the fourth
+    occurrence of the failure this project keeps meeting: an unreachable store, a
+    permission error, or a query timeout produced "this customer has no prior
+    commitments", which is indistinguishable from the truthful answer. Every downstream
+    consequence follows silently -- `_commitments_for` matches nothing, no consistency
+    check runs on any question, and round two is free to contradict round one while the
+    run reports a clean citation rate and a green result.
+
+    It printed one line to stdout, in a run that emits several hundred.
+
+    Raises:
+        ContextUnavailable: If the commitment store could not be read.
     """
-    try:
-        from google.cloud import firestore
+    from google.cloud import firestore
 
+    try:
         db = firestore.Client(project=os.environ["PROJECT_ID"])
         docs = db.collection("commitments").where("review_id", "==", review_id).stream()
         pairs: list[tuple[str, str]] = []
         for doc in docs:
             data = doc.to_dict() or {}
             pairs.append((str(data["question_id"]), str(data["statement"])))
-        return pairs
     except Exception as exc:
-        print(f"  (could not load commitments: {exc})")
-        return []
+        raise ContextUnavailable(
+            f"could not read prior commitments for {review_id}: {type(exc).__name__}: {exc}. "
+            "Refusing to continue as though the customer has no history -- that would "
+            "disable the consistency check silently.",
+            review_id=review_id,
+        ) from exc
+    return pairs
 
 
 def _question_text(report: RunReport, question_id: str | None) -> str:
