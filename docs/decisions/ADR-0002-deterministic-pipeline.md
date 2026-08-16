@@ -77,6 +77,18 @@ router is not one.
 
 ## Evidence
 
-- Measured drafting p50 8.3s / p95 13.0s at concurrency 8 over 312 questions.
-- Triage: 16 flash-lite calls for 312 questions rather than 312 calls.
-- `docs/proof/run-clean.json` carries the full measured numbers.
+Updated 20 Aug 2026 to the authoritative run; the figures this ADR was first written
+against (p50 8.3s / p95 13.0s) came from the first, defective run and are superseded.
+
+- Drafting p50 **16.1s** / p95 **29.0s** at concurrency 8 over 312 questions, with
+  **achieved** concurrency 7.84 — summed per-question drafting time over drafting wall
+  clock, which is the only way to know the fan-out was real rather than configured.
+  Latency rose from the earlier figures because each question now reranks document
+  sections and screens five passages individually through Model Armor; the sequence
+  argument is unaffected.
+- Triage: 16 flash-lite calls for 312 questions rather than 312, and the batch splitter
+  recovers a Model-Armor-blocked batch instead of dropping it to `unassigned`
+  (3 unassigned in the final run, against 232 before the splitter was reachable).
+- The orchestrator spent **2 turns** on a 312-question review, and reached different
+  conclusions on the clean and injected runs — releasing one, holding the other.
+- `docs/proof/run-clean.json` and `docs/proof/run-injected.json` carry the full numbers.
