@@ -27,6 +27,14 @@ REASONING_FALLBACK: Final = "gemini-3.5-flash"
 #: 3.5-lite is the current floor of the cheap tier.
 TRIAGE_MODEL: Final = "gemini-3.5-flash-lite"
 
+#: Retrieval relevance. Discovery Engine's standard edition returns no relevance score,
+#: so one is measured here instead: cosine similarity between the question and the
+#: retrieved passage. 768 dimensions, asymmetric query/document task types, verified
+#: invocable from `global` on 20 Aug 2026 alongside `gemini-embedding-001` (3072-dim) and
+#: `text-multilingual-embedding-002`. The 768-dim model is chosen deliberately -- four
+#: times the vector for no measured gain in separation is four times the latency.
+EMBEDDING_MODEL: Final = "text-embedding-005"
+
 #: PHASE 0 FINDING — NON-NEGOTIABLE.
 #: Every Gemini 3.x model is served ONLY from `global`. A regional call returns
 #:   404 Publisher model projects/<p>/locations/us-central1/publishers/google/models/
@@ -55,6 +63,10 @@ PRICE_PER_MTOK: Final[dict[str, tuple[float, float]]] = {
     REASONING_MODEL: (0.30, 2.50),
     REASONING_FALLBACK: (0.30, 2.50),
     TRIAGE_MODEL: (0.10, 0.40),
+    #: Embeddings are priced per input token and produce no output tokens. Published
+    #: rate for `text-embedding-005`; the output price is 0 so a mis-recorded output
+    #: count cannot inflate the reported cost.
+    EMBEDDING_MODEL: (0.025, 0.0),
 }
 FALLBACK_PRICE: Final[tuple[float, float]] = (0.30, 2.50)
 

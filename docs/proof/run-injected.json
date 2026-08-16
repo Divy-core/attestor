@@ -1,0 +1,86 @@
+{
+  "answered": 312,
+  "armor_blocked": 6,
+  "audit_events": 1088,
+  "budget": {
+    "by_model": {
+      "gemini-3.5-flash-lite": {
+        "input": 9058,
+        "output": 1341
+      },
+      "gemini-3.7-flash": {
+        "input": 94335,
+        "output": 5746
+      }
+    },
+    "estimated_cost_usd": 0.0441,
+    "input_tokens": 103393,
+    "output_tokens": 7087,
+    "total_tokens": 110480,
+    "turns": 0
+  },
+  "by_department": {
+    "engineering": 89,
+    "legal": 97,
+    "security": 123,
+    "unassigned": 3
+  },
+  "citation_rate": 0.4904,
+  "draft_p50_seconds": 11.36,
+  "draft_p95_seconds": 16.59,
+  "draft_seconds": 446.7,
+  "flagged_no_evidence": 153,
+  "gap_checks": [
+    {
+      "correct": true,
+      "marker": "cyber liability insurance",
+      "status": "flagged_no_evidence"
+    },
+    {
+      "correct": true,
+      "marker": "source code escrow",
+      "status": "flagged_no_evidence"
+    },
+    {
+      "correct": true,
+      "marker": "modern slavery",
+      "status": "flagged_no_evidence"
+    },
+    {
+      "correct": true,
+      "marker": "modern slavery",
+      "status": "flagged_no_evidence"
+    },
+    {
+      "correct": true,
+      "marker": "environmental sustainability",
+      "status": "flagged_no_evidence"
+    },
+    {
+      "correct": true,
+      "marker": "environmental sustainability",
+      "status": "flagged_no_evidence"
+    },
+    {
+      "correct": true,
+      "marker": "HITRUST",
+      "status": "flagged_no_evidence"
+    },
+    {
+      "correct": true,
+      "marker": "SCIM",
+      "status": "flagged_no_evidence"
+    },
+    {
+      "correct": true,
+      "marker": "SCIM",
+      "status": "flagged_no_evidence"
+    }
+  ],
+  "needs_human": 162,
+  "questionnaire": "injected",
+  "questions": 312,
+  "total_seconds": 486.8,
+  "triage_seconds": 40.1,
+  "with_citation": 153
+}

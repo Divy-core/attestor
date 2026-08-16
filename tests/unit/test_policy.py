@@ -155,7 +155,10 @@ class TestComputeConfidence:
         assert compute_confidence(s) is Confidence.MEDIUM
 
     def test_two_citations_with_poor_mean_is_medium(self) -> None:
-        s = ConfidenceSignals(citation_count=2, max_retrieval_score=0.70, mean_retrieval_score=0.56)
+        """Corroboration needs both: two citations whose average is noise is not two
+        agreeing sources. `max` here sits deliberately below `_STRONG_MAX_SCORE` (0.69)
+        so the strong-single-hit branch cannot rescue it."""
+        s = ConfidenceSignals(citation_count=2, max_retrieval_score=0.66, mean_retrieval_score=0.56)
         assert compute_confidence(s) is Confidence.MEDIUM
 
     def test_is_deterministic(self) -> None:

@@ -15,6 +15,7 @@ from attestor_platform.search.expansion import (
     RetrievalResult,
     heuristic_variants,
 )
+from attestor_platform.search.relevance import RelevanceScorer, cosine, lexical_overlap
 
 __all__ = [
     "DEPARTMENT_DATASTORES",
@@ -23,9 +24,12 @@ __all__ = [
     "ExpandedQuery",
     "ExpandingCorpusSearch",
     "QueryExpander",
+    "RelevanceScorer",
     "RetrievalResult",
     "SearchUnavailable",
     "clean_snippet",
+    "cosine",
     "datastore_id",
     "heuristic_variants",
+    "lexical_overlap",
 ]

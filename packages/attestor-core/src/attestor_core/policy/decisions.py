@@ -187,11 +187,33 @@ class ConfidenceSignals(_Frozen):
     cross_departmental: bool = False
 
 
-#: A single citation scoring below this is weak support regardless of count.
-_WEAK_SCORE = 0.55
-#: Strong support: a high best score AND a mean that is not dragged down by noise.
-_STRONG_MAX_SCORE = 0.75
-_STRONG_MEAN_SCORE = 0.60
+# -----------------------------------------------------------------------------------
+# Thresholds, calibrated against a measured distribution rather than assumed.
+#
+# These were originally 0.55 / 0.75 / 0.60, chosen against RANK-DERIVED scores -- a scale
+# on which the top hit always read 0.95 and which therefore meant nothing. Retrieval now
+# scores by cosine similarity between the question and the best-matching section of the
+# retrieved document (`attestor_platform.search.relevance`), and cosine over
+# `text-embedding-005` occupies a much narrower band: same-domain policy prose scores
+# ~0.6 even when irrelevant. Carrying the old constants across would have marked almost
+# every answer LOW.
+#
+# Measured over the 63 hand-labelled retrieval pairs (docs/proof/confidence-calibration.json):
+#
+#   passages from the labelled-correct document   p05 0.54 · p25 0.63 · p50 0.69 · p95 0.75
+#   passages from every other retrieved document  p05 0.52 · p25 0.58 · p50 0.61 · p95 0.70
+#
+# The separation is real but narrow (0.08 at the median), and each threshold is placed at
+# a named point of the *relevant* distribution rather than at a round number:
+# -----------------------------------------------------------------------------------
+
+#: 5th percentile of relevant passages. Below this, retrieval essentially missed.
+_WEAK_SCORE = 0.54
+#: Median relevant passage. A single hit at least this good stands on its own.
+_STRONG_MAX_SCORE = 0.69
+#: 25th percentile of relevant passages. A set of citations averaging above this is
+#: corroboration rather than noise.
+_STRONG_MEAN_SCORE = 0.63
 #: Corroboration: two independent documents agreeing beats one strong hit.
 _CORROBORATING_CITATIONS = 2
 

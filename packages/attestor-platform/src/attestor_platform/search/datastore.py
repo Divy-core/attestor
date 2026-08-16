@@ -190,9 +190,12 @@ class CorpusSearch:
                 extractive = data.get("extractive_answers") or []
                 if extractive:
                     content = clean_snippet(str(dict(extractive[0]).get("content", "")))
-            # Discovery Engine does not return a normalised relevance score on this
-            # surface, so rank is converted into one. Recorded honestly rather than
-            # invented: position 1 -> 0.95, decaying by 0.1 per position.
+            # PROVISIONAL score only, and never what reaches an answer. Discovery Engine
+            # returns no relevance score on this surface, so rank stands in until
+            # `ExpandingCorpusSearch` replaces it with a measured cosine similarity
+            # (`search/relevance.py`). Retained because it preserves the engine's own
+            # ordering for the raw baseline the recall harness measures against, where
+            # only the order matters.
             score = max(0.0, min(_MAX_SCORE, 0.95 - (rank * 0.1)))
             results.append(
                 Evidence(

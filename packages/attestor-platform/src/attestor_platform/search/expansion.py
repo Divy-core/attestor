@@ -25,6 +25,8 @@ from attestor_core.domain import Department, Evidence
 from attestor_core.domain.ids import make_question_id
 from attestor_platform.config import TRIAGE_MODEL, genai_client
 from attestor_platform.search.datastore import CorpusSearch
+from attestor_platform.search.relevance import RelevanceScorer
+from attestor_platform.search.sections import SectionIndex
 
 logger = logging.getLogger(__name__)
 
@@ -260,10 +262,24 @@ class ExpandingCorpusSearch:
         department: Department,
         expander: QueryExpander | None = None,
         search: CorpusSearch | None = None,
+        scorer: RelevanceScorer | None = None,
+        sections: SectionIndex | bool | None = True,
     ) -> None:
         self.department = department
         self._search = search if search is not None else CorpusSearch(department)
         self._expander = expander if expander is not None else QueryExpander()
+        #: Shared across departments by the caller, so one passage is embedded once for
+        #: the whole run rather than once per department that retrieves it.
+        self._scorer = scorer if scorer is not None else RelevanceScorer()
+        #: `True` builds the default index, `None`/`False` disables section reranking
+        #: (the recall harness's raw baseline and the unit tests), and an instance is
+        #: used as given.
+        if sections is True:
+            self._sections: SectionIndex | None = SectionIndex(department)
+        elif isinstance(sections, SectionIndex):
+            self._sections = sections
+        else:
+            self._sections = None
 
     def retrieve(
         self,
@@ -272,30 +288,85 @@ class ExpandingCorpusSearch:
         top_k: int = 5,
         per_query: int = 5,
     ) -> RetrievalResult:
-        """Search every variant, dedupe by document, rerank by best score.
+        """Search every variant, dedupe by document, score by relevance, rank.
 
         Dedupe key is `(document_uri, section)` so the same document surfaced by three
-        variants counts once, at its best score -- otherwise a document that matches
-        weakly many times would outrank one that matches strongly once.
+        variants counts once -- otherwise a document that matches weakly many times would
+        outrank one that matches strongly once.
+
+        Scoring happens **after** the union, and against the ORIGINAL question rather
+        than the variant that happened to surface the passage. That matters: a variant is
+        a retrieval device, and scoring a passage against the expanded query it matched
+        would flatter exactly the passages the expansion dragged in.
         """
         expanded = self._expander.expand(question, question_id)
-        best: dict[tuple[str, str | None], Evidence] = {}
+        candidates: dict[tuple[str, str | None], Evidence] = {}
         matched_by: dict[str, str] = {}
 
         for query in expanded.all_queries:
             for evidence in self._search.query(query, page_size=per_query):
                 key = (evidence.document_uri, evidence.section)
-                current = best.get(key)
-                if current is None or evidence.score > current.score:
-                    best[key] = evidence
+                if key not in candidates:
+                    candidates[key] = evidence
                     matched_by[evidence.document_uri] = query
 
-        ranked = sorted(best.values(), key=lambda e: e.score, reverse=True)[:top_k]
+        pooled = list(candidates.values())
+        scored = self._rerank(question, pooled)
+
+        ranked = sorted(scored, key=lambda e: e.score, reverse=True)[:top_k]
         return RetrievalResult(
             evidence=ranked,
             matched_by={e.document_uri: matched_by[e.document_uri] for e in ranked},
             queries_run=expanded.all_queries,
         )
+
+    def _rerank(self, question: str, pooled: list[Evidence]) -> list[Evidence]:
+        """Score each candidate, preferring its best-matching section to its snippet.
+
+        Discovery Engine picks the snippet; it is often the wrong part of the right
+        document (`search/sections.py` has the measurement). So each candidate is scored
+        against every section of its own document, and the winning section replaces both
+        the score and the cited text. When the document cannot be read, the snippet is
+        scored instead -- degraded, not broken.
+        """
+        if self._sections is None:
+            scores = self._scorer.score(question, [item.content for item in pooled])
+            return [
+                item.model_copy(update={"score": score})
+                for item, score in zip(pooled, scores, strict=True)
+            ]
+
+        # One flat list of passages, one embed call, one cache. Section vectors are
+        # reused across every question in the run.
+        passages: list[str] = []
+        spans: list[tuple[int, int]] = []
+        for item in pooled:
+            sections = self._sections.sections_for(item.document_uri)
+            texts = [section.text for section in sections] or [item.content]
+            spans.append((len(passages), len(texts)))
+            passages.extend(texts)
+
+        scores = self._scorer.score(question, passages)
+
+        reranked: list[Evidence] = []
+        for item, (start, count) in zip(pooled, spans, strict=True):
+            window = scores[start : start + count]
+            best = max(range(count), key=lambda i: window[i])
+            sections = self._sections.sections_for(item.document_uri)
+            if sections:
+                section = sections[best]
+                reranked.append(
+                    item.model_copy(
+                        update={
+                            "score": window[best],
+                            "content": section.text,
+                            "section": section.heading or None,
+                        }
+                    )
+                )
+            else:
+                reranked.append(item.model_copy(update={"score": window[best]}))
+        return reranked
 
     def retrieve_raw(self, question: str, top_k: int = 5) -> list[Evidence]:
         """Baseline: the raw question, unexpanded. Used only by the recall harness."""

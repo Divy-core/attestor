@@ -1,0 +1,58 @@
+{
+  "billable_characters": 76138,
+  "irrelevant_passage_scores": {
+    "max": 0.7343,
+    "mean": 0.6051,
+    "min": 0.4545,
+    "n": 74,
+    "p05": 0.5165,
+    "p25": 0.5795,
+    "p50": 0.6094,
+    "p75": 0.6343,
+    "p95": 0.6997
+  },
+  "label_retrieved": 60,
+  "method": "embedding",
+  "pairs": 63,
+  "per_question_max_score": {
+    "max": 0.7616,
+    "mean": 0.6744,
+    "min": 0.5279,
+    "n": 60,
+    "p05": 0.5679,
+    "p25": 0.6397,
+    "p50": 0.6912,
+    "p75": 0.7149,
+    "p95": 0.7452
+  },
+  "per_question_mean_score": {
+    "max": 0.7616,
+    "mean": 0.6458,
+    "min": 0.5014,
+    "n": 60,
+    "p05": 0.5434,
+    "p25": 0.6122,
+    "p50": 0.6543,
+    "p75": 0.6918,
+    "p95": 0.7377
+  },
+  "proposed_thresholds": {
+    "_STRONG_MAX_SCORE": 0.69,
+    "_STRONG_MEAN_SCORE": 0.63,
+    "_WEAK_SCORE": 0.54
+  },
+  "relevant_passage_scores": {
+    "max": 0.7616,
+    "mean": 0.6702,
+    "min": 0.5,
+    "n": 60,
+    "p05": 0.5399,
+    "p25": 0.6339,
+    "p50": 0.6912,
+    "p75": 0.7149,
+    "p95": 0.7452
+  },
+  "seconds": 808.4,
+  "separation_median": 0.0797,
+  "top_hit_is_labelled": 55
+}

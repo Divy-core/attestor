@@ -1,0 +1,21 @@
+{
+  "bystander_status": "flagged_no_evidence",
+  "case": "cross_department_denial",
+  "denied": true,
+  "pass": true,
+  "raised": "SecurityAgent may not call 'search_corpus' against 'corpus/legal': cross-department access is denied by least-privilege policy [agent='SecurityAgent' agent_department='security' resource_ref='corpus/legal' tool_name='search_corpus']",
+  "run_continued": true,
+  "tool_denied_events": [
+    {
+      "actor": "securityAgent",
+      "detail": {
+        "reason": "SecurityAgent may not call 'search_corpus' against 'corpus/legal': cross-department access is denied by least-privilege policy [agent='SecurityAgent' agent_department='security' resource_ref='corpus/legal' tool_name='search_corpus']"
+      },
+      "kind": "tool_denied",
+      "question_id": "8bbb05a762fc5c8c",
+      "review_id": "rev-acme-2026-q3",
+      "round_id": null,
+      "run_id": "verify-denial-1786884100"
+    }
+  ]
+}

@@ -1,0 +1,47 @@
+{
+  "events": [
+    {
+      "actor": "TriageAgent",
+      "detail": {
+        "department": "security",
+        "model": "gemini-3.5-flash-lite"
+      },
+      "kind": "question_triaged",
+      "question_id": "4d282c5c0704412a",
+      "review_id": "rev-acme-2026-q3",
+      "round_id": null,
+      "run_id": "run-1786883956"
+    },
+    {
+      "actor": "securityAgent",
+      "detail": {
+        "count": 1,
+        "documents": [
+          "access-control-standard"
+        ],
+        "queries": [
+          "Are passwords subject to a forced rotation schedule?"
+        ]
+      },
+      "kind": "evidence_retrieved",
+      "question_id": "4d282c5c0704412a",
+      "review_id": "rev-acme-2026-q3",
+      "round_id": null,
+      "run_id": "run-1786883956"
+    },
+    {
+      "actor": "SecurityAgent",
+      "detail": {
+        "citation_count": 1,
+        "confidence": "high",
+        "status": "drafted"
+      },
+      "kind": "answer_drafted",
+      "question_id": "4d282c5c0704412a",
+      "review_id": "rev-acme-2026-q3",
+      "round_id": null,
+      "run_id": "run-1786883956"
+    }
+  ],
+  "question": "Are passwords subject to a forced rotation schedule?"
+}

@@ -52,17 +52,23 @@ from attestor_fleet.callbacks.audit import (
     NullAuditSink,
 )
 from attestor_fleet.callbacks.budget import BudgetLedger
-from attestor_fleet.callbacks.guard import ArmorGuard
+from attestor_fleet.callbacks.guard import ArmorGuard, enforce_tool_policy
 from attestor_fleet.prompts.drafting import (
     consistency_prompt,
     drafting_prompt,
     is_hedged,
     triage_prompt,
 )
-from attestor_platform.config import REASONING_MODEL, TRIAGE_MODEL, genai_client
+from attestor_platform.config import (
+    EMBEDDING_MODEL,
+    REASONING_MODEL,
+    TRIAGE_MODEL,
+    genai_client,
+)
 from attestor_platform.search import (
     ExpandingCorpusSearch,
     QueryExpander,
+    RelevanceScorer,
     RetrievalResult,
     SearchUnavailable,
 )
@@ -173,6 +179,7 @@ class ReviewPipeline:
         audit: AuditSink | None = None,
         ledger: BudgetLedger | None = None,
         expander: QueryExpander | None = None,
+        scorer: RelevanceScorer | None = None,
         prior_commitments: Sequence[tuple[str, str]] = (),
         screen_ingress: bool = True,
         screen_tool_output: bool = True,
@@ -188,6 +195,10 @@ class ReviewPipeline:
         self.screen_ingress = screen_ingress
         self.screen_tool_output = screen_tool_output
         self._searches: dict[Department, ExpandingCorpusSearch] = {}
+        #: ONE scorer for the whole run, shared across all three departments. The passage
+        #: cache is what makes measured relevance nearly free: a snippet retrieved by
+        #: thirty questions is embedded once.
+        self._scorer = scorer if scorer is not None else RelevanceScorer()
         self._client = genai_client()
 
     # -- retrieval ------------------------------------------------------------------
@@ -199,8 +210,34 @@ class ReviewPipeline:
         department and has no handle on any other.
         """
         if department not in self._searches:
-            self._searches[department] = ExpandingCorpusSearch(department, expander=self._expander)
+            self._searches[department] = ExpandingCorpusSearch(
+                department, expander=self._expander, scorer=self._scorer
+            )
         return self._searches[department]
+
+    def _guarded_retrieve(
+        self, agent_department: Department, question: Question
+    ) -> RetrievalResult:
+        """Retrieve for one department, through the least-privilege interceptor.
+
+        The interceptor is checked against the datastore the search object is actually
+        bound to, not against the department we *meant* to search. In normal operation
+        those agree and this is an ALLOW; the check earns its place when they do not --
+        a mis-scoped drafter, a poisoned wiring, a copy-paste in Phase 4's dispatcher --
+        because then a SecurityAgent is holding a handle on the legal corpus and the
+        only thing standing between it and a cross-department read is this line.
+
+        Raises:
+            PolicyViolation: when the agent's department and the datastore's disagree.
+        """
+        search = self._search_for(agent_department)
+        enforce_tool_policy(
+            agent_department,
+            "search_corpus",
+            f"corpus/{search.department.value}",
+            agent_name=f"{agent_department.value.capitalize()}Agent",
+        )
+        return search.retrieve(question.text, question_id=question.question_id)
 
     def _retrieve_cross_department(self, question: Question) -> RetrievalResult:
         """Search every department for a question triage could not place.
@@ -212,10 +249,13 @@ class ReviewPipeline:
         matched_by: dict[str, str] = {}
         queries: tuple[str, ...] = ()
         for department in (Department.SECURITY, Department.LEGAL, Department.ENGINEERING):
+            # Each scoped agent is asked in turn, in its own right -- which is what an
+            # unplaced question actually needs. It is NOT one agent granted the union of
+            # three corpora; `decide_tool` denies an UNASSIGNED agent every corpus, and
+            # rightly, because that agent is exactly the union-of-all-permissions shape
+            # the fleet exists to avoid.
             try:
-                result = self._search_for(department).retrieve(
-                    question.text, question_id=question.question_id
-                )
+                result = self._guarded_retrieve(department, question)
             except SearchUnavailable:
                 continue
             queries = result.queries_run
@@ -391,9 +431,7 @@ class ReviewPipeline:
             if department is Department.UNASSIGNED:
                 result = self._retrieve_cross_department(question)
             else:
-                result = self._search_for(department).retrieve(
-                    question.text, question_id=question.question_id
-                )
+                result = self._guarded_retrieve(department, question)
             evidence = result.evidence
         except PolicyViolation as exc:
             outcome.denied = True
@@ -403,7 +441,7 @@ class ReviewPipeline:
                 review_id=self.review_id,
                 run_id=self.run_id,
                 question_id=question.question_id,
-                actor=f"{department.value}Agent",
+                actor=f"{department.value.capitalize()}Agent",
                 detail={"reason": str(exc)},
             )
             outcome.draft_seconds = time.perf_counter() - started
@@ -446,7 +484,7 @@ class ReviewPipeline:
             review_id=self.review_id,
             run_id=self.run_id,
             question_id=question.question_id,
-            actor=f"{department.value}Agent",
+            actor=f"{department.value.capitalize()}Agent",
             detail={
                 "count": len(evidence),
                 "documents": sorted({e.document_title for e in evidence}),
@@ -633,7 +671,18 @@ class ReviewPipeline:
 
         report.draft_latencies = [o.draft_seconds for o in report.outcomes if o.draft_seconds]
         report.total_seconds = time.perf_counter() - started
+
+        # Relevance scoring is spend too, and leaving it out of the reported cost would
+        # make the demo number quietly wrong. The embedding API bills characters and
+        # `PRICE_PER_MTOK` is per token, so characters are converted at the conventional
+        # 4:1 -- an estimate, stated as one, on a figure that rounds to a tenth of a cent.
         report.budget = self.ledger.summary()
+        embedded_tokens = self._scorer.billable_characters // 4
+        if embedded_tokens:
+            self.ledger.record_usage(EMBEDDING_MODEL, embedded_tokens, 0)
+            report.budget = self.ledger.summary()
+        report.budget["relevance_method"] = self._scorer.last_method
+        report.budget["embedding_characters"] = self._scorer.billable_characters
 
         self.audit.write(
             kind=ANSWER_ASSEMBLED,
