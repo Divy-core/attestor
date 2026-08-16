@@ -192,28 +192,31 @@ class ConfidenceSignals(_Frozen):
 #
 # These were originally 0.55 / 0.75 / 0.60, chosen against RANK-DERIVED scores -- a scale
 # on which the top hit always read 0.95 and which therefore meant nothing. Retrieval now
-# scores by cosine similarity between the question and the best-matching section of the
-# retrieved document (`attestor_platform.search.relevance`), and cosine over
+# scores by cosine similarity between the question and the best-matching sections of the
+# retrieved documents (`attestor_platform.search.relevance`), and cosine over
 # `text-embedding-005` occupies a much narrower band: same-domain policy prose scores
 # ~0.6 even when irrelevant. Carrying the old constants across would have marked almost
 # every answer LOW.
 #
-# Measured over the 63 hand-labelled retrieval pairs (docs/proof/confidence-calibration.json):
+# Measured over the 63 hand-labelled retrieval pairs against the 46-document corpus
+# (docs/proof/confidence-calibration.json), on the two distributions this function
+# actually consumes -- per-QUESTION max and mean across the cited passages:
 #
-#   passages from the labelled-correct document   p05 0.54 · p25 0.63 · p50 0.69 · p95 0.75
-#   passages from every other retrieved document  p05 0.52 · p25 0.58 · p50 0.61 · p95 0.70
+#   per-question max   p05 0.57 · p25 0.64 · p50 0.69 · p75 0.72 · p95 0.75
+#   per-question mean  p05 0.54 · p25 0.59 · p50 0.63 · p75 0.66 · p95 0.68
 #
-# The separation is real but narrow (0.08 at the median), and each threshold is placed at
-# a named point of the *relevant* distribution rather than at a round number:
+# Each threshold sits at a named percentile of a measured distribution rather than at a
+# round number:
 # -----------------------------------------------------------------------------------
 
-#: 5th percentile of relevant passages. Below this, retrieval essentially missed.
-_WEAK_SCORE = 0.54
-#: Median relevant passage. A single hit at least this good stands on its own.
+#: p05 of the per-question best score. Below the level at which a question whose answer
+#: WAS retrieved ever lands, retrieval essentially missed and the model is improvising.
+_WEAK_SCORE = 0.57
+#: Median per-question best score. A single hit at least this good stands on its own.
 _STRONG_MAX_SCORE = 0.69
-#: 25th percentile of relevant passages. A set of citations averaging above this is
-#: corroboration rather than noise.
-_STRONG_MEAN_SCORE = 0.63
+#: p25 of the per-question mean. A citation set averaging above this is corroboration
+#: rather than noise.
+_STRONG_MEAN_SCORE = 0.59
 #: Corroboration: two independent documents agreeing beats one strong hit.
 _CORROBORATING_CITATIONS = 2
 

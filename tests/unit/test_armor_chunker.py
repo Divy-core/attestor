@@ -283,3 +283,85 @@ class TestSnippetCleaning:
         from attestor_platform.search.datastore import clean_snippet
 
         assert clean_snippet("Kestrel gives 30 days notice.") == "Kestrel gives 30 days notice."
+
+
+class TestTransientFailures:
+    """A throttled guardrail must not turn into "the corpus has no answer".
+
+    Fail-closed is right -- unscreened content is not safe content -- but it means every
+    transport failure becomes a DENY, drops the evidence, and produces an answer that
+    reads as an honest refusal. Screening evidence passage by passage multiplied the call
+    volume by five, which is when a rate limit starts to matter. Same lesson as the
+    Phase 3 search bug, recorded there as: a failure must never impersonate an empty
+    result.
+    """
+
+    @staticmethod
+    def _client() -> ArmorClient:
+        """An ArmorClient with no credentials and no endpoint resolution."""
+        client = ArmorClient.__new__(ArmorClient)
+        client.project, client.region, client.template = "p", "r", "t"
+        client.timeout = 1.0
+        client._endpoint = "https://example.invalid"  # type: ignore[attr-defined]
+        client._token = lambda: "fake"  # type: ignore[method-assign]
+        return client
+
+    def test_a_429_is_retried_then_succeeds(self, monkeypatch: object) -> None:
+        import urllib.error
+
+        import attestor_platform.armor.client as armor
+
+        attempts: list[int] = []
+
+        def _urlopen(request: object, timeout: float = 0.0) -> object:
+            attempts.append(1)
+            if len(attempts) < 3:
+                raise urllib.error.HTTPError("u", 429, "Too Many Requests", {}, None)  # type: ignore[arg-type]
+            raise urllib.error.HTTPError("u", 400, "Bad Request", {}, None)  # type: ignore[arg-type]
+
+        monkeypatch.setattr(armor.urllib.request, "urlopen", _urlopen)  # type: ignore[attr-defined]
+        monkeypatch.setattr(armor.time, "sleep", lambda _s: None)  # type: ignore[attr-defined]
+
+        client = self._client()
+
+        result = client._post("sanitizeUserPrompt", {"user_prompt_data": {"text": "x"}})
+
+        # Two 429s retried, then a 400 which is not retryable and is returned as-is.
+        assert len(attempts) == 3
+        assert result["_http_error"] == 400
+
+    def test_a_400_is_not_retried(self, monkeypatch: object) -> None:
+        import urllib.error
+
+        import attestor_platform.armor.client as armor
+
+        attempts: list[int] = []
+
+        def _urlopen(request: object, timeout: float = 0.0) -> object:
+            attempts.append(1)
+            raise urllib.error.HTTPError("u", 400, "Bad Request", {}, None)  # type: ignore[arg-type]
+
+        monkeypatch.setattr(armor.urllib.request, "urlopen", _urlopen)  # type: ignore[attr-defined]
+
+        client = self._client()
+
+        client._post("sanitizeUserPrompt", {"user_prompt_data": {"text": "x"}})
+
+        assert len(attempts) == 1
+
+    def test_exhausted_retries_still_fail_closed(self, monkeypatch: object) -> None:
+        import attestor_platform.armor.client as armor
+
+        def _urlopen(request: object, timeout: float = 0.0) -> object:
+            raise TimeoutError("timed out")
+
+        monkeypatch.setattr(armor.urllib.request, "urlopen", _urlopen)  # type: ignore[attr-defined]
+        monkeypatch.setattr(armor.time, "sleep", lambda _s: None)  # type: ignore[attr-defined]
+
+        client = self._client()
+
+        payload = client._post("sanitizeUserPrompt", {"user_prompt_data": {"text": "x"}})
+        verdict, filters = parse_sanitize_response(payload)
+
+        assert verdict.execution_failed is True
+        assert filters == ("execution_failed",)

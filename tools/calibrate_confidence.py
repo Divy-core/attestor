@@ -85,6 +85,13 @@ def main() -> int:
 
     relevant: list[float] = []
     irrelevant: list[float] = []
+    #: Per QUESTION, the best passage from the labelled document and the best from any
+    #: other document. This is the comparison that actually decides an answer: does the
+    #: passage that answers outrank the best distractor? The passage-level distributions
+    #: below cannot answer that, because section-level reranking retrieves several
+    #: sections of the labelled document and most of them are not the answering section.
+    best_relevant: list[float] = []
+    best_distractor: list[float] = []
     max_scores: list[float] = []
     mean_scores: list[float] = []
     top_is_labelled = 0
@@ -106,13 +113,21 @@ def main() -> int:
             top_is_labelled += 1
 
         hit = False
+        question_relevant: list[float] = []
+        question_distractors: list[float] = []
         for item in result.evidence:
             if expected in item.document_uri:
                 relevant.append(item.score)
+                question_relevant.append(item.score)
                 hit = True
             else:
                 irrelevant.append(item.score)
+                question_distractors.append(item.score)
         label_retrieved += int(hit)
+        if question_relevant:
+            best_relevant.append(max(question_relevant))
+        if question_distractors:
+            best_distractor.append(max(question_distractors))
 
         print(
             f"  {index:3}/{len(pairs)}  max={max(scores):.3f} "
@@ -122,16 +137,21 @@ def main() -> int:
 
     elapsed = time.perf_counter() - started
 
-    # The thresholds. Each is derived from the measured distributions rather than chosen:
+    # The thresholds, derived from the distributions `compute_confidence` actually
+    # consumes -- per-QUESTION max and mean over the cited passages, not the pooled
+    # passage-level scores. That distinction matters once sections compete globally: the
+    # pooled "relevant" bucket fills with non-answering sections of the right document
+    # and its percentiles describe nothing the policy layer ever sees.
     #
-    # _WEAK_SCORE   -- below the 5th percentile of relevant passages nothing worth citing
-    #                  has been seen, so the answer is improvised.
-    # _STRONG_MAX   -- the median relevant score: a single hit this good stands on its own.
-    # _STRONG_MEAN  -- the 25th percentile of relevant scores: a set of citations whose
-    #                  average clears it is corroboration rather than noise.
-    weak = round(percentile(relevant, 5), 2)
-    strong_max = round(percentile(relevant, 50), 2)
-    strong_mean = round(percentile(relevant, 25), 2)
+    # _WEAK_SCORE   -- p05 of the per-question best score. Below the level at which a
+    #                  question whose answer WAS retrieved ever lands, retrieval missed.
+    # _STRONG_MAX   -- p50 of the per-question best score: a single hit this good stands
+    #                  on its own.
+    # _STRONG_MEAN  -- p25 of the per-question mean: a citation set averaging above this
+    #                  is corroboration rather than noise.
+    weak = round(percentile(max_scores, 5), 2)
+    strong_max = round(percentile(max_scores, 50), 2)
+    strong_mean = round(percentile(mean_scores, 25), 2)
 
     proposed = {
         "_WEAK_SCORE": weak,
@@ -148,12 +168,25 @@ def main() -> int:
         "billable_characters": scorer.billable_characters,
         "relevant_passage_scores": describe(relevant),
         "irrelevant_passage_scores": describe(irrelevant),
+        "best_relevant_per_question": describe(best_relevant),
+        "best_distractor_per_question": describe(best_distractor),
         "per_question_max_score": describe(max_scores),
         "per_question_mean_score": describe(mean_scores),
-        "separation_median": round(
+        # Two separations, because they answer different questions. The pooled one is
+        # depressed by non-answering sections of the correct document; the best-vs-best
+        # one is what decides whether the answer outranks its best distractor.
+        "separation_median_pooled": round(
             (statistics.median(relevant) if relevant else 0.0)
             - (statistics.median(irrelevant) if irrelevant else 0.0),
             4,
+        ),
+        "separation_median_best": round(
+            (statistics.median(best_relevant) if best_relevant else 0.0)
+            - (statistics.median(best_distractor) if best_distractor else 0.0),
+            4,
+        ),
+        "best_beats_distractor": sum(
+            1 for r, d in zip(best_relevant, best_distractor, strict=False) if r > d
         ),
         "proposed_thresholds": proposed,
     }

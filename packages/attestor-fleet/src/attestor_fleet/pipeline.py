@@ -804,6 +804,9 @@ class ReviewPipeline:
             self.ledger.record_usage(EMBEDDING_MODEL, embedded_tokens, 0)
             report.budget = self.ledger.summary()
         report.budget["relevance_method"] = self._scorer.last_method
+        report.budget["relevance_embedding_batches"] = self._scorer.embedding_batches
+        report.budget["relevance_lexical_batches"] = self._scorer.lexical_batches
+        report.budget["relevance_throttled_batches"] = self._scorer.throttled_batches
         report.budget["embedding_characters"] = self._scorer.billable_characters
 
         self.audit.write(

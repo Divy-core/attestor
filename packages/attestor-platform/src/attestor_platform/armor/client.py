@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 import urllib.error
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
@@ -78,6 +79,13 @@ CHARS_PER_TOKEN = 4
 #: Bounded fan-out. Unbounded concurrency against a quota-limited API is how a 400-page
 #: document turns into a 429 storm.
 MAX_CONCURRENCY = 8
+
+#: Transient failures are retried before the request fails closed.
+RETRY_ATTEMPTS = 3
+RETRY_BACKOFF_SECONDS = 0.5
+#: 429 and the 5xx family. Anything else -- 400, 401, 403 -- will fail identically on a
+#: retry and retrying would only hide the cause.
+RETRYABLE_STATUS = frozenset({429, 500, 502, 503, 504})
 
 
 @dataclass(frozen=True)
@@ -266,17 +274,46 @@ class ArmorClient:
             },
             method="POST",
         )
-        try:
-            with urllib.request.urlopen(request, timeout=self.timeout) as response:
-                return dict(json.loads(response.read().decode("utf-8")))
-        except urllib.error.HTTPError as exc:
-            detail = exc.read().decode("utf-8", "replace")
-            logger.warning("armor: HTTP %s from %s: %s", exc.code, method, detail[:300])
-            return {"_http_error": exc.code, "_body": detail}
-        except (TimeoutError, OSError) as exc:
-            # Fails closed: policy maps execution_failed to DENY.
-            logger.warning("armor: transport failure on %s: %s", method, exc)
-            return {"_error": str(exc)}
+        # Transient failures are retried before failing closed. Fail-closed is right --
+        # unscreened content must not be treated as safe -- but it means a throttled
+        # Model Armor turns every retrieved passage into a DENY, drops the evidence, and
+        # reports "no supporting evidence in the corpus". That is the same shape as the
+        # Phase 3 search bug: a failure impersonating an empty result. Screening evidence
+        # passage by passage multiplied the call volume by five, which is exactly when a
+        # rate limit starts to matter.
+        last: dict[str, Any] = {}
+        for attempt in range(RETRY_ATTEMPTS):
+            try:
+                with urllib.request.urlopen(request, timeout=self.timeout) as response:
+                    return dict(json.loads(response.read().decode("utf-8")))
+            except urllib.error.HTTPError as exc:
+                detail = exc.read().decode("utf-8", "replace")
+                last = {"_http_error": exc.code, "_body": detail}
+                if exc.code not in RETRYABLE_STATUS:
+                    logger.warning("armor: HTTP %s from %s: %s", exc.code, method, detail[:300])
+                    return last
+                logger.warning(
+                    "armor: HTTP %s from %s (attempt %d/%d)",
+                    exc.code,
+                    method,
+                    attempt + 1,
+                    RETRY_ATTEMPTS,
+                )
+            except (TimeoutError, OSError) as exc:
+                last = {"_error": str(exc)}
+                logger.warning(
+                    "armor: transport failure on %s (attempt %d/%d): %s",
+                    method,
+                    attempt + 1,
+                    RETRY_ATTEMPTS,
+                    exc,
+                )
+            if attempt < RETRY_ATTEMPTS - 1:
+                time.sleep(RETRY_BACKOFF_SECONDS * (2**attempt))
+
+        # Out of attempts. Fails closed: policy maps execution_failed to DENY.
+        logger.error("armor: giving up on %s after %d attempts", method, RETRY_ATTEMPTS)
+        return last
 
     def screen(self, text: str) -> tuple[ArmorVerdict, tuple[str, ...]]:
         """Screen a single string that fits inside the filter window."""

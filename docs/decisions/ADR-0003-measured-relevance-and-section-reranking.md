@@ -59,7 +59,8 @@ Three specifics that are load-bearing:
 
 ## Measured
 
-Over the 63 hand-labelled retrieval pairs (`docs/proof/confidence-calibration.json`):
+Over the 63 hand-labelled retrieval pairs (`docs/proof/confidence-calibration.json`),
+against the 26-document corpus this was first built on:
 
 | | snippet cosine | section rerank |
 |---|---|---|
@@ -68,11 +69,34 @@ Over the 63 hand-labelled retrieval pairs (`docs/proof/confidence-calibration.js
 | median score, other retrieved passages | 0.601 | 0.609 |
 | median separation | 0.051 | **0.080** |
 
-The separation is real but narrow, which is itself the finding: same-domain policy prose
-scores ~0.6 against almost any security question. The confidence thresholds were
-therefore re-derived from this distribution rather than carried over from the rank-derived
-scale — `_WEAK_SCORE` 0.55 → 0.54 (p05 of relevant), `_STRONG_MAX_SCORE` 0.75 → 0.69
-(median), `_STRONG_MEAN_SCORE` 0.60 → 0.63 (p25).
+**Re-measured against the expanded 46-document corpus**, where the numbers move and one
+of them moves alarmingly:
+
+| | value |
+|---|---|
+| top hit is the labelled document | 53 / 60 |
+| best labelled passage vs best distractor, median | 0.691 vs 0.635 → **0.054** |
+| best labelled passage outranks the best distractor | 30 / 44 questions that retrieved a distractor |
+| **pooled** relevant vs irrelevant passages, median | 0.628 vs 0.623 → **0.007** |
+
+The pooled figure looks like a collapse and is mostly an artifact of the metric, which is
+worth stating rather than quietly dropping. Once sections compete globally, a question
+routinely retrieves **several sections of the correct document** — including its "Review
+cadence" and its approval header, which answer nothing. Those count as "relevant" under a
+document-level label and drag the pooled distribution down. The decision-relevant
+comparison is best-answering-passage against best-distractor, which is 0.054.
+
+What is genuinely true: on a broader corpus, more documents legitimately bear on a given
+question — MFA appears in the access control standard *and* in personnel security — so
+"not the labelled document" stops meaning "irrelevant". The score discriminates modestly,
+and the confidence function leans correspondingly more on citation count, hedging,
+contradiction, and cross-department signals.
+
+Thresholds are derived from the two distributions `compute_confidence` actually consumes
+— per-question max and per-question mean over the cited passages, not the pooled
+passage-level scores: `_WEAK_SCORE` **0.57** (p05 of per-question max),
+`_STRONG_MAX_SCORE` **0.69** (its median), `_STRONG_MEAN_SCORE` **0.59** (p25 of
+per-question mean).
 
 ## Cost
 

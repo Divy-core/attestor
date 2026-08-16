@@ -35,6 +35,7 @@ import logging
 import math
 import re
 import threading
+import time
 from collections.abc import Sequence
 from typing import Any
 
@@ -45,6 +46,22 @@ logger = logging.getLogger(__name__)
 #: Instances per embed call. Vertex accepts far more, but the request is token-limited
 #: and a smaller batch keeps one oversized snippet from failing the whole group.
 EMBED_BATCH = 16
+
+#: Transient failures are waited out before the lexical fallback is taken. Eight drafting
+#: workers embedding concurrently WILL see 429s on a 312-question run; that is expected
+#: load, not an outage.
+EMBED_RETRIES = 4
+EMBED_BACKOFF_SECONDS = 1.0
+#: Substrings that mark an error as worth retrying. Matching on the message rather than
+#: an exception type because google-genai wraps transport errors in its own class and the
+#: status lives in the text.
+_TRANSIENT_MARKERS = ("429", "resource_exhausted", "503", "unavailable", "500", "internal", "504")
+
+
+def _is_transient(exc: Exception) -> bool:
+    text = str(exc).lower()
+    return any(marker in text for marker in _TRANSIENT_MARKERS)
+
 
 #: Cosine over `text-embedding-005` does not use the full 0..1 range: unrelated text in
 #: the same domain still scores ~0.6. Scores are passed through unclamped at the top and
@@ -151,6 +168,13 @@ class RelevanceScorer:
         self.last_method = "embedding"
         #: Billable characters, so the embedding cost is reported rather than assumed.
         self.billable_characters = 0
+        #: How many scoring batches used each method. `last_method` alone is misleading
+        #: on a long run: one batch that fell back and recovered would report
+        #: "embedding" at the end while part of the run was scored lexically.
+        self.embedding_batches = 0
+        self.lexical_batches = 0
+        #: Transient embedding failures that were retried rather than fallen back from.
+        self.throttled_batches = 0
         self._degraded = False
 
     # -- embedding ---------------------------------------------------------------------
@@ -161,18 +185,40 @@ class RelevanceScorer:
         return self._client
 
     def _embed(self, texts: Sequence[str], task: str) -> list[list[float]]:
-        """Embed a batch, raising on failure so the caller can degrade deliberately."""
+        """Embed a batch, retrying transient failures, raising when it cannot be done.
+
+        The retry is not decoration. Measured on a full 312-question run: eight drafting
+        workers each embedding tens of passages produced
+        `429 RESOURCE_EXHAUSTED` from Vertex, the scorer degraded to lexical overlap as
+        designed, and **the run's scores silently became a different quantity**. Degrading
+        is the right production behaviour and the wrong measurement behaviour, so a
+        transient 429 is now waited out before the fallback is taken.
+        """
         from google.genai import types
 
         client = self._lazy_client()
         vectors: list[list[float]] = []
         for start in range(0, len(texts), EMBED_BATCH):
             chunk = list(texts[start : start + EMBED_BATCH])
-            response = client.models.embed_content(
-                model=self._model,
-                contents=chunk,
-                config=types.EmbedContentConfig(task_type=task),
-            )
+            response = None
+            last_error: Exception | None = None
+            for attempt in range(EMBED_RETRIES):
+                try:
+                    response = client.models.embed_content(
+                        model=self._model,
+                        contents=chunk,
+                        config=types.EmbedContentConfig(task_type=task),
+                    )
+                    break
+                except Exception as exc:
+                    last_error = exc
+                    if not _is_transient(exc) or attempt == EMBED_RETRIES - 1:
+                        raise
+                    self.throttled_batches += 1
+                    time.sleep(EMBED_BACKOFF_SECONDS * (2**attempt))
+            if response is None:  # pragma: no cover - defensive; the loop raises first
+                raise RuntimeError(f"embedding failed: {last_error}")
+
             metadata = getattr(response, "metadata", None)
             if metadata is not None:
                 self.billable_characters += int(
@@ -219,9 +265,13 @@ class RelevanceScorer:
                 )
                 self._degraded = True
             self.last_method = "lexical"
+            with self._lock:
+                self.lexical_batches += 1
             return [lexical_overlap(query, passage) for passage in passages]
 
         self.last_method = "embedding"
+        with self._lock:
+            self.embedding_batches += 1
         return [cosine(query_vector, vector) for vector in passage_vectors]
 
     def score_one(self, query: str, passage: str) -> float:
