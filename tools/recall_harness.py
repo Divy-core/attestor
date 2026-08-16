@@ -148,9 +148,8 @@ def main() -> int:
     if broken:
         print(f"\n=== expansion BROKE {len(broken)} (regression) ===")
         for o in broken:
-            print(
-                f"  [{o.department}] {o.question[:62]!r} -> wanted {o.expected}, got {o.expanded_docs}"
-            )
+            print(f"  [{o.department}] {o.question[:62]!r}")
+            print(f"      wanted {o.expected}, got {o.expanded_docs}")
     if still:
         print(f"\n=== STILL MISSING {len(still)} ===")
         for o in still:
@@ -187,7 +186,7 @@ def _write_proof(
         "",
         "## Result",
         "",
-        "| | recall@%d |" % k,
+        f"| | recall@{k} |",
         "|---|---|",
         f"| Raw question text (baseline) | **{raw_recall:.0%}** |",
         f"| Expanded queries | **{exp_recall:.0%}** |",
