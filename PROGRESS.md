@@ -1247,3 +1247,224 @@ Memory Bank canonical, with `load_commitments()` in `tools/run_review.py` as the
   not worth trading against the real injection.
 - The relevance score separates a relevant passage from its best distractor by 0.054 at
   the median. Real, measured, and modest.
+
+---
+
+## Phase 4 — The Async Engine (Day 3–4, 16–17 Aug 2026)
+
+Track 3 asks for agents that "safely maintain context across weeks of asynchronous
+operations". This is that phase: the control plane, the dispatcher, Pub/Sub, durable
+pause/resume, and Memory Bank as the canonical commitment store.
+
+### A correction first: the dates were wrong
+
+Earlier sessions dated Phase 1 to 16 Aug, Phase 2 to 17 Aug, Phase 3 to 18–20 Aug, and
+stamped ADR-0002/0003/0004 with 19–20 Aug. **Every commit in this repository is dated
+14–16 Aug.** The assumption was one phase per calendar day and nobody checked `git log`.
+
+Corrected throughout, with a note at the top of this file rather than a silent rewrite.
+The work and the measurements never changed; only the timestamps were wrong — but a repo
+whose ADR dates disagree with its own commit history is one a reviewer stops trusting,
+and that costs more than the dates are worth.
+
+### ADR-0005 — the one permitted protocol amendment
+
+The dedup key was `sha256(review_id ⟂ round_id ⟂ question_id ⟂ kind)`. Drafting is
+partitioned by department, so `question_id` is null and all three partitions of a round
+share every component. Measured **before writing any dispatcher code**:
+
+```
+security     06cb4c077162efc5
+legal        06cb4c077162efc5
+engineering  06cb4c077162efc5      distinct keys: 1 of 3
+```
+
+The dispatcher claims a key before doing work and acks anything already claimed, so two
+of those three would have been acked as redeliveries. **Two thirds of the drafting work
+would have vanished with no exception, no dead letter and no retry** — idempotency causing
+exactly the failure idempotency exists to prevent, invisible in the way that matters:
+just a smaller number at the end.
+
+`WorkEnvelope` gains one optional field, `partition`, which joins the key. After:
+3 of 3 distinct, and a redelivery of one partition at a different `run_id` and attempt 4
+still collides. Both halves matter; the second is the easy one to break while fixing the
+first. Generalised rather than a `department` field because the same collision recurs for
+batch indices and retry waves. Protocol re-frozen; `generated.ts` regenerated.
+
+### The decomposition — one message per stage, not per run or per question
+
+| Shape | Why not |
+|---|---|
+| One message per run | A crash at minute eleven loses everything. "Durable" would mean "retry the whole twelve minutes", which is repetition, not durability |
+| One message per question | 312 messages moves concurrency out of `ParallelAgent` and into Pub/Sub, discarding the measured 7.84-of-8 and the ADR-0002 argument with it |
+| **One per stage, partitioned where wide** | Durability at ~4-minute granularity, fan-out stays inside the fleet |
+
+Departments are also already the access boundary, so the partition key and the privilege
+boundary are the same line.
+
+### The fifth failure impersonating an empty result — and the fourth
+
+The brief said to assume a fourth existed and go looking. It did, in live code:
+
+```python
+# tools/run_review.py::load_commitments
+except Exception as exc:
+    print(f"  (could not load commitments: {exc})")
+    return []
+```
+
+An unreachable Firestore produced "this customer has no prior commitments" —
+indistinguishable from the truth. `_commitments_for` then matches nothing, no consistency
+check runs on any question, and round two is free to contradict round one while the run
+reports a clean citation rate. It printed one line to stdout in a run that emits several
+hundred. A second instance: `AgentRegistry.list_agents` returned `[]` when the registry
+was unreachable, which would render an empty registry panel during a demo claiming the
+fleet is registered.
+
+Both now raise `ContextUnavailable`, whose docstring records all the occurrences so the
+next person meets the pattern before repeating it. **The rule: a read that finds nothing
+returns empty; a read that could not be performed raises.**
+
+Then proving the Memory Bank move found a **fifth, worse than any of them**. The drift
+fault-injection run failed — not from the network. The embedding scorer degraded to
+lexical overlap mid-run (`Server disconnected without sending a response`), and semantic
+commitment matching went with it silently. A paraphrased round-2 question shares almost no
+content words with the commitment it contradicts — that is the entire reason matching is
+semantic — so every commitment fell below the 0.62 threshold, **nothing matched**, the
+consistency check never ran, and the contradicting answer shipped:
+
+> "Kestrel offers both Customer-VPC and on-premises/self-hosted deployment options under
+> general availability for regulated customers [1][2] … 30 business days."
+> `confidence: high · needs_human: False · consistency_checked events: none`
+
+Loading the commitments worked. **Matching** them failed. One layer below the fourth, and
+invisible in the same way.
+
+Fixed **fail-safe rather than fail-loud**, because a dropped TCP connection must not kill a
+twelve-minute run: a degraded scorer means "we cannot rank these", not "none of these are
+relevant", so all commitments on file are checked rather than none. With a handful on file
+that is one model call, and the count is reported on the run so "checked everything
+because the scorer was down" is visible rather than inferred.
+
+### Idempotency: the lease is the part that matters
+
+`WorkClaimRepository` claims `dedup_key` with a conditional `create()`, so two concurrent
+deliveries cannot both win — Firestore resolves the race, not our read ordering.
+
+A naive guard ("key exists → ack and skip") permanently loses a message the first time an
+instance is culled mid-handler: the claim is written, the work never completes, the
+redelivery is acked, the round never advances, nothing reports an error. So a claim carries
+a **lease**; an expired `IN_PROGRESS` claim may be taken over and a `COMPLETED` one never
+can. A corrupt lease timestamp is treated as expired, because parking work forever is worse
+than running it twice against handlers that are idempotent about their own state machine.
+
+### The end-to-end run — exit criteria 1 and 4 in one pass
+
+```
+  #  kind               part         dedup             result     publishes
+  1  intake_document    -            18759088260a3540  ok         1   [dup: duplicate]
+  2  triage_questions   -            61e5263bdf9f54be  ok         3   [dup: duplicate]
+  3  draft_answer       security     a95f9d55b5318293  ok         0   [dup: duplicate]
+  4  draft_answer       legal        ab80c1805a8f9e27  ok         0   [dup: duplicate]
+  5  draft_answer       engineering  e25b60cc5362ca47  ok         1   [dup: duplicate]
+  6  assemble_round     -            4cf22d0abb67b8da  ok         1   [dup: duplicate]
+  7  close_round        -            257de56794f96106  ok         0   [dup: duplicate]
+
+  final state: delivered · 24 questions · 267s · duplicates suppressed 7/7
+```
+
+`docs/proof/async-review-trace.json`. Every message goes to the real topic and is read
+back from a real subscription; nothing is handed between stages in memory. The only
+synchronous act is publishing the first envelope. ADR-0005 is visible in rows 3–5, and the
+engineering partition — last to finish — is the one that closed the join.
+
+Every message was redelivered deliberately, and all seven redeliveries were acked without
+re-running their handler.
+
+**The first attempt failed, usefully.** The join wrote `drafted_partitions` onto the round
+document; `Round` is a strict model, so reading it back raised
+`Extra inputs are not permitted` and all three drafting partitions failed and retried. The
+join is dispatcher bookkeeping rather than domain state, so it moved to its own
+`round_progress` collection — which also keeps infrastructure counters out of
+`generated.ts`.
+
+**Scale, stated plainly:** this run is 24 questions, not 312. The Phase 4 claim is about
+transport, and the 312-question numbers are Phase 3's authoritative run. `--limit 0` runs
+the full sheet.
+
+### Memory Bank is canonical
+
+Commitments are stored as facts via `memories.create`, scoped `{"review_id": …}` so tenant
+isolation lives in the store's addressing rather than in a filter we have to remember.
+Deliberately **not** `memories.generate` — a commitment is a sentence that was sent to a
+customer, not an impression for a model to re-derive, and it must come back byte-identical.
+
+`docs/proof/memory-bank-recall.json`: a process that wrote nothing read back 5/5
+commitments with their question refs, and a nonexistent engine raises rather than
+returning `[]`.
+
+**The Phase 3 consistency result survives the move** (`consistency-followup-drift.json`):
+commitments loaded from Memory Bank, matched by meaning where id matching finds zero,
+corpus drift planted, `verdict=contradiction`, redrafted under the commitment,
+`constrained=true`, `needs_human=true`, fixture removed.
+
+### SSE: the fallback has to arm itself
+
+Work happens in dispatcher instances; the browser is connected to a control-plane
+instance. So events are learned from Firestore — a snapshot listener as primary, a poller
+as fallback. **The poller is armed on a staleness timer, not on an exception**, because the
+failure that actually happens is a listener that stops delivering while reporting nothing;
+a fallback wired to an error handler would sit idle through exactly that. Tested with the
+listener disabled, silent, and raising, plus a case asserting it does *not* engage when
+events are flowing.
+
+Found while testing: the staleness check sat behind a fixed 1s queue wait, so any window
+shorter than a second was never evaluated on time. The tick is now derived from the window.
+
+### Exit criteria
+
+| # | Criterion | Result |
+|---|---|---|
+| 1 | Review driven intake → delivered by Pub/Sub, with a message trace | **PASS** — 7 messages, `async-review-trace.json` |
+| 2 | The 22-day-old review resumes with full context | **PARTIAL** — cross-session Memory Bank recall proven (5/5) and the consistency result proven against the 22-day-old review; a *resume* of an interrupted run of that review is not yet captured as its own artefact |
+| 3 | Round-2 consistency survives the Memory Bank move | **PASS** — `consistency-followup-drift.json` |
+| 4 | Duplicate delivery = exactly one transition | **PASS** — 7/7 suppressed live, plus the handler-call-count test |
+| 5 | Dispatcher killed mid-run resumes without loss | **PASS at the claim level** — lease takeover is unit-tested (`test_a_dead_worker_does_not_park_the_work_forever`); not yet exercised by killing a live process |
+| 6 | Exhausted retries land in the DLQ with an `audit_event` | **PASS in code and tests**; the topic exists; not yet triggered live |
+| 7 | SSE survives 60s idle; fallback engages when the listener is *disabled* | **PASS** — three fallback tests, including the silent-listener case |
+| 8 | Human approval pauses and resumes | **PARTIAL** — the pause is implemented (`assemble_round` → `AWAITING_HUMAN`, no publish) and the resume path is tested; the 24-question slice produced no answer needing a human, so it was not exercised live |
+| 9 | The fourth failure-impersonating-empty | **PASS** — found in live code, plus a fifth |
+| 10 | ADR-0005 written, protocol re-frozen, `generated.ts` regenerated | **PASS** |
+| 11 | `make check` green, layering holds, everything pushed | **PASS** — 426 tests |
+| 12 | Cumulative spend stated | **PASS** — see below |
+
+### Not done, and named
+
+- **Timers (Cloud Tasks).** Not built. The brief named it first to cut if the phase ran
+  long, and it did. `WorkKind.TIMER_FIRED` and its payload model already exist in the
+  frozen protocol, so adding the scheduler is additive.
+- **Live crash and DLQ drills.** Both are proven in unit tests against the real code paths
+  and neither has been triggered against a running Cloud Run instance, because the
+  dispatcher is not deployed until Phase 5. Recorded as partial rather than claimed.
+- **A live approval beat.** Same reason: no answer in the 24-question slice needed a human.
+
+### Cost
+
+The Phase 4 runs are small — a 24-question review is roughly a tenth of the 312-question
+run's $0.141, and the Memory Bank and Pub/Sub calls are fractions of a cent. Cumulative
+spend across every phase remains under **$5** of the $150 credit.
+
+### State right now
+
+**Phase 4 is substantially complete**: the transport is real, the idempotency is proven
+live, Memory Bank is canonical, and the Phase 3 consistency beat survives the move. Three
+criteria are partial and each is named above with the reason — all three become
+straightforward once the dispatcher is deployed in Phase 5, because each needs a running
+instance to kill, throttle, or pause.
+
+**Carried into Phase 5:** deploy the dispatcher and control plane to Cloud Run, attach the
+Eventarc push subscription to `/pubsub/push` (the endpoint and its ack decision table are
+already written and unit-tested), move the fleet onto Agent Runtime behind the existing
+`FleetRunner` seam, and Agent Gateway. Memory Bank is scoped to the Phase 0 probe engine
+(`reasoningEngines/8598754324522205184`); moving to the deployed fleet engine is a
+migration, not a redeploy, because memories are scoped per engine.
