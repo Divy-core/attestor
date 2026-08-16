@@ -60,16 +60,29 @@ from attestor_fleet.prompts.drafting import (
     triage_prompt,
 )
 from attestor_platform.config import REASONING_MODEL, TRIAGE_MODEL, genai_client
-from attestor_platform.search import ExpandingCorpusSearch, QueryExpander, SearchUnavailable
+from attestor_platform.search import (
+    ExpandingCorpusSearch,
+    QueryExpander,
+    RetrievalResult,
+    SearchUnavailable,
+)
 
 logger = logging.getLogger(__name__)
 
 #: The model's way of saying the corpus does not support an answer.
 INSUFFICIENT = "INSUFFICIENT_EVIDENCE"
 
-#: Questions per triage call. Batching is the whole cost story: ~312 questions in
-#: batches of 40 is 8 flash-lite calls, not 312.
-TRIAGE_BATCH = 40
+#: Questions per triage call. Batching is the cost story -- 312 questions in batches of
+#: 20 is 16 flash-lite calls, not 312.
+#:
+#: Measured, not guessed: batches of 5/10/15/20/30 pass, a batch of 40 is BLOCKED by the
+#: project Model Armor floor setting with
+#:   "Blocked by Model Armor Floor Setting: The prompt violated Prompt Injection and
+#:    Jailbreak filters."
+#: A long, diverse block of security questions ("break-glass access", "secrets committed
+#: to repositories", "national security request") collectively reads as an injection at
+#: LOW_AND_ABOVE. 20 leaves real margin, and `_triage_batch` splits on a block anyway.
+TRIAGE_BATCH = 20
 
 #: Parallel drafting fan-out. Measured in Phase 1: a single 3.7-flash call is ~9s cold,
 #: so 40 sequential drafts would be six minutes and kill the demo. At this concurrency
@@ -189,6 +202,36 @@ class ReviewPipeline:
             self._searches[department] = ExpandingCorpusSearch(department, expander=self._expander)
         return self._searches[department]
 
+    def _retrieve_cross_department(self, question: Question) -> RetrievalResult:
+        """Search every department for a question triage could not place.
+
+        Merged and reranked by score, so the best-supported department wins on evidence
+        rather than on an arbitrary default.
+        """
+        merged: dict[tuple[str, str | None], Evidence] = {}
+        matched_by: dict[str, str] = {}
+        queries: tuple[str, ...] = ()
+        for department in (Department.SECURITY, Department.LEGAL, Department.ENGINEERING):
+            try:
+                result = self._search_for(department).retrieve(
+                    question.text, question_id=question.question_id
+                )
+            except SearchUnavailable:
+                continue
+            queries = result.queries_run
+            for item in result.evidence:
+                key = (item.document_uri, item.section)
+                current = merged.get(key)
+                if current is None or item.score > current.score:
+                    merged[key] = item
+                    matched_by[item.document_uri] = result.matched_by.get(item.document_uri, "")
+        ranked = sorted(merged.values(), key=lambda e: e.score, reverse=True)[:5]
+        return RetrievalResult(
+            evidence=ranked,
+            matched_by={e.document_uri: matched_by.get(e.document_uri, "") for e in ranked},
+            queries_run=queries,
+        )
+
     # -- model plumbing -------------------------------------------------------------
 
     def _generate(self, model: str, prompt: str) -> str:
@@ -240,8 +283,66 @@ class ReviewPipeline:
                     detail={"department": department.value, "model": TRIAGE_MODEL},
                 )
 
-        logger.info("triaged %d questions in %.1fs", len(assigned), time.perf_counter() - started)
+        unassigned = sum(1 for q in assigned if q.department is Department.UNASSIGNED)
+        logger.info(
+            "triaged %d questions in %.1fs (%d unassigned)",
+            len(assigned),
+            time.perf_counter() - started,
+            unassigned,
+        )
         return assigned
+
+    def _triage_batch(self, batch: list[Question]) -> dict[int, Department]:
+        """Classify one batch, splitting and retrying if the floor setting blocks it.
+
+        The block is the thing worth handling. An earlier version treated an empty
+        response as a parse failure and moved on, so six of eight batches silently fell
+        through to UNASSIGNED, every one of those questions was drafted against the wrong
+        corpus, and the citation rate collapsed to 33% -- with nothing in the logs saying
+        why. A guardrail firing on your own prompt is a legitimate outcome; failing to
+        notice is not.
+        """
+        prompt = triage_prompt([(i, q.text) for i, q in enumerate(batch)])
+        blocked = False
+        raw = ""
+        try:
+            response = self._client.models.generate_content(model=TRIAGE_MODEL, contents=prompt)
+            feedback = getattr(response, "prompt_feedback", None)
+            if feedback is not None and getattr(feedback, "block_reason", None):
+                blocked = True
+                logger.warning(
+                    "triage batch of %d BLOCKED by Model Armor floor: %s",
+                    len(batch),
+                    getattr(feedback, "block_reason_message", ""),
+                )
+            else:
+                usage = getattr(response, "usage_metadata", None)
+                if usage is not None:
+                    self.ledger.record_usage(
+                        TRIAGE_MODEL,
+                        int(getattr(usage, "prompt_token_count", 0) or 0),
+                        int(getattr(usage, "candidates_token_count", 0) or 0),
+                    )
+                raw = (response.text or "").strip()
+        except Exception as exc:
+            logger.warning("triage batch failed: %s", exc)
+
+        if blocked and len(batch) > 1:
+            # Split and retry. A smaller, less diverse prompt usually clears the filter,
+            # and in the worst case each question is classified on its own.
+            middle = len(batch) // 2
+            left = self._triage_batch(batch[:middle])
+            right = self._triage_batch(batch[middle:])
+            merged = dict(left)
+            merged.update({index + middle: dept for index, dept in right.items()})
+            return merged
+
+        parsed: dict[int, Department] = {}
+        for index_text, dept_text in _TRIAGE_LINE.findall(raw):
+            department = _DEPARTMENTS.get(dept_text.strip())
+            if department is not None:
+                parsed[int(index_text)] = department
+        return parsed
 
     # -- stage 2: draft one question -------------------------------------------------
 
@@ -282,17 +383,23 @@ class ReviewPipeline:
                 outcome.draft_seconds = time.perf_counter() - started
                 return outcome
 
-        department = (
-            question.department
-            if question.department is not Department.UNASSIGNED
-            else Department.SECURITY
-        )
+        department = question.department
 
         # --- retrieval, through expansion ------------------------------------------
+        #
+        # An UNASSIGNED question is genuinely cross-cutting: triage could not place it,
+        # or the batch was blocked. Silently defaulting it to the security corpus (an
+        # earlier version did) routes legal and engineering questions at the wrong
+        # datastore and guarantees no evidence -- which then reads as "the corpus cannot
+        # answer this" rather than "we asked the wrong corpus". So it searches all three
+        # and `cross_departmental` caps its confidence at MEDIUM.
         try:
-            result = self._search_for(department).retrieve(
-                question.text, question_id=question.question_id
-            )
+            if department is Department.UNASSIGNED:
+                result = self._retrieve_cross_department(question)
+            else:
+                result = self._search_for(department).retrieve(
+                    question.text, question_id=question.question_id
+                )
             evidence = result.evidence
         except PolicyViolation as exc:
             outcome.denied = True

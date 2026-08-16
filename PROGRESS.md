@@ -643,3 +643,138 @@ existing: 43
 The "unchanged" on the review date matters: an earlier version re-dated it on every run,
 which would have silently turned the 22-day-old review into a 0-day-old one the first
 time anyone re-seeded before recording the demo.
+
+---
+
+## Phase 3 — The Fleet (Days 5–6, 18–19 Aug 2026) — IN PROGRESS
+
+> **Session note.** This section was written mid-phase, after a session cut off before
+> it could be recorded. If you are picking this up cold, read the "state right now"
+> block at the end of this section first.
+
+### Section C — retrieval, the gate
+
+`make recall` is a required deliverable and it passes.
+
+| | recall@5 |
+|---|---|
+| Raw question text (baseline) | **90%** |
+| Expanded queries | **95%** |
+| Gate | ≥85% — **PASS** |
+
+63 hand-labelled pairs in `evals/retrieval_recall.json` across all three departments,
+deliberately including the awkward cases: bare abbreviations (`RTO`, `MFA`, `CMEK`,
+`SBOM`, `SDLC`) and exact-phrase questions. Proof in `docs/proof/retrieval-recall.md`.
+
+**Expansion is heuristic, not model-driven — a measured decision.**
+`packages/attestor-platform/src/attestor_platform/search/expansion.py` does three things,
+all deterministic: strips interrogative framing, expands a hand-curated abbreviation map,
+and extracts framework control IDs. That alone moved recall from 90% to 95%. A model call
+per question would add ~312 flash-lite calls per run and one more failure mode for no
+demonstrated benefit, so `QueryExpander(use_model=False)` is the default. The model path
+remains available for tuning if the corpus grows.
+
+Retrieval searches every variant, dedupes by `(document_uri, section)` keeping the **best**
+score — so a document matched weakly by three variants cannot outrank one matched strongly
+once — and records which variant found each document, for the trace and for debugging
+recall regressions.
+
+**A real bug this exposed.** `CorpusSearch` caught every `GoogleAPIError` and returned
+`[]`, which is indistinguishable from "the corpus has no answer". Under burst load
+Discovery Engine returns 500/429, so a throttled run silently marked everything
+`FLAGGED_NO_EVIDENCE` — the system claiming it has no security policy when search was
+merely rate-limited. It also corrupted a measurement: a 6-worker run reported **56%**
+recall when the true figure was 95%. Now retries transient failures with backoff and
+raises `SearchUnavailable` otherwise. **A failure must never impersonate an empty result.**
+
+### Section D — what is built
+
+| Module | State |
+|---|---|
+| `pipeline.py` | Triage → parallel drafting (concurrency 8) → assemble |
+| `agents/intake.py` | XLSX → `Question` records, deterministic parse |
+| `callbacks/guard.py` | Armor on 3 surfaces + deny/ask/allow tool interceptor |
+| `callbacks/budget.py` | Turn/token/cost ceilings, thread-safe |
+| `callbacks/audit.py` | Append-only sink behind a Protocol |
+| `prompts/` | Byte-stable static prefixes |
+| `orchestrator.py` | **NOT YET BUILT** |
+| `skills/` | **NOT YET BUILT** |
+
+XLSX is parsed deterministically rather than by a model: a spreadsheet has structure, and
+asking a model to read cells it can already read exactly adds cost, latency, and
+transcription risk for nothing. The multimodal path is reserved for PDF/DOCX/images.
+
+### The first 312-question run — three defects found
+
+The run completed, and finding these is exactly why the exit criterion is a full run
+rather than a spot check.
+
+| Metric | First run |
+|---|---|
+| questions | 312 |
+| with_citation | 104 (**33%**) — target ≥90% |
+| flagged_no_evidence | 181 |
+| armor_blocked | 38 |
+| by department | security 29, legal 35, engineering 16, **unassigned 232** |
+| total wall-clock | 322.7s |
+| cost | $0.034 |
+
+**Defect 1 — my own prompts were blocked by my own guardrail.** 232 of 312 questions came
+back `unassigned` because six of eight triage batches returned empty. The cause was not a
+parse failure:
+
+```
+block_reason: MODEL_ARMOR
+'Blocked by Model Armor Floor Setting: The prompt violated Prompt Injection and
+ Jailbreak filters.'
+```
+
+The **project-level floor setting** intercepts every Vertex AI call, including Attestor's
+own. A batch of 40 diverse security questions — "break-glass access", "secrets committed
+to repositories", "national security request" — collectively reads as an injection at
+`LOW_AND_ABOVE`. Measured boundary: batches of 5/10/15/20/30 pass, 40 blocks.
+
+Two fixes, and the second matters more:
+- `TRIAGE_BATCH` 40 → 20, with real margin.
+- `_triage_batch` now **detects the block and splits the batch recursively**. The earlier
+  code treated an empty response as a parse failure and moved on, so the failure was
+  invisible in the logs. A guardrail firing on your own prompt is a legitimate outcome;
+  failing to notice is not.
+
+**Defect 2 — `unassigned` silently routed to the security corpus.** Every one of those 232
+questions was drafted against the wrong datastore, guaranteeing no evidence — which then
+reads as "the corpus cannot answer this" rather than "we asked the wrong corpus". Now an
+unassigned question searches **all three** departments, merged and reranked by score, and
+`cross_departmental` caps its confidence at MEDIUM.
+
+**Defect 3 — Model Armor false positives on security vocabulary.** 38 questions were
+blocked or quarantined, almost all benign: "Do you offer customer-managed encryption
+keys?", "Do you operate active-active failover between regions?". Two calibration changes,
+each verified against the real attack:
+
+| Setting | Before | After | Rationale |
+|---|---|---|---|
+| RAI `DANGEROUS` | `LOW_AND_ABOVE` | `HIGH` | Security questions legitimately discuss dangerous-sounding topics |
+| PI/jailbreak (floor **and** template) | `LOW_AND_ABOVE` | `MEDIUM_AND_ABOVE` | `LOW` fires on ordinary security questions |
+
+Verified after the change — **all three attacks still DENY**: the real Q47 payload, a
+classic `"Ignore all previous instructions"`, and a DAN-style jailbreak. `inspectAndBlock`
+remains `true`; the floor is still enforcing, just calibrated for this domain.
+
+**Residual false positives, stated rather than hidden.** Three benign questions still trip
+prompt injection at `MEDIUM_AND_ABOVE`: "Describe your break-glass access procedure",
+"How many secrets have been committed to your repositories", "Provide the name and contact
+details of your primary security contact". That is ~1% of 312. They are **quarantined and
+routed to a human**, which is the safe direction — but it is a false positive, not a
+feature, and raising to `HIGH` was not attempted because that risks the real injection
+passing. Five diagnose-fix cycles were spent on this calibration; per the discipline rule
+I stopped and recorded it rather than continuing to tune.
+
+### State right now
+
+- Re-run of all 312 questions with the three fixes is **in flight**; numbers not yet in.
+- `docs/proof/run-clean.json` and `audit-chain-clean.json` currently hold the **first**
+  (defective) run. They are overwritten by the re-run.
+- Not yet done: `orchestrator.py`, `skills/`, the injected-questionnaire run, the
+  follow-up/consistency run, the tool-poisoning test, the cross-department denial test,
+  and the ADR for the deterministic-pipeline decision.
