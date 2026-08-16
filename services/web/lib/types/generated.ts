@@ -20,6 +20,7 @@ export type WorkEnvelope = {
   run_id: string;
   round_id?: string | null;
   question_id?: string | null;
+  partition?: string | null;
   kind: WorkKind;
   payload?: Record<string, unknown>;
 };

@@ -251,3 +251,61 @@ class TestDedupKeyStability:
             question_id="b" * 16,
         )
         assert first.dedup_key != other.dedup_key
+
+
+class TestPartitionedDedup:
+    """ADR-0005. The bug this prevents is invisible when it happens.
+
+    Drafting is partitioned by department, so three messages of one round share
+    `review_id`, `round_id`, a null `question_id`, and `kind`. Before `partition` joined
+    the key they produced ONE key, the dispatcher acked two of the three as redeliveries,
+    and two thirds of the drafting work disappeared with no exception, no dead letter and
+    no retry -- just a smaller number at the end of the run.
+    """
+
+    @staticmethod
+    def _draft(department: str | None, **overrides: object) -> WorkEnvelope:
+        kwargs: dict[str, object] = {
+            "message_id": f"m-{department}",
+            "review_id": "rev-acme-2026-q3",
+            "run_id": "run-1",
+            "kind": WorkKind.DRAFT_ANSWER,
+            "round_id": "rnd-1",
+            "partition": department,
+        }
+        kwargs.update(overrides)
+        return WorkEnvelope.for_work(**kwargs)  # type: ignore[arg-type]
+
+    def test_department_partitions_do_not_collide(self) -> None:
+        keys = {d: self._draft(d).dedup_key for d in ("security", "legal", "engineering")}
+        assert len(set(keys.values())) == 3, keys
+
+    def test_a_redelivered_partition_still_collides(self) -> None:
+        """The other half of the contract, and the easy one to break while fixing the
+        first: a retry of ONE partition must still be recognised as the same work."""
+        first = self._draft("security")
+        retry = self._draft("security", message_id="m-retry", run_id="run-9", attempt=4)
+        assert first.dedup_key == retry.dedup_key
+
+    def test_partition_is_optional_and_defaults_to_none(self) -> None:
+        """Unpartitioned kinds -- intake, assemble, close -- publish exactly as before."""
+        envelope = WorkEnvelope.for_work(
+            message_id="m1",
+            review_id="rev1",
+            run_id="runA",
+            kind=WorkKind.ASSEMBLE_ROUND,
+            round_id="r1",
+        )
+        assert envelope.partition is None
+
+    def test_partitioned_and_unpartitioned_differ(self) -> None:
+        """A `None` partition must not hash the same as the literal string 'None'."""
+        unpartitioned = self._draft(None)
+        partitioned = self._draft("none")
+        assert unpartitioned.dedup_key != partitioned.dedup_key
+
+    def test_partition_survives_a_round_trip(self) -> None:
+        original = self._draft("legal")
+        restored = WorkEnvelope.model_validate_json(original.model_dump_json())
+        assert restored.partition == "legal"
+        assert restored.dedup_key == original.dedup_key

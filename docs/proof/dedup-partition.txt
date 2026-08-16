@@ -1,0 +1,17 @@
+ADR-0005 -- dedup key collision across department partitions
+==================================================================
+
+BEFORE (Phase 1 key: review, round, question, kind)
+  security     06cb4c077162efc5
+  legal        06cb4c077162efc5
+  engineering  06cb4c077162efc5
+  distinct keys: 1 of 3   -> two partitions acked as redeliveries, work lost
+
+AFTER (partition joins the key)
+  security     33cf344c5b5a3e78
+  legal        df542fe0d61adaa3
+  engineering  a7bafa8fe554dd7f
+  distinct keys: 3 of 3
+
+redelivery of the security partition, different run_id, attempt 4:
+  33cf344c5b5a3e78   matches original: True

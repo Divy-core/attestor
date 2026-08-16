@@ -115,7 +115,8 @@ PAYLOAD_MODELS: dict[WorkKind, type[BaseModel]] = {
 class WorkEnvelope(BaseModel):
     """The wire contract for a unit of asynchronous work.
 
-    FROZEN after Phase 1. Both the dispatcher and the control plane depend on it.
+    FROZEN after Phase 1, amended once in Phase 4 (`partition`, ADR-0005), re-frozen.
+    Both the dispatcher and the control plane depend on it.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -136,6 +137,17 @@ class WorkEnvelope(BaseModel):
     run_id: str
     round_id: str | None = None
     question_id: ContentId | None = None
+    #: Which slice of a stage this message covers, when a stage is split across several
+    #: messages that share every other correlation field. Department for `draft_answer`,
+    #: batch index for `triage_questions`, wave number for a retry.
+    #:
+    #: ADDED IN PHASE 4 (ADR-0005), and it fixes a real bug rather than adding a feature.
+    #: Drafting is partitioned by department, so three messages of one round share
+    #: `review_id`, `round_id`, a null `question_id`, and `kind` -- and therefore collided
+    #: on one dedup key. The dispatcher would have acked two of the three partitions as
+    #: redeliveries and silently dropped two thirds of the drafting work, which is
+    #: precisely the failure idempotency exists to prevent, caused by idempotency.
+    partition: str | None = None
 
     kind: WorkKind
     #: Kind-specific data. Deliberately open: constraining it here would force a
@@ -152,6 +164,7 @@ class WorkEnvelope(BaseModel):
         kind: WorkKind,
         round_id: str | None = None,
         question_id: str | None = None,
+        partition: str | None = None,
         payload: dict[str, Any] | None = None,
         attempt: int = 1,
     ) -> WorkEnvelope:
@@ -160,11 +173,16 @@ class WorkEnvelope(BaseModel):
         The key deliberately excludes ``run_id``, ``message_id``, ``attempt``, and
         ``occurred_at``. Including any of them would make every retry look like new
         work, which is exactly the bug idempotency exists to prevent.
+
+        It deliberately *includes* ``partition``, because excluding it caused the
+        opposite bug: three department partitions of one round produced one key, and two
+        of the three would have been acked as redeliveries. See ADR-0005.
         """
         dedup_key = make_dedup_key(
             review_id,
             round_id or "-",
             question_id or "-",
+            partition or "-",
             kind.value,
         )
         # Validate the payload here so a malformed publish fails at the call site, with
@@ -190,6 +208,7 @@ class WorkEnvelope(BaseModel):
             run_id=run_id,
             round_id=round_id,
             question_id=question_id,
+            partition=partition,
             kind=kind,
             payload=payload or {},
         )
