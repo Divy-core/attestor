@@ -109,6 +109,7 @@ def report_numbers(report: RunReport, label: str) -> dict[str, object]:
         "total_seconds": round(report.total_seconds, 1),
         "draft_p50_seconds": round(report.latency_percentile(50), 2),
         "draft_p95_seconds": round(report.latency_percentile(95), 2),
+        "achieved_concurrency": round(report.achieved_concurrency, 2),
         "by_department": {k: by_department[k] for k in sorted(by_department)},
         "budget": report.budget,
     }
@@ -222,6 +223,7 @@ def main() -> int:
         "total_seconds",
         "draft_p50_seconds",
         "draft_p95_seconds",
+        "achieved_concurrency",
     ):
         print(f"  {key:22} {numbers[key]}")
     print(f"\n  by department        {numbers['by_department']}")

@@ -830,28 +830,199 @@ system for a better-looking metric.
 
 ### Known defect — retrieval scores are rank-derived, not relevance
 
-`CorpusSearch` computes `score = 0.95 - (rank * 0.1)` because Discovery Engine's
+_Recorded when found, **fixed** later in the phase — see "Relevance is now measured" below._
+
+`CorpusSearch` computed `score = 0.95 - (rank * 0.1)` because Discovery Engine's
 standard-edition search surface returns no relevance score (probed directly: no
-`model_scores`, no `relevance_score` in `derived_struct_data`). The consequence is real:
-**the top hit always scores 0.95 regardless of how poor the match is**, so
-`compute_confidence` cannot distinguish a strong match from a weak one and will report
-HIGH confidence on a marginal document.
+`model_scores`, no `relevance_score` in `derived_struct_data`). The consequence was real:
+**the top hit always scored 0.95 regardless of how poor the match was**, so
+`compute_confidence` could not distinguish a strong match from a weak one.
 
-This does not currently produce wrong answers — the drafter refuses irrelevant evidence
-on its own — but it makes the confidence signal weaker than it looks. Options for Phase 7:
-enable Enterprise edition (which exposes relevance scoring, and requires an engine/app
-serving config), or derive a proxy score from snippet-term overlap. Recorded now rather
-than discovered during the demo.
+---
 
-### State right now
+## Phase 3, second session (Day 7, 20 Aug 2026) — completion
 
-**Done:** query expansion + recall gate (95%), the pipeline, callbacks (guard/budget/
-audit), byte-stable prompts + stability tests, XLSX intake, the corrected 312-run,
-ADR-0002, three Skill Registry artifacts, `PROGRESS.md` current.
+Everything below was built or measured after the section above was written. The order
+follows the plan: the orchestrator and the four verification runs first (pass/fail for
+the phase), then the scoring fix, then the corpus, then the authoritative run.
 
-**Not yet done:** `orchestrator.py`; the injected-questionnaire run (Q47 block +
-`chunk_index`, run continues on the other 311); the follow-up/consistency run
-(`verdict=CONTRADICTS`, `constrained=true`); the deliberate tool-poisoning test; the
-cross-department denial test; `SkillToolset` wiring; and the audit-chain reconstruction
-proof. The last full run overwrote `docs/proof/run-clean.json` and
-`audit-chain-clean.json` with the corrected numbers.
+### A defect found before anything else: the triage backstop was dead code
+
+`triage()` parsed the model reply inline and **never called `_triage_batch`**, which is
+the function that detects a Model Armor block and splits the batch recursively. The fix
+from the previous session existed but was unreachable, so a blocked batch still fell
+through to `UNASSIGNED` exactly as before. Wired in; the injected run immediately showed
+it working — six batches blocked, each split `20 → 10 → 5` until it cleared, and
+`unassigned` fell from 23 to 3 over 312 questions.
+
+Worth noting as a class of bug: a fix that is written, tested by eye, and never called is
+indistinguishable from no fix at all. The measurement that caught it was reading the
+function's call sites, not its body.
+
+### `orchestrator.py` — judgement, and nothing the pipeline already does
+
+Three decisions, each a model call, each capped by `BudgetLedger.record_turn()`:
+
+| Decision | What it judges | Fallback when the call fails |
+|---|---|---|
+| `plan` | full review vs follow-up round; whether to check consistency; how many retry waves | follow-up + consistency ON if anything is on file to contradict |
+| `decide_retries` | which failed questions failed *transiently* | retry nothing — an un-retried question is already flagged for a human |
+| `finalise` | release the run, or hold it and widen escalation | hold if a contradiction was found; release an ordinary run |
+
+Every fallback records `decided_by="fallback:<why>"` — `model_error`, `armor_blocked`,
+`empty_reply`, `unparsed_plan` — so a run can be read back and each judgement attributed
+rather than looking model-made when it was not. 23 unit tests cover every failure branch,
+including the floor setting blocking the orchestrator's own prompt.
+
+`build_root_agent()` is the ADK shape Phase 5 deploys: an `LlmAgent` whose three tools
+execute (run the pipeline, retry specific questions, finalise) while the agent judges, with
+the turn cap enforced in `before_model_callback` where the model is actually called. Phase
+3 drives reviews through the `Orchestrator` class, which makes the same three judgements
+from the same prompt text without needing an ADK session.
+
+### Relevance is now measured — ADR-0003
+
+Rank-derived scores replaced with **cosine similarity between the question and the
+retrieved passage**, embedded with `text-embedding-005` at asymmetric query/document task
+types, cached by content hash in one scorer shared across the run.
+
+Measuring it exposed a second, larger problem. Cosine over the **Discovery Engine snippet**
+separated the labelled-correct document from the rest by only 0.05, because the snippet is
+frequently the wrong part of the right document — asked *"How long does a restore from
+backup take?"*, retrieval returns `backup-restore-procedure` with a snippet about backup
+**encryption**. So retrieval became candidate generation, and reranking now happens over
+the documents' own sections, read from the GCS objects Vertex AI Search indexed and split
+on their markdown headings. Sections compete **globally**, not one per document: asked
+about on-premises deployment, the section that answers ("no single-tenant option, no
+customer-VPC option") lost to its own document's opening section by 0.006 and was never
+seen by the drafter.
+
+| Over the 63 labelled pairs | snippet cosine | section rerank |
+|---|---|---|
+| top hit is the labelled document | 47 / 60 | **55 / 60** |
+| median relevant passage | 0.653 | 0.691 |
+| median other retrieved passage | 0.601 | 0.609 |
+| median separation | 0.051 | **0.080** |
+
+Thresholds re-derived from that distribution rather than carried across from a scale that
+meant nothing: `_WEAK_SCORE` 0.55 → **0.54** (p05 of relevant), `_STRONG_MAX_SCORE`
+0.75 → **0.69** (median), `_STRONG_MEAN_SCORE` 0.60 → **0.63** (p25). Full distribution in
+`docs/proof/confidence-calibration.json`.
+
+**Stated plainly:** 0.08 separation is narrow. Same-domain policy prose scores ~0.6
+against almost any security question, so the score discriminates a good match from a poor
+one only modestly. It is a real measurement of a real quantity, which the previous number
+was not, and the thresholds are placed at named percentiles of the measured distribution
+rather than at round numbers.
+
+### Cross-department denial — PASS
+
+`docs/proof/defence-denial.json`. A `SecurityAgent` deliberately wired to the legal corpus
+raises `PolicyViolation`, emits `tool_denied`, and the run continues: the bystander
+question is answered normally in the same pipeline.
+
+The interceptor also moved into the executed retrieval path. It previously lived only in a
+helper no production code called; `_guarded_retrieve` now checks the agent's department
+against **the datastore the search object is actually bound to** before every retrieval.
+In normal operation that is an ALLOW; it earns its place when a mis-scoped drafter, a bad
+deploy, or Phase 4's dispatcher hands an agent the wrong handle.
+
+### Tool poisoning — PASS, after three measurements that each changed the design
+
+`docs/proof/defence-poison.json`. An injection planted inside a real corpus document,
+staged to GCS and indexed into the security datastore, is caught **before it enters model
+context**: `armor_blocked` on `surface=tool_output`, `decision=deny`,
+`filters=['prompt_injection']`, `chunk_index=1`, the poisoned passage dropped, the four
+clean passages kept, no leak in the answer, fixture removed afterwards.
+
+Getting there took three findings, all worth keeping:
+
+1. **The payload in a section of its own was never retrieved.** Section reranking picked
+   the sections that answered the question and ignored the "Reviewer automation notice".
+   The system was safe and the guard was never exercised — a passing system and a
+   worthless test. A competent attacker buries the payload where the answer is, so the
+   fixture now does.
+2. **The same payload was DENIED alone and ALLOWED embedded in ~400 characters of
+   legitimate prose.** Model Armor's score is diluted by surrounding text, so the
+   inspection window decides what is detectable at all:
+
+   | window | chunks | matches |
+   |---|---|---|
+   | 450 tokens | 1 | 0 — attack reaches the model |
+   | 200 tokens | 2 | 1 — blocked |
+   | 120 tokens | 3 | 1 — blocked |
+   | 80 tokens | 5 | 2 — blocked |
+
+   Tool output is now screened in **200-token** windows; ingress keeps 450.
+3. **Screening the concatenated evidence was still too weak**, because in a joined blob
+   the payload shares every window with other passages' legitimate text. Evidence is now
+   screened **passage by passage, concurrently** — which also means a poisoned document
+   costs the question one citation rather than all five, and the `armor_blocked` event
+   names the document and section that need cleaning.
+
+This is the guardrail finding of the phase: **a filter's sensitivity is a function of how
+much legitimate text shares its window with the attack.** A single call on a long document
+is not a weaker version of the same defence; it is a different and much worse one.
+
+### Follow-up consistency — ADR-0004
+
+The seeded round-2 contradiction invitation shares almost no words with the round-1
+question and has a completely different content-derived id. **ID matching found nothing,
+so the consistency check never ran.** Commitments are now also matched by embedding
+similarity, at a threshold measured over the 40 follow-up questions × 5 commitments: every
+genuine pairing scored 0.633–0.710, the first false pairing 0.604, so
+`COMMITMENT_MATCH_SCORE = 0.62`.
+
+Detection alone was also not enough. A contradicted draft is now **redrafted** with the
+commitment as a binding constraint and the rejected draft included, then re-checked —
+once, never in a loop.
+
+Two live results, both recorded:
+
+**Natural** (`consistency-followup-natural.json`) — the commitment is matched by meaning
+where id matching finds **zero**, and the first draft is already correct, so the verdict is
+`NO_CONTRADICTION` and nothing is constrained. Reported as it happened. The literal exit
+criterion asked for `verdict=CONTRADICTS` here; producing one would have meant weakening
+the corpus until the demo looked better, which is the trade this project does not make.
+
+**Fault injection** (`consistency-followup-drift.json`) — a "Deployment Options Update"
+document is planted in the engineering corpus saying single-tenant, customer-VPC and
+on-premises are now generally available, which is how this failure actually happens:
+documentation moves ahead of what a customer was told in writing. Nothing in the prompt
+asks for a contradiction; the corpus changes underneath the agent.
+
+```
+consistency_checked  pass=initial       verdict=contradiction     constrained=True
+answer_drafted       redraft=True, superseded: "Customers in regulated sectors may
+                     request a customer-VPC or on-premises/self-hosted deployment..."
+consistency_checked  pass=post_redraft  verdict=no_contradiction
+
+final: "As confirmed in the earlier review round, Kestrel Data does not offer
+on-premises, self-hosted, private-cloud, single-tenant, or customer-VPC deployment
+options, and none are on the roadmap."     constrained=True  needs_human=True
+```
+
+### Corpus expansion — 26 → 46 documents
+
+20 documents, derived from the flagged questions grouped by theme rather than guessed at:
+personnel security and training, physical security, endpoint and DLP, network security,
+cloud posture, risk governance, AI governance, asset management, data handling, company
+overview, data subject rights, transfer impact assessment, DPIA register, government
+requests and transparency, litigation history, contract terms, API and integration,
+service operations, cloud exit, data flow and shared responsibility. 27,748 words total.
+
+`data-handling-standard.md` closes a gap the original corpus created by citing a document
+that did not exist — `information-security-policy.md` references "the Data Handling
+Standard (KD-SEC-004)".
+
+**Nothing was written to cover the six deliberate gaps**, and two near-misses were caught:
+"escrowed recovery keys" and "key escrow" would both have been retrievable for the
+source-code-escrow gap question. Both reworded — a different sense of the same word is
+still a retrieval hit. Grep across all 46 documents returns zero hits for every gap term.
+
+**A real seeder defect this exposed.** `import_corpus` skipped the import when the indexed
+document **count** matched, so an edited document was re-uploaded to GCS and never
+re-indexed — search kept answering from the previous text, with a green seed run. The skip
+is now keyed on a content fingerprint stored beside the corpus, with `--force-import` as an
+override. Same lesson as the Phase 2 `error_samples` finding: a status that is derived from
+the wrong field is worse than no status.

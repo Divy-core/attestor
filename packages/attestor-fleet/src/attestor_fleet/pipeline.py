@@ -159,6 +159,18 @@ class RunReport:
     def needs_human(self) -> list[QuestionOutcome]:
         return [o for o in self.outcomes if o.needs_human]
 
+    @property
+    def achieved_concurrency(self) -> float:
+        """Drafting time summed across questions, divided by wall clock.
+
+        The honest way to answer "is the fan-out actually parallel?". A configured
+        `max_workers` proves nothing -- if retrieval serialised on a lock or the API
+        throttled, this lands near 1 and the configuration is a wish.
+        """
+        if self.draft_seconds <= 0:
+            return 0.0
+        return sum(self.draft_latencies) / self.draft_seconds
+
     def latency_percentile(self, percentile: float) -> float:
         """p50/p95 drafting latency, for the demo-readiness decision."""
         if not self.draft_latencies:
