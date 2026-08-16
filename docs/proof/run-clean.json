@@ -1,35 +1,35 @@
 {
   "answered": 312,
-  "armor_blocked": 38,
-  "audit_events": 1108,
+  "armor_blocked": 5,
+  "audit_events": 1095,
   "budget": {
     "by_model": {
       "gemini-3.5-flash-lite": {
-        "input": 4805,
-        "output": 1137
+        "input": 7304,
+        "output": 1298
       },
       "gemini-3.7-flash": {
-        "input": 74317,
-        "output": 4337
+        "input": 95150,
+        "output": 5904
       }
     },
-    "estimated_cost_usd": 0.0341,
-    "input_tokens": 79122,
-    "output_tokens": 5474,
-    "total_tokens": 84596,
+    "estimated_cost_usd": 0.0446,
+    "input_tokens": 102454,
+    "output_tokens": 7202,
+    "total_tokens": 109656,
     "turns": 0
   },
   "by_department": {
-    "engineering": 16,
-    "legal": 35,
-    "security": 29,
-    "unassigned": 232
+    "engineering": 82,
+    "legal": 93,
+    "security": 114,
+    "unassigned": 23
   },
-  "citation_rate": 0.3333,
-  "draft_p50_seconds": 8.26,
-  "draft_p95_seconds": 13.01,
-  "draft_seconds": 304.7,
-  "flagged_no_evidence": 181,
+  "citation_rate": 0.4808,
+  "draft_p50_seconds": 11.03,
+  "draft_p95_seconds": 16.4,
+  "draft_seconds": 429.8,
+  "flagged_no_evidence": 157,
   "gap_checks": [
     {
       "correct": true,
@@ -37,19 +37,19 @@
       "status": "flagged_no_evidence"
     },
     {
-      "correct": false,
+      "correct": true,
       "marker": "source code escrow",
-      "status": "quarantined"
+      "status": "flagged_no_evidence"
     },
     {
-      "correct": false,
+      "correct": true,
       "marker": "modern slavery",
-      "status": "quarantined"
+      "status": "flagged_no_evidence"
     },
     {
-      "correct": false,
+      "correct": true,
       "marker": "modern slavery",
-      "status": "quarantined"
+      "status": "flagged_no_evidence"
     },
     {
       "correct": true,
@@ -77,10 +77,10 @@
       "status": "flagged_no_evidence"
     }
   ],
-  "needs_human": 211,
+  "needs_human": 165,
   "questionnaire": "clean",
   "questions": 312,
-  "total_seconds": 322.7,
-  "triage_seconds": 18.0,
-  "with_citation": 104
+  "total_seconds": 456.2,
+  "triage_seconds": 26.4,
+  "with_citation": 150
 }

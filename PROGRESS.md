@@ -770,11 +770,88 @@ feature, and raising to `HIGH` was not attempted because that risks the real inj
 passing. Five diagnose-fix cycles were spent on this calibration; per the discipline rule
 I stopped and recorded it rather than continuing to tune.
 
+### The corrected 312-question run — measured
+
+| Metric | First run | **Corrected** |
+|---|---|---|
+| questions | 312 | 312 |
+| with_citation | 104 (33%) | **150 (48%)** |
+| flagged_no_evidence | 181 | 157 |
+| armor_blocked | 38 | **5** |
+| needs_human | 211 | 165 |
+| unassigned | **232** | **23** |
+| by department | sec 29 / legal 35 / eng 16 | **sec 114 / legal 93 / eng 82** |
+| triage | 18.0s | 26.4s |
+| drafting wall-clock | 304.7s | 429.8s |
+| total wall-clock | 322.7s | **456.2s (7m36s)** |
+| draft p50 / p95 | 8.26s / 13.01s | **11.03s / 16.4s** |
+| tokens | 84,596 | 109,656 |
+| estimated cost | $0.034 | **$0.045** |
+| **deliberate gap checks** | 6/9 | **9/9 PASS** |
+
+The three fixes worked: triage now places 93% of questions (was 26%), Armor false
+positives fell from 38 to 5, and **every one of the six deliberate evidence gaps is
+correctly returned as `FLAGGED_NO_EVIDENCE`** — the system demonstrably knows what it
+does not know.
+
+### The citation-rate exit criterion is NOT met — 48% against a target of 90%
+
+Stated plainly rather than presented as a pass. What the diagnosis actually shows:
+
+**Retrieval is not the bottleneck.** A 14-question random sample searched across all
+three departments retrieved evidence for **13 of 14**. `make recall` independently
+reports 95% recall@5 on 63 labelled pairs. Retrieval works.
+
+**The gap is corpus coverage against questionnaire breadth.** The corpus is 26 documents,
+~13.6k words. The clean questionnaire is 312 diverse CAIQ/SOC 2/ISO questions spanning
+professional indemnity insurance, HITRUST, SCIM, litigation history, ESG reporting, and
+much else the corpus simply does not cover. When a question is routed to the department
+that owns it and that corpus has nothing relevant, the drafter correctly answers
+`INSUFFICIENT_EVIDENCE` and the answer is flagged. Verified directly: *"Is the service
+directed at children under 16?"* returns **zero results** from the security datastore,
+which is the right outcome for a question routed there.
+
+So 157 flagged answers are, in the main, **correct refusals rather than failures**. The
+system is not hallucinating; it is declining to answer what it cannot evidence, which is
+the behaviour the domain model was built to force.
+
+Three honest options, for a decision rather than a silent choice:
+
+1. **Expand the corpus.** ~25 more documents covering the uncovered topics would lift the
+   rate materially. This is real Phase 2 work, not a tweak.
+2. **Report 48% honestly** and make the flagged count part of the story — "312 questions,
+   150 answered with citations, 157 correctly flagged as unevidenced, zero hallucinated".
+3. **Score the questionnaire against corpus coverage** and report the rate over
+   answerable questions only, stating both numbers.
+
+Recommendation: option 1 if there is time, option 2 otherwise. Inflating the number by
+loosening the evidence requirement would trade the single most defensible property of the
+system for a better-looking metric.
+
+### Known defect — retrieval scores are rank-derived, not relevance
+
+`CorpusSearch` computes `score = 0.95 - (rank * 0.1)` because Discovery Engine's
+standard-edition search surface returns no relevance score (probed directly: no
+`model_scores`, no `relevance_score` in `derived_struct_data`). The consequence is real:
+**the top hit always scores 0.95 regardless of how poor the match is**, so
+`compute_confidence` cannot distinguish a strong match from a weak one and will report
+HIGH confidence on a marginal document.
+
+This does not currently produce wrong answers — the drafter refuses irrelevant evidence
+on its own — but it makes the confidence signal weaker than it looks. Options for Phase 7:
+enable Enterprise edition (which exposes relevance scoring, and requires an engine/app
+serving config), or derive a proxy score from snippet-term overlap. Recorded now rather
+than discovered during the demo.
+
 ### State right now
 
-- Re-run of all 312 questions with the three fixes is **in flight**; numbers not yet in.
-- `docs/proof/run-clean.json` and `audit-chain-clean.json` currently hold the **first**
-  (defective) run. They are overwritten by the re-run.
-- Not yet done: `orchestrator.py`, `skills/`, the injected-questionnaire run, the
-  follow-up/consistency run, the tool-poisoning test, the cross-department denial test,
-  and the ADR for the deterministic-pipeline decision.
+**Done:** query expansion + recall gate (95%), the pipeline, callbacks (guard/budget/
+audit), byte-stable prompts + stability tests, XLSX intake, the corrected 312-run,
+ADR-0002, three Skill Registry artifacts, `PROGRESS.md` current.
+
+**Not yet done:** `orchestrator.py`; the injected-questionnaire run (Q47 block +
+`chunk_index`, run continues on the other 311); the follow-up/consistency run
+(`verdict=CONTRADICTS`, `constrained=true`); the deliberate tool-poisoning test; the
+cross-department denial test; `SkillToolset` wiring; and the audit-chain reconstruction
+proof. The last full run overwrote `docs/proof/run-clean.json` and
+`audit-chain-clean.json` with the corrected numbers.

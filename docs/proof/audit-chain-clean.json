@@ -3,50 +3,45 @@
     {
       "actor": "TriageAgent",
       "detail": {
-        "department": "unassigned",
+        "department": "security",
         "model": "gemini-3.5-flash-lite"
       },
       "kind": "question_triaged",
-      "question_id": "75ef8e1c63a152e3",
+      "question_id": "4d282c5c0704412a",
       "review_id": "rev-acme-2026-q3",
       "round_id": null,
-      "run_id": "run-1786862928"
+      "run_id": "run-1786877967"
     },
     {
       "actor": "securityAgent",
       "detail": {
-        "count": 5,
+        "count": 1,
         "documents": [
-          "access-control-standard",
-          "information-security-policy",
-          "soc2-control-matrix",
-          "vendor-risk-management-policy",
-          "vulnerability-management-policy"
+          "access-control-standard"
         ],
         "queries": [
-          "Were any exceptions noted in your most recent SOC 2 report?",
-          "Were any exceptions noted in your most recent SOC 2 report SOC 2 Type II audit report trust services criteria"
+          "Are passwords subject to a forced rotation schedule?"
         ]
       },
       "kind": "evidence_retrieved",
-      "question_id": "75ef8e1c63a152e3",
+      "question_id": "4d282c5c0704412a",
       "review_id": "rev-acme-2026-q3",
       "round_id": null,
-      "run_id": "run-1786862928"
+      "run_id": "run-1786877967"
     },
     {
       "actor": "SecurityAgent",
       "detail": {
-        "citation_count": 5,
-        "confidence": "medium",
+        "citation_count": 1,
+        "confidence": "high",
         "status": "drafted"
       },
       "kind": "answer_drafted",
-      "question_id": "75ef8e1c63a152e3",
+      "question_id": "4d282c5c0704412a",
       "review_id": "rev-acme-2026-q3",
       "round_id": null,
-      "run_id": "run-1786862928"
+      "run_id": "run-1786877967"
     }
   ],
-  "question": "Were any exceptions noted in your most recent SOC 2 report?"
+  "question": "Are passwords subject to a forced rotation schedule?"
 }
