@@ -94,6 +94,10 @@ class AnswerStatus(StrEnum):
     #: Model Armor blocked the source question or the drafted answer.
     QUARANTINED = "quarantined"
     APPROVED = "approved"
+    #: A human looked at it and refused it. Added in Phase 4 with the approval gate: an
+    #: answer that has been rejected is neither still pending nor fit to deliver, and
+    #: collapsing it into either would make the approval queue lie.
+    REJECTED = "rejected"
     DELIVERED = "delivered"
 
 

@@ -94,3 +94,55 @@ CONSISTENCY_CHECKED = "consistency_checked"
 ANSWER_ASSEMBLED = "answer_assembled"
 HUMAN_REQUIRED = "human_required"
 RUN_COMPLETED = "run_completed"
+
+
+class FirestoreAuditSink:
+    """Writes the audit trail where the UI and the auditor can read it.
+
+    Phase 3 ran with `NullAuditSink` and reported from memory, which is fine for a
+    harness that prints its own summary. Phase 4 runs the same stages across separate
+    dispatcher instances and separate messages, so "in memory" means "in whichever
+    instance happened to handle that stage" -- the trail has to be durable to exist at
+    all.
+
+    **Never raises.** A failed audit write is logged and the run continues, via
+    `append_safe`. That is a deliberate inversion of the usual rule here: an audit sink
+    that can abort a 12-minute review is a worse outcome than a gap in the trail, and the
+    gap is itself logged. The append-only guarantee is structural in the repository --
+    there is no update and no delete -- so a write that lands can never be edited later.
+    """
+
+    def __init__(self, repository: Any | None = None) -> None:
+        self._repository = repository
+
+    @property
+    def repository(self) -> Any:
+        if self._repository is None:
+            from attestor_platform.firestore import AuditEventRepository
+
+            self._repository = AuditEventRepository()
+        return self._repository
+
+    def write(
+        self,
+        *,
+        kind: str,
+        review_id: str,
+        run_id: str,
+        round_id: str | None = None,
+        question_id: str | None = None,
+        actor: str | None = None,
+        detail: dict[str, Any] | None = None,
+    ) -> str | None:
+        written = self.repository.append_safe(
+            {
+                "kind": kind,
+                "review_id": review_id,
+                "run_id": run_id,
+                "round_id": round_id,
+                "question_id": question_id,
+                "actor": actor,
+                "detail": detail or {},
+            }
+        )
+        return str(written) if written is not None else None

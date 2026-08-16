@@ -12,14 +12,14 @@ than scattered `return`s:
 
 | Situation | Why | Status |
 |---|---|---|
-| Malformed push body / not a `WorkEnvelope` | Retrying identical bytes cannot fix a shape error | **200** + dead-letter |
-| Payload fails its model (`ContractViolation`) | Same: permanent | **200** + dead-letter |
-| `IllegalTransition` | The review is not in a state this work applies to | **200** + dead-letter |
+| Malformed push body | Retrying identical bytes cannot fix a shape error | **200** + DLQ |
+| Payload fails its model | Same: permanent | **200** + DLQ |
+| `IllegalTransition` | The review is not in a state this work applies to | **200** + DLQ |
 | Claim is `DUPLICATE` | The work is already done | **200**, no work |
-| Claim is `HELD` | Another worker has a live lease *right now* | **409** → redeliver |
+| Claim is `HELD` | Another worker holds a live lease | **409** → redeliver |
 | Handler succeeded | | **204** |
 | Handler failed, attempts remain | Transient until proven otherwise | **500** → redeliver |
-| Handler failed, attempts exhausted | Stop burning quota | **200** + dead-letter |
+| Handler failed, attempts exhausted | Stop burning quota | **200** + DLQ |
 
 The two 200s that are not successes matter most. Acking a permanently broken message is
 correct — but only because it is dead-lettered *and* audited on the way out. An ack

@@ -777,6 +777,20 @@ class ReviewPipeline:
 
     # -- stage 3: run -----------------------------------------------------------------
 
+    def draft_many(self, questions: list[Question]) -> list[QuestionOutcome]:
+        """Draft a set of questions with the fan-out intact.
+
+        Extracted from `run` in Phase 4 so the dispatcher can draft **one department's
+        slice** per message (ADR-0005) while keeping the concurrency inside the fleet.
+        That is the whole reason drafting is partitioned by department rather than by
+        question: move the fan-out into Pub/Sub and the measured 7.84-of-8 in-process
+        concurrency becomes a subscription setting instead.
+        """
+        if not questions:
+            return []
+        with ThreadPoolExecutor(max_workers=DRAFT_CONCURRENCY) as pool:
+            return list(pool.map(self.draft, questions))
+
     def run(self, questions: list[Question]) -> RunReport:
         """Triage, then draft in parallel, then assemble the report."""
         started = time.perf_counter()
@@ -787,8 +801,7 @@ class ReviewPipeline:
         report.triage_seconds = time.perf_counter() - triage_started
 
         draft_started = time.perf_counter()
-        with ThreadPoolExecutor(max_workers=DRAFT_CONCURRENCY) as pool:
-            report.outcomes = list(pool.map(self.draft, triaged))
+        report.outcomes = self.draft_many(triaged)
         report.draft_seconds = time.perf_counter() - draft_started
 
         report.draft_latencies = [o.draft_seconds for o in report.outcomes if o.draft_seconds]

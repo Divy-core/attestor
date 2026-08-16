@@ -8,7 +8,9 @@ transfer and count against its request timeout.
 from __future__ import annotations
 
 import logging
+import tempfile
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 from google.cloud import storage  # type: ignore[attr-defined]
 
@@ -73,6 +75,36 @@ class StorageClient:
         blob = self._client.bucket(bucket).blob(name)
         return str(blob.download_as_text(timeout=self._timeout))
 
+    def download_to_file(self, gs_uri: str, destination: str) -> str:
+        """Download binary content to a local path.
+
+        `download_text` cannot be used for a questionnaire: an .xlsx is a zip archive,
+        and decoding it as UTF-8 corrupts it before the parser ever sees it.
+        """
+        bucket, _, name = gs_uri.removeprefix("gs://").partition("/")
+        self._client.bucket(bucket).blob(name).download_to_filename(
+            destination, timeout=self._timeout
+        )
+        return destination
+
     def exists(self, gs_uri: str) -> bool:
         bucket, _, name = gs_uri.removeprefix("gs://").partition("/")
         return bool(self._client.bucket(bucket).blob(name).exists(timeout=self._timeout))
+
+
+def download_to_temp(gs_uri: str, client: StorageClient | None = None) -> Path:
+    """Download an object to a temporary file and return the local path.
+
+    The dispatcher runs on Cloud Run, whose filesystem is an in-memory tmpfs counted
+    against the instance's memory. Questionnaires are hundreds of kilobytes, so this is
+    fine -- recorded because it would not be for a 200MB artefact.
+    """
+    storage_client = client if client is not None else StorageClient()
+    suffix = Path(gs_uri).suffix or ".bin"
+    # `delete=False` on purpose: the caller parses the file after this returns, so it
+    # must outlive the handle. Cloud Run's filesystem is a per-instance tmpfs that goes
+    # away with the instance, which is the cleanup.
+    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as handle:
+        destination = handle.name
+    storage_client.download_to_file(gs_uri, destination)
+    return Path(destination)
