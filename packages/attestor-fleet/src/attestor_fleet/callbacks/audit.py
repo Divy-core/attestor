@@ -75,6 +75,13 @@ class NullAuditSink:
 
 #: Event kinds. Named constants so a typo cannot silently create a new kind that no
 #: query will ever find.
+#: Orchestrator judgement. These are audit-only kinds: `attestor_core.protocol` is FROZEN
+#: at 14 SSE variants and this does not touch it. The audit trail is allowed to record
+#: more than the wire streams, and "which pipeline was chosen, by what, and why" is
+#: exactly the kind of decision an auditor asks about after the fact.
+PLAN_SELECTED = "plan_selected"
+RETRY_DECIDED = "retry_decided"
+
 QUESTION_PARSED = "question_parsed"
 QUESTION_TRIAGED = "question_triaged"
 QUERY_EXPANDED = "query_expanded"

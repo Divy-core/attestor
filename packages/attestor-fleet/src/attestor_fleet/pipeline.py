@@ -258,18 +258,12 @@ class ReviewPipeline:
 
         for offset in range(0, len(questions), TRIAGE_BATCH):
             batch = questions[offset : offset + TRIAGE_BATCH]
-            prompt = triage_prompt([(i, q.text) for i, q in enumerate(batch)])
-            try:
-                raw = self._generate(TRIAGE_MODEL, prompt)
-            except Exception as exc:
-                logger.warning("triage batch failed, defaulting to unassigned: %s", exc)
-                raw = ""
-
-            parsed: dict[int, Department] = {}
-            for index_text, dept_text in _TRIAGE_LINE.findall(raw):
-                department = _DEPARTMENTS.get(dept_text.strip())
-                if department is not None:
-                    parsed[int(index_text)] = department
+            # `_triage_batch` and not an inline call: it is the path that DETECTS a Model
+            # Armor block and splits, and a backstop that is never invoked is not a
+            # backstop. An earlier revision parsed inline here and left the splitter as
+            # dead code, so a blocked batch fell through to UNASSIGNED exactly as it did
+            # before the fix was written.
+            parsed = self._triage_batch(batch)
 
             for index, question in enumerate(batch):
                 department = parsed.get(index, Department.UNASSIGNED)
