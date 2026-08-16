@@ -14,11 +14,14 @@ from __future__ import annotations
 import html
 import logging
 import re
+import time
+from typing import Any
 
 from google.api_core import exceptions as gexc
 from google.cloud import discoveryengine_v1 as de
 
 from attestor_core.domain import Department, Evidence
+from attestor_core.errors import AttestorError
 from attestor_platform.config import project_id
 
 logger = logging.getLogger(__name__)
@@ -27,6 +30,20 @@ logger = logging.getLogger(__name__)
 SEARCH_LOCATION = "global"
 DEFAULT_TIMEOUT_SECONDS = 30.0
 _MAX_SCORE = 1.0
+
+#: Discovery Engine returns 500/429 under burst load. Retry the transient ones.
+SEARCH_RETRIES = 4
+RETRY_BACKOFF_SECONDS = 1.0
+
+
+class SearchUnavailable(AttestorError):
+    """Corpus search could not be completed.
+
+    Deliberately NOT an empty result. Callers must decide what to do about a retrieval
+    outage; silently treating it as "no evidence exists" is how a throttled datastore
+    turns into a system that claims it has no security policy.
+    """
+
 
 DEPARTMENT_DATASTORES: dict[Department, str] = {
     Department.SECURITY: "attestor-corpus-security",
@@ -86,6 +103,52 @@ class CorpusSearch:
             f"/servingConfigs/default_config"
         )
 
+    def _search_with_retry(self, request: de.SearchRequest) -> Any:
+        """Run the search, retrying transient failures, raising on genuine ones.
+
+        This matters more than it looks. An earlier version caught every
+        `GoogleAPIError` and returned `[]`, which is **indistinguishable from "the
+        corpus has no answer"**. Under burst load Discovery Engine returns 500 INTERNAL
+        and 429 RESOURCE_EXHAUSTED, so a rate-limited run silently produced empty
+        results, every answer became `FLAGGED_NO_EVIDENCE`, and the system would have
+        reported "we have no policy on this" when the truth was "search was throttled".
+
+        It also corrupted a measurement: a recall run against a throttled datastore
+        reported 56% when the real figure was 94%. A failure must never impersonate an
+        empty result.
+
+        Raises:
+            SearchUnavailable: when the search cannot be completed.
+        """
+        last_error: Exception | None = None
+        for attempt in range(SEARCH_RETRIES):
+            try:
+                return self._client.search(request=request, timeout=self._timeout)
+            except (
+                gexc.InternalServerError,
+                gexc.ResourceExhausted,
+                gexc.ServiceUnavailable,
+                gexc.DeadlineExceeded,
+            ) as exc:
+                last_error = exc
+                if attempt < SEARCH_RETRIES - 1:
+                    time.sleep(RETRY_BACKOFF_SECONDS * (2**attempt))
+            except gexc.GoogleAPIError as exc:
+                # Not transient -- a bad request, a missing datastore, a permissions
+                # problem. Retrying will not help and would hide the real cause.
+                last_error = exc
+                break
+
+        logger.error(
+            "corpus search FAILED -- this is NOT an empty corpus",
+            extra={"department": self.department.value, "datastore": self.datastore},
+            exc_info=last_error,
+        )
+        raise SearchUnavailable(
+            f"corpus search failed for department {self.department.value!r} after "
+            f"{SEARCH_RETRIES} attempt(s): {last_error}"
+        ) from last_error
+
     def query(self, text: str, page_size: int = 5) -> list[Evidence]:
         """Search this department's corpus.
 
@@ -111,15 +174,7 @@ class CorpusSearch:
             page_size=page_size,
             content_search_spec=spec,
         )
-        try:
-            response = self._client.search(request=request, timeout=self._timeout)
-        except gexc.GoogleAPIError as exc:
-            logger.warning(
-                "corpus search failed",
-                extra={"department": self.department.value, "datastore": self.datastore},
-                exc_info=exc,
-            )
-            return []
+        response = self._search_with_retry(request)
 
         results: list[Evidence] = []
         for rank, result in enumerate(response.results):

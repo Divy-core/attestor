@@ -4,7 +4,7 @@ SHELL := /bin/bash
 PROJECT_ID ?= $(shell gcloud config get-value project 2>/dev/null)
 REGION     ?= us-central1
 
-.PHONY: help setup lint types test layering check bootstrap deploy teardown fmt types-gen types-check cov
+.PHONY: help setup lint types test layering check bootstrap deploy teardown fmt types-gen types-check cov seed recall
 
 help: ## Show available targets
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | \
@@ -56,6 +56,12 @@ cov: ## Branch coverage on state/ and policy/, which must stay at 100%
 	uv run pytest tests/unit --cov=attestor_core.state --cov=attestor_core.policy --cov-branch --cov-report=term-missing --cov-fail-under=100
 
 check: lint types test layering types-check ## lint + types + test + layering + type drift
+
+seed: ## Seed corpus, datastores, and Firestore fixtures (idempotent)
+	PROJECT_ID=$(PROJECT_ID) REGION=$(REGION) uv run python seed/seed.py
+
+recall: ## Measure retrieval recall@5, raw vs expanded (gate: 0.85)
+	PROJECT_ID=$(PROJECT_ID) uv run python tools/recall_harness.py --no-model --write-proof
 
 bootstrap: ## Enable APIs and create project resources (idempotent)
 	PROJECT_ID=$(PROJECT_ID) REGION=$(REGION) bash infra/bootstrap.sh
