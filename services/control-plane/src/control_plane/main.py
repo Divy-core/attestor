@@ -1,8 +1,14 @@
-"""Attestor control plane — Phase 0 proof of life.
+"""Attestor control plane.
 
-Two endpoints only. The review state machine, uploads, SSE fan-out, and Pub/Sub
-publishing arrive in Phase 4. This module is a composition root: wiring, no domain
-logic. Keep it that way.
+The only service a browser can reach. Uploads (by signed URL), review and round
+creation, the human approval gate, the read endpoints behind the Phase 6 UI, and the SSE
+fan-out all live in `api.py`; this module is the composition root and the health surface.
+
+**No domain logic here, and none in `api.py` either.** Legality belongs to
+`core.state.transition`, escalation to `core.policy`, execution to the dispatcher. The
+rule is not tidiness: anything that drifts into this service is logic that only runs when
+a human is holding an HTTP connection open, and Phase 4 exists to make the system advance
+without one.
 """
 
 from __future__ import annotations
@@ -28,6 +34,12 @@ app = FastAPI(
     docs_url=None,
     redoc_url=None,
 )
+
+# Mounted rather than defined here: `main` stays the composition root, `api` holds the
+# surface, and a test can mount the router without booting the app.
+from control_plane.api import router as api_router  # noqa: E402
+
+app.include_router(api_router)
 
 
 @app.get("/healthz")

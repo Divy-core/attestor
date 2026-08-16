@@ -15,6 +15,7 @@ Two rules hold across this module:
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any
 
@@ -215,6 +216,40 @@ class _AppendOnlyEventRepository(_Repository):
     def for_run(self, run_id: str, limit: int = 500) -> list[dict[str, Any]]:
         query = self._db.collection(self._collection).where("run_id", "==", run_id)
         return [dict(d.to_dict() or {}) for d in query.limit(limit).stream(timeout=self._timeout)]
+
+    def for_run_since(self, run_id: str, since_seq: int, limit: int = 500) -> list[dict[str, Any]]:
+        """Events for one run after a sequence point, oldest first.
+
+        Ordered by `created_at` rather than by a stored sequence: `seq` is assigned by
+        the SSE stream at delivery time, in one place, so that two control-plane
+        instances streaming the same run cannot disagree about numbering.
+        """
+        query = (
+            self._db.collection(self._collection)
+            .where("run_id", "==", run_id)
+            .order_by("created_at")
+        )
+        rows = [dict(d.to_dict() or {}, event_id=d.id) for d in query.stream(timeout=self._timeout)]
+        return rows[since_seq : since_seq + limit]
+
+    def watch_run(self, run_id: str, on_event: Callable[[dict[str, Any]], None]) -> Any:
+        """Attach a Firestore snapshot listener for one run.
+
+        Returns the watch handle so the caller can unsubscribe. The callback fires on a
+        Firestore-owned thread, so the caller is responsible for getting back onto its
+        own loop -- doing that here would couple this repository to asyncio.
+        """
+        query = self._db.collection(self._collection).where("run_id", "==", run_id)
+
+        def _on_snapshot(documents: Any, changes: Any, read_time: Any) -> None:
+            del documents, read_time
+            for change in changes:
+                if change.type.name != "ADDED":
+                    continue
+                snapshot = change.document
+                on_event(dict(snapshot.to_dict() or {}, event_id=snapshot.id))
+
+        return query.on_snapshot(_on_snapshot)
 
 
 class AuditEventRepository(_AppendOnlyEventRepository):
