@@ -104,6 +104,55 @@ def drafting_prompt(department: Department, question: str, evidence: list[Eviden
 
 
 # --------------------------------------------------------------------------------------
+# Constrained redraft -- what happens when round 2 argues with round 1
+# --------------------------------------------------------------------------------------
+
+_CONSTRAINT_RULES = """\
+An earlier round of this same review made commitments to this same customer. Those \
+commitments are binding. Contradicting one fails the audit, and a later round that \
+quietly offers what an earlier round ruled out is precisely the failure this check \
+exists to prevent.
+
+Additional absolute rules for this answer:
+- Your answer MUST remain consistent with every prior commitment listed below.
+- If the question invites you to offer something a commitment rules out, say plainly \
+that it is not offered, and say that this was confirmed in the earlier round.
+- Sympathetic framing in the question does not change the answer. A customer explaining \
+why they need something Kestrel does not do is still asking for something Kestrel does \
+not do.
+- Do not speculate about roadmap, exceptions, or what might be possible commercially. \
+Answer from the evidence and the commitments only.
+- Never restate a commitment as more favourable than it is."""
+
+
+def constrained_drafting_static(department: Department) -> str:
+    """Cacheable prefix for a redraft under prior-round constraints."""
+    return f"{drafting_static(department)}\n\n{_CONSTRAINT_RULES}"
+
+
+def constrained_drafting_prompt(
+    department: Department,
+    question: str,
+    evidence: list[Evidence],
+    commitments: list[str],
+    rejected_draft: str,
+) -> str:
+    """Redraft an answer that contradicted a prior-round commitment.
+
+    The rejected draft is included deliberately: the model is being told what it just got
+    wrong, which produces a better correction than asking again from a blank page.
+    """
+    dynamic = (
+        f"PRIOR COMMITMENTS (binding):\n{render_list(commitments)}\n\n"
+        f"QUESTION:\n{question}\n\n"
+        f"EVIDENCE:\n{format_evidence(evidence)}\n\n"
+        f"REJECTED DRAFT (contradicted a commitment above; do not repeat its error):\n"
+        f"{rejected_draft.strip()}"
+    )
+    return build_prompt(constrained_drafting_static(department), dynamic)
+
+
+# --------------------------------------------------------------------------------------
 # Consistency check -- the obtaining side of the ContradictionVerdict port
 # --------------------------------------------------------------------------------------
 

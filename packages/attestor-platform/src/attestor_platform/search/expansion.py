@@ -288,11 +288,16 @@ class ExpandingCorpusSearch:
         top_k: int = 5,
         per_query: int = 5,
     ) -> RetrievalResult:
-        """Search every variant, dedupe by document, score by relevance, rank.
+        """Search every variant, pool the documents, then rank their SECTIONS.
 
-        Dedupe key is `(document_uri, section)` so the same document surfaced by three
-        variants counts once -- otherwise a document that matches weakly many times would
-        outrank one that matches strongly once.
+        Discovery Engine generates candidates; the section reranker decides. `top_k`
+        therefore counts passages, not documents, and two sections of the same document
+        may both be cited when both are relevant -- which is the ordinary case for a
+        policy document that answers a question in one section and qualifies it in
+        another.
+
+        Candidate documents are deduplicated on `(document_uri, section)` before
+        reranking, so a document surfaced by three variants is expanded once.
 
         Scoring happens **after** the union, and against the ORIGINAL question rather
         than the variant that happened to surface the passage. That matters: a variant is
@@ -321,13 +326,22 @@ class ExpandingCorpusSearch:
         )
 
     def _rerank(self, question: str, pooled: list[Evidence]) -> list[Evidence]:
-        """Score each candidate, preferring its best-matching section to its snippet.
+        """Score every SECTION of every candidate document against the question.
 
-        Discovery Engine picks the snippet; it is often the wrong part of the right
-        document (`search/sections.py` has the measurement). So each candidate is scored
-        against every section of its own document, and the winning section replaces both
-        the score and the cited text. When the document cannot be read, the snippet is
-        scored instead -- degraded, not broken.
+        Discovery Engine picks the snippet, and it is often the wrong part of the right
+        document (`search/sections.py` has the measurement). So each candidate document
+        is expanded into its sections, every section is scored, and the sections compete
+        **globally** rather than one-per-document.
+
+        The global ranking matters as much as the section split. Asked about on-premises
+        deployment, `infrastructure-architecture-overview` scores 0.613 on its opening
+        "Cloud footprint" section and slightly lower on "Tenant isolation" -- which is the
+        section that actually says there is no single-tenant or customer-VPC option. Take
+        one section per document and the answer is lost by 0.01; rank sections globally
+        and both are available to the drafter.
+
+        When a document cannot be read, its snippet is scored instead -- degraded, not
+        broken.
         """
         if self._sections is None:
             scores = self._scorer.score(question, [item.content for item in pooled])
@@ -338,35 +352,27 @@ class ExpandingCorpusSearch:
 
         # One flat list of passages, one embed call, one cache. Section vectors are
         # reused across every question in the run.
+        expanded: list[Evidence] = []
         passages: list[str] = []
-        spans: list[tuple[int, int]] = []
         for item in pooled:
             sections = self._sections.sections_for(item.document_uri)
-            texts = [section.text for section in sections] or [item.content]
-            spans.append((len(passages), len(texts)))
-            passages.extend(texts)
-
-        scores = self._scorer.score(question, passages)
-
-        reranked: list[Evidence] = []
-        for item, (start, count) in zip(pooled, spans, strict=True):
-            window = scores[start : start + count]
-            best = max(range(count), key=lambda i: window[i])
-            sections = self._sections.sections_for(item.document_uri)
-            if sections:
-                section = sections[best]
-                reranked.append(
+            if not sections:
+                expanded.append(item)
+                passages.append(item.content)
+                continue
+            for section in sections:
+                expanded.append(
                     item.model_copy(
-                        update={
-                            "score": window[best],
-                            "content": section.text,
-                            "section": section.heading or None,
-                        }
+                        update={"content": section.text, "section": section.heading or None}
                     )
                 )
-            else:
-                reranked.append(item.model_copy(update={"score": window[best]}))
-        return reranked
+                passages.append(section.text)
+
+        scores = self._scorer.score(question, passages)
+        return [
+            item.model_copy(update={"score": score})
+            for item, score in zip(expanded, scores, strict=True)
+        ]
 
     def retrieve_raw(self, question: str, top_k: int = 5) -> list[Evidence]:
         """Baseline: the raw question, unexpanded. Used only by the recall harness."""

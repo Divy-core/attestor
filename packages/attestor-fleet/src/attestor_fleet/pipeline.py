@@ -22,6 +22,7 @@ import time
 from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
+from typing import Any
 
 from attestor_core.domain import (
     Answer,
@@ -55,6 +56,7 @@ from attestor_fleet.callbacks.budget import BudgetLedger
 from attestor_fleet.callbacks.guard import ArmorGuard, enforce_tool_policy
 from attestor_fleet.prompts.drafting import (
     consistency_prompt,
+    constrained_drafting_prompt,
     drafting_prompt,
     is_hedged,
     triage_prompt,
@@ -94,6 +96,10 @@ TRIAGE_BATCH = 20
 #: so 40 sequential drafts would be six minutes and kill the demo. At this concurrency
 #: it is well under a minute.
 DRAFT_CONCURRENCY = 8
+
+#: Cosine similarity at which a prior-round commitment is treated as relevant to a
+#: question. Measured, not chosen: see `_commitments_for`.
+COMMITMENT_MATCH_SCORE = 0.62
 
 _TRIAGE_LINE = re.compile(r"^\s*(\d+)\s*\|\s*([a-z_]+)\s*$", re.MULTILINE)
 
@@ -199,7 +205,10 @@ class ReviewPipeline:
         #: cache is what makes measured relevance nearly free: a snippet retrieved by
         #: thirty questions is embedded once.
         self._scorer = scorer if scorer is not None else RelevanceScorer()
-        self._client = genai_client()
+        #: Constructed on first use. Building a pipeline must not require credentials --
+        #: the tests construct one to exercise triage parsing and the redraft path with
+        #: no cloud at all, and an eager client makes that impossible.
+        self._model_client: Any | None = None
 
     # -- retrieval ------------------------------------------------------------------
 
@@ -273,6 +282,17 @@ class ReviewPipeline:
         )
 
     # -- model plumbing -------------------------------------------------------------
+
+    @property
+    def _client(self) -> Any:
+        """The Gemini client, built on first use through the one sanctioned factory."""
+        if self._model_client is None:
+            self._model_client = genai_client()
+        return self._model_client
+
+    @_client.setter
+    def _client(self, client: Any) -> None:
+        self._model_client = client
 
     def _generate(self, model: str, prompt: str) -> str:
         response = self._client.models.generate_content(model=model, contents=prompt)
@@ -520,8 +540,50 @@ class ReviewPipeline:
             return outcome
 
         # --- consistency against prior-round commitments -----------------------------
+        #
+        # Detecting a contradiction and shipping it with a warning label is not the
+        # product. The answer that goes to the customer has to honour what the earlier
+        # round committed to, so a contradicted draft is REDRAFTED under the commitment
+        # as a binding constraint and then re-checked. One redraft, never a loop: if the
+        # second attempt still contradicts, the answer is held for a human, which is the
+        # honest outcome rather than grinding the model until it complies.
         verdict, constrained = self._check_consistency(question, text)
+        commitments = self._commitments_for(question)
+
+        if constrained and commitments:
+            try:
+                redraft = self._generate(
+                    REASONING_MODEL,
+                    constrained_drafting_prompt(
+                        department, question.text, evidence, commitments, text
+                    ),
+                )
+            except Exception as exc:
+                logger.warning("constrained redraft failed for %s: %s", question.question_id, exc)
+                redraft = ""
+
+            if redraft and INSUFFICIENT not in redraft:
+                second_verdict, _ = self._check_consistency(question, redraft, redraft=True)
+                self.audit.write(
+                    kind=ANSWER_DRAFTED,
+                    review_id=self.review_id,
+                    run_id=self.run_id,
+                    question_id=question.question_id,
+                    actor=f"{department.value.capitalize()}Agent",
+                    detail={
+                        "redraft": True,
+                        "first_verdict": verdict.value,
+                        "second_verdict": second_verdict.value,
+                        "superseded_text": text[:400],
+                    },
+                )
+                text = redraft
+                verdict = second_verdict
+
         outcome.contradiction = verdict
+        #: True means "we checked AND it changed the answer", which is the claim the demo
+        #: actually makes. It stays true even when the redraft resolves the contradiction
+        #: -- especially then, because that is the moment the constraint did its work.
         outcome.constrained = constrained
 
         # --- confidence, computed never generated -------------------------------------
@@ -541,7 +603,7 @@ class ReviewPipeline:
             confidence=confidence,
             citation_count=len(citations),
             contradiction=verdict,
-            touches_prior_commitment=bool(self._commitments_for(question)),
+            touches_prior_commitment=bool(commitments),
         )
         escalate = requires_human(facts, prior_commitments=len(self.prior_commitments))
 
@@ -572,15 +634,48 @@ class ReviewPipeline:
         )
 
     def _commitments_for(self, question: Question) -> list[str]:
-        """Prior-round commitments matching this question by content-derived id."""
-        return [
+        """Prior-round commitments this question is in the blast radius of.
+
+        Two matchers, because one is not enough and the demo turns on the second.
+
+        **By content-derived id.** A question re-asked in a later round -- even
+        renumbered, recapitalised, or re-lettered -- normalises to the same id, so the
+        earlier commitment is found exactly. That covers the honest re-ask.
+
+        **By meaning.** It does not cover the interesting case. Round 2 of a real review
+        does not re-ask; it reframes. The seeded example is *"Our regulated business unit
+        cannot use multi-tenant SaaS. Please describe the self-hosted or on-premises
+        deployment options available..."* against a round-1 commitment that no such
+        deployment is offered. Those share almost no words and have completely different
+        ids, so id matching finds nothing and the contradiction sails through.
+
+        So commitments are also matched by embedding similarity between the question and
+        the commitment statement. Measured over the 40 follow-up questions x 5
+        commitments: every genuine pairing scored 0.633-0.710 and the first false pairing
+        scored 0.604, so the threshold sits at 0.62. Note the asymmetry of the failure
+        modes -- a false match costs one extra consistency check that returns
+        NO_CONTRADICTION, while a missed match lets round 2 contradict round 1 in front
+        of the customer.
+        """
+        exact = [
             statement
             for question_id, statement in self.prior_commitments
             if question_id == question.question_id
         ]
+        if not self.prior_commitments:
+            return exact
+
+        statements = [statement for _, statement in self.prior_commitments]
+        scores = self._scorer.score(question.text, statements)
+        semantic = [
+            statement
+            for statement, score in zip(statements, scores, strict=True)
+            if score >= COMMITMENT_MATCH_SCORE and statement not in exact
+        ]
+        return exact + semantic
 
     def _check_consistency(
-        self, question: Question, draft: str
+        self, question: Question, draft: str, *, redraft: bool = False
     ) -> tuple[ContradictionVerdict, bool]:
         """Obtain a `ContradictionVerdict` -- the implementing side of the core port.
 
@@ -623,6 +718,7 @@ class ReviewPipeline:
                 "constrained": constrained,
                 "prior_statements": commitments,
                 "justification": raw.splitlines()[1].strip() if len(raw.splitlines()) > 1 else "",
+                "pass": "post_redraft" if redraft else "initial",
             },
         )
         return verdict, constrained
