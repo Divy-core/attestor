@@ -4,7 +4,7 @@ SHELL := /bin/bash
 PROJECT_ID ?= $(shell gcloud config get-value project 2>/dev/null)
 REGION     ?= us-central1
 
-.PHONY: help setup lint types test layering check bootstrap deploy teardown fmt types-gen types-check cov seed recall
+.PHONY: help setup lint types test layering check bootstrap deploy teardown fmt types-gen types-check cov seed recall calibrate run verify verify-denial verify-poison verify-consistency
 
 help: ## Show available targets
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | \
@@ -62,6 +62,26 @@ seed: ## Seed corpus, datastores, and Firestore fixtures (idempotent)
 
 recall: ## Measure retrieval recall@5, raw vs expanded (gate: 0.85)
 	PROJECT_ID=$(PROJECT_ID) uv run python tools/recall_harness.py --no-model --write-proof
+
+calibrate: ## Measure the retrieval-score distribution and derive confidence thresholds
+	PROJECT_ID=$(PROJECT_ID) uv run python tools/calibrate_confidence.py --write-proof
+
+run: ## The authoritative 312-question run (clean questionnaire, orchestrated)
+	PROJECT_ID=$(PROJECT_ID) uv run python tools/run_review.py \
+		--questionnaire clean --orchestrate --write-proof
+
+verify: verify-denial verify-poison verify-consistency ## Every defence proof, in order
+	@echo "all defence verifications passed"
+
+verify-denial: ## SecurityAgent reaching for the legal corpus is refused
+	PROJECT_ID=$(PROJECT_ID) uv run python tools/verify_defences.py --case denial --write-proof
+
+verify-poison: ## Injection planted in a real corpus document is caught before context
+	PROJECT_ID=$(PROJECT_ID) uv run python tools/verify_defences.py --case poison --write-proof
+
+verify-consistency: ## Round 2 cannot contradict round 1, natural and under fault injection
+	PROJECT_ID=$(PROJECT_ID) uv run python tools/verify_consistency.py --write-proof
+	PROJECT_ID=$(PROJECT_ID) uv run python tools/verify_consistency.py --write-proof --inject-drift
 
 bootstrap: ## Enable APIs and create project resources (idempotent)
 	PROJECT_ID=$(PROJECT_ID) REGION=$(REGION) bash infra/bootstrap.sh
