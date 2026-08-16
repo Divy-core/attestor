@@ -24,6 +24,7 @@ from attestor_fleet.agents.intake import parse_xlsx
 from attestor_fleet.callbacks.audit import NullAuditSink
 from attestor_fleet.callbacks.budget import BudgetLedger
 from attestor_fleet.callbacks.guard import ArmorGuard
+from attestor_fleet.orchestrator import ArtifactBrief, Orchestrator
 from attestor_fleet.pipeline import ReviewPipeline, RunReport
 
 ROOT = Path(__file__).parent.parent
@@ -73,6 +74,14 @@ def load_commitments(review_id: str) -> list[tuple[str, str]]:
         return []
 
 
+def _question_text(report: RunReport, question_id: str | None) -> str:
+    """Look up a question's text for the proof file, so a block is readable later."""
+    return next(
+        (o.question.text for o in report.outcomes if o.question.question_id == question_id),
+        "",
+    )
+
+
 def report_numbers(report: RunReport, label: str) -> dict[str, object]:
     total = len(report.outcomes)
     answered = len(report.answered)
@@ -112,6 +121,11 @@ def main() -> int:
     parser.add_argument("--limit", type=int, default=0, help="run only the first N questions")
     parser.add_argument("--review-id", default="rev-acme-2026-q3")
     parser.add_argument("--no-armor", action="store_true", help="skip Model Armor screening")
+    parser.add_argument(
+        "--orchestrate",
+        action="store_true",
+        help="drive the run through the Orchestrator (plan, retry judgement, finalise)",
+    )
     parser.add_argument("--write-proof", action="store_true")
     args = parser.parse_args()
 
@@ -146,8 +160,47 @@ def main() -> int:
     print(f"run_id       : {run_id}")
     print(f"armor        : {'OFF' if args.no_armor else 'ON (ingress + tool output)'}\n")
 
-    report = pipeline.run(questions)
+    orchestration: dict[str, object] | None = None
+    if args.orchestrate:
+        orchestrator = Orchestrator(pipeline, audit=audit)
+        brief = ArtifactBrief(
+            filename=path.name,
+            question_count=len(questions),
+            prior_round_count=1 if commitments else 0,
+            prior_commitment_count=len(commitments),
+        )
+        orchestrated = orchestrator.run(questions, brief)
+        report = orchestrated.report
+        orchestration = {
+            "plan": {
+                "pipeline": orchestrated.plan.pipeline,
+                "check_consistency": orchestrated.plan.check_consistency,
+                "retry_waves": orchestrated.plan.retry_waves,
+                "reason": orchestrated.plan.reason,
+                "decided_by": orchestrated.plan.decided_by,
+            },
+            "retried": orchestrated.retried_question_ids,
+            "recovered": orchestrated.recovered_question_ids,
+            "decision": {
+                "release": orchestrated.decision.release,
+                "widen": orchestrated.decision.widen,
+                "reason": orchestrated.decision.reason,
+                "decided_by": orchestrated.decision.decided_by,
+                "widened": len(orchestrated.decision.widened_question_ids),
+            },
+            "turns": orchestrated.turns,
+        }
+        print("=" * 62)
+        print("ORCHESTRATOR")
+        print("=" * 62)
+        print(json.dumps(orchestration, indent=2))
+        print()
+    else:
+        report = pipeline.run(questions)
+
     numbers = report_numbers(report, args.questionnaire)
+    if orchestration is not None:
+        numbers["orchestration"] = orchestration
 
     print("=" * 62)
     print("MEASURED RESULT")
@@ -221,6 +274,27 @@ def main() -> int:
             if outcome.answer:
                 print(f"    answer      : {outcome.answer.text[:150]}")
 
+    numbers["armor_blocks"] = [
+        {
+            "question_id": e["question_id"],
+            "question": next(
+                (
+                    o.question.text
+                    for o in report.outcomes
+                    if o.question.question_id == e["question_id"]
+                ),
+                "",
+            ),
+            **e["detail"],
+        }
+        for e in audit.events
+        if e["kind"] == "armor_blocked"
+    ]
+    numbers["errors"] = [
+        {"question_id": o.question.question_id, "error": o.error}
+        for o in report.outcomes
+        if o.error
+    ]
     numbers["audit_events"] = len(audit.events)
 
     if args.write_proof:
