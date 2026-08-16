@@ -475,10 +475,18 @@ class ReviewPipeline:
             return outcome
 
         # --- egress screening on retrieved content: the tool-poisoning defence -------
+        #
+        # Passage by passage, not as one blob. Screening the concatenation was measurably
+        # weaker -- the payload shares its window with four other passages' legitimate
+        # prose and the filter score is diluted below threshold -- and it was also
+        # coarse: one poisoned document cost the question every other citation.
         if self.guard is not None and self.screen_tool_output and evidence:
-            joined = "\n\n".join(e.content for e in evidence)
-            screen = self.guard.screen_tool_output(joined)
-            if screen.blocked:
+            screens = self.guard.screen_evidence([e.content for e in evidence])
+            clean: list[Evidence] = []
+            for item, screen in zip(evidence, screens, strict=True):
+                if not screen.blocked:
+                    clean.append(item)
+                    continue
                 outcome.blocked = True
                 self.audit.write(
                     kind=ARMOR_BLOCKED,
@@ -492,11 +500,17 @@ class ReviewPipeline:
                         "matched_filters": list(screen.matched_filters),
                         "chunk_index": screen.chunk_index,
                         "excerpt": screen.excerpt,
+                        # Which passage was poisoned, not merely that one was. This is
+                        # what makes the event actionable: someone has to go and clean
+                        # that document.
+                        "document_uri": item.document_uri,
+                        "document_title": item.document_title,
+                        "section": item.section,
                     },
                 )
-                # Drop the poisoned evidence rather than the question: the corpus is
-                # compromised, not the questionnaire.
-                evidence = []
+            # Drop the poisoned passages, keep the rest: the corpus is partly
+            # compromised, and the question is not at fault at all.
+            evidence = clean
 
         outcome.evidence = evidence
         self.audit.write(

@@ -51,6 +51,25 @@ CHUNK_TOKENS = 450
 #: Overlap between consecutive chunks. An injection straddling a boundary would be
 #: split into two harmless-looking halves without this.
 OVERLAP_TOKENS = 50
+#: Chunk size for screening RETRIEVED CORPUS CONTENT, which is a different problem.
+#:
+#: Measured, and it changed the design. The same injection payload was DENIED when it sat
+#: in a section of its own and ALLOWED when the identical payload was embedded after ~400
+#: characters of legitimate policy prose. The filter score is diluted by the surrounding
+#: text, so the size of the inspection window decides whether the attack is seen at all:
+#:
+#:   450-token chunks -> 1 chunk,  0 matches   (attack reaches the model)
+#:   200-token chunks -> 2 chunks, 1 match     (attack blocked)
+#:   120-token chunks -> 3 chunks, 1 match     (attack blocked)
+#:    80-token chunks -> 5 chunks, 2 matches   (attack blocked)
+#:
+#: An attacker who can write into a corpus will bury the payload inside content that is
+#: worth retrieving -- that is the whole technique -- so tool output is screened in
+#: narrower windows than ingress. The cost is roughly 3 Model Armor calls per question
+#: instead of 1, fanned out concurrently.
+TOOL_OUTPUT_CHUNK_TOKENS = 200
+TOOL_OUTPUT_OVERLAP_TOKENS = 40
+
 #: Rough characters-per-token for English prose. We chunk on whitespace using this
 #: estimate rather than importing a tokenizer: the cost of being wrong is a slightly
 #: smaller chunk, and a tokenizer dependency in the request path is not worth it.
@@ -277,19 +296,26 @@ class ArmorClient:
         *,
         max_concurrency: int = MAX_CONCURRENCY,
         egress: bool = False,
+        chunk_tokens: int = CHUNK_TOKENS,
+        overlap_tokens: int = OVERLAP_TOKENS,
     ) -> LongTextVerdict:
         """Screen text of any length by chunking with overlap and fanning out.
 
         The prompt-injection filter inspects only the first ~512 tokens, so a single
         call on a long document leaves everything past that window unscreened. This
-        chunks at ~450 tokens with ~50 tokens of overlap, screens the chunks
-        concurrently under a bounded semaphore, and aggregates to the strictest verdict.
+        chunks with overlap, screens the chunks concurrently under a bounded semaphore,
+        and aggregates to the strictest verdict.
+
+        Window size is a caller's decision, not a constant, because it decides what is
+        detectable: a payload embedded in legitimate prose is diluted below the filter's
+        threshold in a wide window and caught in a narrow one. See
+        `TOOL_OUTPUT_CHUNK_TOKENS` for the measurement.
 
         Returns:
             The aggregate verdict plus per-chunk detail, so the UI can show which part
             of the document tripped the filter.
         """
-        ranges = chunk_text(text)
+        ranges = chunk_text(text, chunk_tokens=chunk_tokens, overlap_tokens=overlap_tokens)
         if not ranges:
             return LongTextVerdict(verdict=ArmorVerdict())
 

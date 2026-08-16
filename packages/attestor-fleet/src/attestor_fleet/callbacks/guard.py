@@ -17,18 +17,28 @@ two together and records what happened.
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 
 from attestor_core.domain import ArmorDecision, Department, ToolDecision
 from attestor_core.errors import ArmorBlocked, PolicyViolation
 from attestor_core.policy import decide_on_armor_verdict, decide_tool
 from attestor_platform.armor import ArmorClient, LongTextVerdict
+from attestor_platform.armor.client import (
+    TOOL_OUTPUT_CHUNK_TOKENS,
+    TOOL_OUTPUT_OVERLAP_TOKENS,
+)
 
 logger = logging.getLogger(__name__)
 
 #: Excerpt length recorded on a block. The full payload of a blocked document has no
 #: business in an audit log or an SSE event.
 EXCERPT_CHARS = 280
+
+#: Retrieved passages screened in parallel. Five passages screened one after another
+#: would add over a second to every question for no reason -- they are independent.
+EVIDENCE_SCREEN_CONCURRENCY = 5
 
 
 @dataclass(frozen=True)
@@ -80,8 +90,40 @@ class ArmorGuard:
         too: an attacker who can write into the corpus -- a compromised policy doc, a
         malicious PR to an internal wiki -- would otherwise have a direct channel into
         the model's instructions.
+
+        Screened in **narrower windows than ingress**, because this attack is shaped
+        differently: the payload is deliberately buried inside content worth retrieving,
+        and the filter's score is diluted by the legitimate prose around it. The same
+        payload was ALLOWED in a 450-token window and DENIED in a 200-token one. The
+        measurement is in `armor/client.py`.
         """
-        return _outcome_from_long_text(self._armor.screen_long_text(text), "tool_output")
+        return _outcome_from_long_text(
+            self._armor.screen_long_text(
+                text,
+                chunk_tokens=TOOL_OUTPUT_CHUNK_TOKENS,
+                overlap_tokens=TOOL_OUTPUT_OVERLAP_TOKENS,
+            ),
+            "tool_output",
+        )
+
+    def screen_evidence(self, passages: Sequence[str]) -> list[ScreenOutcome]:
+        """Screen each retrieved passage **separately**, concurrently.
+
+        Screening the concatenated evidence was measurably weaker, and the reason is the
+        same dilution effect that drove the window size: in a joined blob the payload
+        shares every window with several other passages' legitimate prose, so even a
+        narrow window rarely isolates it. Screened on its own, the same passage trips the
+        filter.
+
+        Per-passage screening also buys precision. A poisoned document no longer costs
+        the question its other four citations -- only the poisoned passage is dropped,
+        and the audit record can name which document and which section it came from.
+        """
+        if not passages:
+            return []
+        workers = min(len(passages), EVIDENCE_SCREEN_CONCURRENCY)
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            return list(pool.map(self.screen_tool_output, passages))
 
     def screen_answer(self, text: str) -> ScreenOutcome:
         """Egress on the drafted answer, before it leaves the system."""
