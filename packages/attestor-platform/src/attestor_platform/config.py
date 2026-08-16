@@ -46,6 +46,18 @@ MODEL_ARMOR_ENDPOINT_TEMPLATE: Final = "https://modelarmor.{region}.rep.googleap
 #: Everything except the Gemini client is pinned here.
 DEFAULT_REGION: Final = "us-central1"
 
+#: Published per-million-token prices, (input, output) in USD. Lives here with the model
+#: constants because `check_layering.py` forbids model strings anywhere else -- and that
+#: rule caught this table sitting in the fleet package, which is exactly its job.
+#: Used only for an in-run cost estimate, so the demo cost number is derived from a
+#: stated rate rather than guessed.
+PRICE_PER_MTOK: Final[dict[str, tuple[float, float]]] = {
+    REASONING_MODEL: (0.30, 2.50),
+    REASONING_FALLBACK: (0.30, 2.50),
+    TRIAGE_MODEL: (0.10, 0.40),
+}
+FALLBACK_PRICE: Final[tuple[float, float]] = (0.30, 2.50)
+
 
 def model_armor_endpoint(region: str | None = None) -> str:
     """Return the regional Model Armor endpoint. Never call the global host regionally."""
