@@ -1,0 +1,103 @@
+{
+  "case": "pubsub_driven_review",
+  "duplicate_mode": true,
+  "duplicates_suppressed": 7,
+  "final_state": "delivered",
+  "gcs_uri": "gs://attestor-505506-uploads/questionnaires/async-bb935948/attestor-slice-24.xlsx",
+  "messages": 7,
+  "pass": true,
+  "questions": 24,
+  "review_id": "rev-async-5d12d900",
+  "round_id": "rev-async-5d12d900-r1",
+  "seconds": 267.2,
+  "subscription": "attestor.work.local",
+  "trace": [
+    {
+      "dedup_key": "18759088260a3540",
+      "duplicate_result": "duplicate",
+      "kind": "intake_document",
+      "n": 1,
+      "partition": null,
+      "published": [
+        "61e5263bdf9f54be"
+      ],
+      "result": "ok",
+      "state": "triaging",
+      "status_code": 204
+    },
+    {
+      "dedup_key": "61e5263bdf9f54be",
+      "duplicate_result": "duplicate",
+      "kind": "triage_questions",
+      "n": 2,
+      "partition": null,
+      "published": [
+        "a95f9d55b5318293",
+        "ab80c1805a8f9e27",
+        "e25b60cc5362ca47"
+      ],
+      "result": "ok",
+      "state": "drafting",
+      "status_code": 204
+    },
+    {
+      "dedup_key": "a95f9d55b5318293",
+      "duplicate_result": "duplicate",
+      "kind": "draft_answer",
+      "n": 3,
+      "partition": "security",
+      "published": [],
+      "result": "ok",
+      "state": null,
+      "status_code": 204
+    },
+    {
+      "dedup_key": "ab80c1805a8f9e27",
+      "duplicate_result": "duplicate",
+      "kind": "draft_answer",
+      "n": 4,
+      "partition": "legal",
+      "published": [],
+      "result": "ok",
+      "state": null,
+      "status_code": 204
+    },
+    {
+      "dedup_key": "e25b60cc5362ca47",
+      "duplicate_result": "duplicate",
+      "kind": "draft_answer",
+      "n": 5,
+      "partition": "engineering",
+      "published": [
+        "4cf22d0abb67b8da"
+      ],
+      "result": "ok",
+      "state": null,
+      "status_code": 204
+    },
+    {
+      "dedup_key": "4cf22d0abb67b8da",
+      "duplicate_result": "duplicate",
+      "kind": "assemble_round",
+      "n": 6,
+      "partition": null,
+      "published": [
+        "257de56794f96106"
+      ],
+      "result": "ok",
+      "state": "assembling",
+      "status_code": 204
+    },
+    {
+      "dedup_key": "257de56794f96106",
+      "duplicate_result": "duplicate",
+      "kind": "close_round",
+      "n": 7,
+      "partition": null,
+      "published": [],
+      "result": "ok",
+      "state": "delivered",
+      "status_code": 204
+    }
+  ]
+}

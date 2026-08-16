@@ -65,6 +65,16 @@ DRAFT_PARTITIONS: tuple[Department, ...] = (
     Department.ENGINEERING,
 )
 
+#: Where the drafting join is recorded. A SEPARATE collection from `rounds` on purpose,
+#: and the first end-to-end run is what taught that: writing `drafted_partitions` onto the
+#: round document made `RoundRepository.get` fail with
+#:   "Extra inputs are not permitted [type=extra_forbidden]"
+#: because `Round` is a strict model. All three drafting partitions failed, retried, and
+#: failed again. The join is dispatcher bookkeeping rather than domain state -- putting it
+#: on the domain model would also have leaked infrastructure counters into `generated.ts`
+#: and the UI.
+ROUND_PROGRESS = "round_progress"
+
 #: Questions the triage stage could not place. They are drafted by the cross-department
 #: path, which the security partition owns -- arbitrary but fixed, so the same question
 #: never lands in two partitions.
@@ -516,7 +526,9 @@ class HandlerRegistry:
     # -- the join ----------------------------------------------------------------------
 
     def _reset_join(self, round_id: str) -> None:
-        self.db.collection("rounds").document(round_id).set({"drafted_partitions": []}, merge=True)
+        self.db.collection(ROUND_PROGRESS).document(round_id).set(
+            {"drafted_partitions": [], "round_id": round_id}, merge=True
+        )
 
     def _close_partition(self, round_id: str, partition: str) -> set[str]:
         """Mark one partition done; return the partitions still outstanding.
@@ -526,7 +538,7 @@ class HandlerRegistry:
         with one department having run twice and another never at all.
         """
         expected = {d.value for d in DRAFT_PARTITIONS}
-        ref = self.db.collection("rounds").document(round_id)
+        ref = self.db.collection(ROUND_PROGRESS).document(round_id)
 
         @firestore.transactional
         def _commit(txn: firestore.Transaction) -> set[str]:
