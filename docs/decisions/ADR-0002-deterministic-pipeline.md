@@ -1,6 +1,6 @@
 # ADR-0002 — Deterministic pipeline, LLM routing only for judgement
 
-**Status:** Accepted · **Date:** 19 Aug 2026 · **Phase:** 3
+**Status:** Accepted · **Date:** 16 Aug 2026 · **Phase:** 3
 
 ## Context
 
@@ -77,7 +77,7 @@ router is not one.
 
 ## Evidence
 
-Updated 20 Aug 2026 to the authoritative run; the figures this ADR was first written
+Updated 16 Aug 2026 to the authoritative run; the figures this ADR was first written
 against (p50 8.3s / p95 13.0s) came from the first, defective run and are superseded.
 
 - Drafting p50 **16.1s** / p95 **29.0s** at concurrency 8 over 312 questions, with

@@ -30,7 +30,7 @@ TRIAGE_MODEL: Final = "gemini-3.5-flash-lite"
 #: Retrieval relevance. Discovery Engine's standard edition returns no relevance score,
 #: so one is measured here instead: cosine similarity between the question and the
 #: retrieved passage. 768 dimensions, asymmetric query/document task types, verified
-#: invocable from `global` on 20 Aug 2026 alongside `gemini-embedding-001` (3072-dim) and
+#: invocable from `global` on 16 Aug 2026 alongside `gemini-embedding-001` (3072-dim) and
 #: `text-multilingual-embedding-002`. The 768-dim model is chosen deliberately -- four
 #: times the vector for no measured gain in separation is four times the latency.
 EMBEDDING_MODEL: Final = "text-embedding-005"

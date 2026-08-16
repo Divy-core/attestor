@@ -3,6 +3,14 @@
 What was built, how it was verified, and every deviation with its reason.
 Measured, not asserted — each entry names the command that proved it.
 
+> **Dates corrected 16 Aug 2026.** Earlier revisions of this file and of ADR-0002/0003/0004
+> carried dates that ran ahead of reality — Phase 1 recorded as 16 Aug, Phase 3 as 18–20 Aug
+> — because a session assumed one phase per calendar day rather than checking. `git log` is
+> the ground truth and every date here now matches it: Phase 0 on 14–15 Aug, Phases 1 and 2
+> both on 15 Aug, all of Phase 3 on 16 Aug. The work and the measurements are unchanged; only
+> the timestamps were wrong. Recorded rather than quietly rewritten, because a document whose
+> dates disagree with its own commit history is a document a reviewer stops trusting.
+
 ---
 
 ## Phase 0 — Foundations & Proof of Life (Days 1–2, 14–15 Aug 2026)
@@ -342,7 +350,7 @@ system Python 3.13. The build was never affected: `mypy --strict` and `pytest` r
 
 ---
 
-## Phase 1 — Domain Core (Day 3, 16 Aug 2026)
+## Phase 1 — Domain Core (Day 2, 15 Aug 2026)
 
 `attestor-core`: stdlib + pydantic only, zero cloud imports, zero I/O.
 
@@ -435,7 +443,7 @@ demo path depends on it. If drafting latency hurts, drop *drafting* to 3.5 Flash
 
 ---
 
-## Phase 2 — Platform Adapters & Seed (Day 4, 17 Aug 2026)
+## Phase 2 — Platform Adapters & Seed (Day 2, 15 Aug 2026)
 
 ### `attestor-platform`
 
@@ -646,7 +654,7 @@ time anyone re-seeded before recording the demo.
 
 ---
 
-## Phase 3 — The Fleet (Days 5–6, 18–19 Aug 2026) — IN PROGRESS
+## Phase 3 — The Fleet (Day 3, 16 Aug 2026) — first session
 
 > **Session note.** This section was written mid-phase, after a session cut off before
 > it could be recorded. If you are picking this up cold, read the "state right now"
@@ -840,7 +848,7 @@ standard-edition search surface returns no relevance score (probed directly: no
 
 ---
 
-## Phase 3, second session (Day 7, 20 Aug 2026) — completion
+## Phase 3, second session (Day 3, 16 Aug 2026) — completion
 
 Everything below was built or measured after the section above was written. The order
 follows the plan: the orchestrator and the four verification runs first (pass/fail for
@@ -1059,7 +1067,7 @@ Armor denying under timeout, embeddings falling back under quota exhaustion.
 
 ---
 
-## The authoritative run — 312 questions, 20 Aug 2026
+## The authoritative run — 312 questions, 16 Aug 2026
 
 `PROJECT_ID=attestor-505506 uv run python tools/run_review.py --questionnaire clean
 --orchestrate --write-proof` · full output in `docs/proof/run-clean.json`.

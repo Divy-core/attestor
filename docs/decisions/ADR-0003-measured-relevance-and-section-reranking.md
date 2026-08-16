@@ -1,6 +1,6 @@
 # ADR-0003 — Retrieval is candidate generation; relevance is measured locally
 
-**Status:** Accepted · **Date:** 20 Aug 2026 · **Phase:** 3
+**Status:** Accepted · **Date:** 16 Aug 2026 · **Phase:** 3
 
 ## Context
 

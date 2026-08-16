@@ -1,6 +1,6 @@
 # ADR-0004 — Commitments are matched by meaning, and a contradicted answer is redrafted
 
-**Status:** Accepted · **Date:** 20 Aug 2026 · **Phase:** 3
+**Status:** Accepted · **Date:** 16 Aug 2026 · **Phase:** 3
 
 ## Context
 
