@@ -1,0 +1,26 @@
+Runtime IAM denial — evidence, 17 Aug 2026
+==========================================
+
+Engine : reasoningEngines/6333637226001334272 (attestor-security)
+Identity: AGENT_IDENTITY -- the engine holds the credential, this harness does not
+
+THE SUBSTANTIVE EVIDENCE is the tool's own return value, captured verbatim in
+docs/proof/iam-runtime-denial.json. Both directions, because only the pair is proof:
+
+  security/access-control-standard.txt  -> {"allowed": true, "bytes": 4298}
+  legal/data-processing-agreement.txt   -> {"allowed": false, "error_type": "Forbidden",
+                                            "error": "403 GET https://storage.mtls.googleapis.com/..."}
+
+Engine execution logs for the probe run (tool declaration + model turns):
+2026-08-17T08:48:55.869629Z	[20]      INFO:     Response received from the model.
+2026-08-17T08:48:51.362636Z	[20]      INFO:     Sending out request, model: gemini-3.7-flash, backend: GoogleLLMVariant.VERTEX_AI, stream: False
+2026-08-17T08:48:50.911844Z	[20]      INFO:     Response received from the model.
+2026-08-17T08:48:49.158831Z	[20]      INFO:     Sending out request, model: gemini-3.7-flash, backend: GoogleLLMVariant.VERTEX_AI, stream: False
+2026-08-17T08:48:46.498562Z	[21]      INFO:     Response received from the model.
+2026-08-17T08:48:43.803597Z	[21]      INFO:     Sending out request, model: gemini-3.7-flash, backend: GoogleLLMVariant.VERTEX_AI, stream: False
+
+NOT CAPTURED: the Cloud Trace SPAN for this denial.
+  enable_tracing=True is set on every engine, and the engine emits execution logs,
+  but the log entries carry no populated 'trace' field, so log-to-trace correlation
+  is not available by this route. Stopped at three cycles under the five-cycle rule.
+  The 403 itself is not in doubt -- it is the platform's verbatim response above.

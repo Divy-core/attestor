@@ -10,9 +10,9 @@
     {
       "created": true,
       "display_name": "attestor-security",
-      "resource_name": "projects/906988347581/locations/us-central1/reasoningEngines/4847449348969070592",
+      "resource_name": "projects/906988347581/locations/us-central1/reasoningEngines/6333637226001334272",
       "role": "security",
-      "seconds": 190.1
+      "seconds": 172.6
     },
     {
       "created": true,

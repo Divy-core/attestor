@@ -11,7 +11,7 @@
       "applied": true,
       "condition": "resource.name.startsWith(\"projects/_/buckets/attestor-505506-corpus/objects/security/\")",
       "prefix": "security/",
-      "principal": "principal://agents.global.proj-906988347581.system.id.goog/resources/aiplatform/projects/906988347581/locations/us-central1/reasoningEngines/4847449348969070592",
+      "principal": "principal://agents.global.proj-906988347581.system.id.goog/resources/aiplatform/projects/906988347581/locations/us-central1/reasoningEngines/6333637226001334272",
       "role": "security",
       "role_granted": "roles/storage.objectViewer"
     },

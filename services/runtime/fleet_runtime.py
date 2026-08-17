@@ -136,6 +136,42 @@ def search_any_corpus(department: str, question: str) -> dict[str, Any]:
     return _search(resolved, question)
 
 
+def probe_platform_boundary(gcs_uri: str) -> dict[str, Any]:
+    """Read a corpus object directly, bypassing this agent's department binding.
+
+    **A deliberate bypass, and the only tool in the fleet that is one.** Every other tool
+    is bound to one department at build time, so the department scoping cannot be argued
+    with by a prompt. This one takes an arbitrary object path and asks the platform for it.
+
+    That is the point. Phase 3 proved the *policy* layer refuses a cross-department read
+    (`enforce_tool_policy` raises, `defence-denial.json`). This proves the layer underneath
+    it: even with the interceptor bypassed entirely — which is what this tool does — the
+    security engine's Agent Identity is refused `corpus/legal/**` by IAM, because the
+    credential does not carry that permission.
+
+    Args:
+        gcs_uri: Full `gs://bucket/object` path to attempt to read.
+
+    Returns:
+        Whether the read succeeded, and the verbatim platform error if it did not.
+    """
+    from google.cloud import storage  # type: ignore[attr-defined]
+
+    bucket_name, _, object_name = gcs_uri.removeprefix("gs://").partition("/")
+    try:
+        blob = storage.Client().bucket(bucket_name).blob(object_name)
+        content = blob.download_as_text(timeout=30)
+    except Exception as exc:
+        return {
+            "gcs_uri": gcs_uri,
+            "allowed": False,
+            "error_type": type(exc).__name__,
+            # Verbatim: the whole value of this probe is the platform's own words.
+            "error": str(exc)[:900],
+        }
+    return {"gcs_uri": gcs_uri, "allowed": True, "bytes": len(content)}
+
+
 def recall_commitments(review_id: str) -> dict[str, Any]:
     """Recall what was promised to this customer in earlier rounds.
 
@@ -213,7 +249,10 @@ def build_agent(role: str) -> Any:
                 f"Bound to the {role} corpus only."
             ),
             instruction=_DEPARTMENT_INSTRUCTION.format(title=_title(role), department=role),
-            tools=[tool, recall_commitments],
+            # probe_platform_boundary is a deliberate bypass, present on the department
+            # agents only, so the platform layer can be proven independently of the policy
+            # layer. See its docstring.
+            tools=[tool, recall_commitments, probe_platform_boundary],
         )
 
     if role == "evidence":

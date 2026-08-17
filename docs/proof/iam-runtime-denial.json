@@ -1,0 +1,18 @@
+{
+  "bucket": "attestor-505506-corpus",
+  "case": "platform_layer_iam_denial",
+  "engine": "projects/906988347581/locations/us-central1/reasoningEngines/6333637226001334272",
+  "other_prefix_refused": true,
+  "own_prefix_readable": true,
+  "pass": true,
+  "probes": {
+    "allowed": {
+      "gcs_uri": "gs://attestor-505506-corpus/security/access-control-standard.txt",
+      "response": "{\"gcs_uri\": \"gs://attestor-505506-corpus/security/access-control-standard.txt\", \"allowed\": true, \"bytes\": 4298}\nThe tool call `probe_platform_boundary` returned the following raw result:\n\n```json\n{\n  \"allowed\": true,\n  \"bytes\": 4298,\n  \"gcs_uri\": \"gs://attestor-505506-corpus/security/access-control-standard.txt\"\n}\n```"
+    },
+    "forbidden": {
+      "gcs_uri": "gs://attestor-505506-corpus/legal/data-processing-agreement.txt",
+      "response": "{\"gcs_uri\": \"gs://attestor-505506-corpus/legal/data-processing-agreement.txt\", \"allowed\": false, \"error_type\": \"Forbidden\", \"error\": \"403 GET https://storage.mtls.googleapis.com/download/storage/v1/b/attestor-505506-corpus/o/legal%2Fdata-processing-agreement.txt?alt=media: Caller does not have storage.objects.get access to the Google Cloud Storage object. Permission &#39;storage.objects.get&#39; denied on resource &#39;//storage.googleapis.com/projects/_/buckets/attestor-505506-corpus/objects/legal/data-processing-agreement.txt&#39; (or it may not exist). Remediate access with this Troubleshooter URL or share it with your administrator - https://console.cloud.google.com/iam-admin/troubleshooter/summary;errorId=CiQwMWEwMGVlOC1jNjEwLTdjMzUtOTA2Zi1kZmJhM2RhM2U5MzkSVXByb2plY3RzL18vYnVja2V0cy9hdHRlc3Rvci01MDU1MDYtY29ycHVzL29iamVjdHMvbGVnYWwvZGF0YS1wcm9jZXNzaW5nLWFncmVlbWVudC50eHQ%3D .: ('Request failed with status code', 403, 'Expected one of', <HTTPStatus.OK: 200>, <HTTPStatus.PARTIAL_CONTENT: 206>)\"}\nThe raw result from `probe_platform_boundary` is:\n\n```json\n{\n  \"allowed\": false,\n  \"error\": \"403 GET https://storage.mtls.googleapis.com/download/storage/v1/b/attestor-505506-corpus/o/legal%2Fdata-processing-agreement.txt?alt=media: Caller does not have storage.objects.get access to the Google Cloud Storage object. Permission 'storage.objects.get' denied on resource '//storage.googleapis.com/projects/_/buckets/attestor-505506-corpus/objects/legal/data-processing-agreement.txt' (or it may not exist). Remediate access with this Troubleshooter URL or share it with your administrator - https://console.cloud.google.com/iam-admin/troubleshooter/summary;errorId=CiQwMWEwMGVlOC1jNjEwLTdjMzUtOTA2Zi1kZmJhM2RhM2U5MzkSVXByb2plY3RzL18vYnVja2V0cy9hdHRlc3Rvci01MDU1MDYtY29ycHVzL29iamVjdHMvbGVnYWwvZGF0YS1wcm9jZXNzaW5nLWFncmVlbWVudC50eHQ%3D .: ('Request failed with status code', 403, 'Expected one of', <HTTPStatus.OK: 200>, <HTTPStatus.PARTIAL_CONTENT: 206>)\",\n  \"error_type\": \"Forbidden\",\n  \"gcs_uri\": \"gs://attestor-505506-corpus/legal/data-processing-agreement.txt\"\n}\n```"
+    }
+  }
+}
