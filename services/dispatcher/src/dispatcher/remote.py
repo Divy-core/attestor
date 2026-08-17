@@ -154,6 +154,39 @@ TRANSIENT_ENGINE_ERRORS = TRANSIENT_MARKERS
 _is_transient = is_transient
 
 
+#: How many times an EMPTY retrieval is tried again before it is believed.
+#:
+#: The eighth instance of the failure-impersonating-empty family, and the first one that lives
+#: in the platform rather than in this codebase. It was measured rather than suspected:
+#:
+#:   - a deployed 312-question run recorded 58 of 88 questions as retrieving **zero** passages;
+#:   - querying the same corpus directly, from this process, returned passages for five of six
+#:     of them with a top relevance of 0.950;
+#:   - querying the deployed engines **one at a time** returned five passages each, from all
+#:     three departments.
+#:
+#: So the engine's own search returns an empty result set under sustained load, and returns it
+#: *successfully*. `_query_with_retry` covers calls that raise — rate limits, dropped streams —
+#: and a call that succeeds with nothing in it is not one of those. It was taken as
+#: authoritative, and `ReviewPipeline.draft` then did the honest thing with it and recorded
+#:
+#:     No supporting evidence was found in the corpus for this question.
+#:
+#: about a question the corpus answers at 0.950. Every layer behaved correctly and the
+#: aggregate statement was false, which is the signature of this whole family.
+#:
+#: It is also why the numbers diverged: 86.7% cited when the same 30 questions were compared
+#: path-by-path in Phase 6 (`docs/proof/citation-gap-side-by-side.json`), against 20-37% on a
+#: full deployed run. A 30-question comparison does not put the engines under the load that
+#: produces this, so A1's "no retrieval regression" conclusion was right about what it measured
+#: and blind to what it could not.
+#:
+#: Retrying an empty result is cheap — the questions that are genuinely unsupported pay three
+#: extra calls each, and being wrong about them is what the system is built not to be.
+EMPTY_RETRIEVAL_ATTEMPTS = int(os.environ.get("ATTESTOR_EMPTY_RETRIEVAL_ATTEMPTS", "3"))
+EMPTY_RETRIEVAL_BACKOFF_SECONDS = 3.0
+
+
 class EngineUnavailable(AttestorError):
     """A deployed engine could not be reached, or failed while drafting.
 
@@ -292,6 +325,12 @@ class RemoteDraftingPipeline(ReviewPipeline):
         #: How many remote calls were made, and how long they took, so the deployed run
         #: can report its own concurrency rather than inheriting Phase 3's figure.
         self.remote_calls = 0
+        #: Questions where the engine returned nothing and a retry found passages. This is the
+        #: count of false "the corpus has nothing" statements that were NOT made.
+        self.empty_retrievals_recovered = 0
+        #: Questions still empty after every retry. These are the genuine no-evidence answers,
+        #: and reporting them separately is what makes the other number meaningful.
+        self.empty_retrievals_confirmed = 0
 
     # -- the two overrides ------------------------------------------------------------
 
@@ -318,10 +357,40 @@ class RemoteDraftingPipeline(ReviewPipeline):
 
         engine = self._pool.get(agent_department)
         message = DRAFT_REQUEST.format(question=question.text)
-        events = self._query_with_retry(engine, agent_department, question, message)
 
-        self.remote_calls += 1
-        drafted = _parse_events(events, agent_department)
+        # An empty retrieval is retried, because an empty retrieval is not evidence of an
+        # empty corpus. See `EMPTY_RETRIEVAL_ATTEMPTS`.
+        drafted = None
+        for attempt in range(EMPTY_RETRIEVAL_ATTEMPTS):
+            events = self._query_with_retry(engine, agent_department, question, message)
+            self.remote_calls += 1
+            drafted = _parse_events(events, agent_department)
+            if drafted.evidence:
+                if attempt:
+                    self.empty_retrievals_recovered += 1
+                    logger.info(
+                        "engine %s returned %d passages on retry %d after an empty result",
+                        agent_department.value,
+                        len(drafted.evidence),
+                        attempt,
+                        extra={"review_id": self.review_id, "run_id": self.run_id},
+                    )
+                break
+            if attempt + 1 < EMPTY_RETRIEVAL_ATTEMPTS:
+                delay = EMPTY_RETRIEVAL_BACKOFF_SECONDS * (2**attempt) + random.uniform(0, 1.5)
+                logger.warning(
+                    "engine %s retrieved nothing for %s (attempt %d/%d); retrying in %.1fs",
+                    agent_department.value,
+                    question.question_id,
+                    attempt + 1,
+                    EMPTY_RETRIEVAL_ATTEMPTS,
+                    delay,
+                    extra={"review_id": self.review_id, "run_id": self.run_id},
+                )
+                time.sleep(delay)
+        assert drafted is not None  # noqa: S101 - the loop runs at least once
+        if not drafted.evidence:
+            self.empty_retrievals_confirmed += 1
         self._local.drafted = drafted.text
         # An engine that retrieved passages and produced no prose. See
         # `_no_evidence_answer`: this must not become a statement about the corpus.

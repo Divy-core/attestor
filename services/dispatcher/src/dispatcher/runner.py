@@ -209,6 +209,11 @@ class PipelineFleetRunner:
             # Questions the budget stopped this attempt from starting. Zero means the slice
             # finished; anything else is what the continuation will pick up.
             "deferred_to_next_attempt": sum(1 for o in outcomes if o.error == "deadline"),
+            # The eighth failure-impersonating-empty, counted in the audit trail rather than
+            # inferred later. `recovered` is the number of false "the corpus has nothing"
+            # statements this run did NOT make; `confirmed` is the number of genuine ones.
+            "empty_retrievals_recovered": getattr(pipeline, "empty_retrievals_recovered", 0),
+            "empty_retrievals_confirmed": getattr(pipeline, "empty_retrievals_confirmed", 0),
         }
         return [o.answer for o in outcomes if o.answer is not None]
 

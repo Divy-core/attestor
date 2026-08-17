@@ -80,11 +80,23 @@ def _request(
         request.add_header(name, value)
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:  # noqa: S310
-            return response.status, response.read(), dict(response.headers)
+            return response.status, response.read(), _lower(response.headers)
     except urllib.error.HTTPError as exc:
-        return exc.code, exc.read(), dict(exc.headers or {})
+        return exc.code, exc.read(), _lower(exc.headers)
     except (urllib.error.URLError, TimeoutError, OSError) as exc:
         return 0, str(exc).encode("utf-8"), {}
+
+
+def _lower(headers: Any) -> dict[str, str]:
+    """Header names, lowercased.
+
+    HTTP header names are case-insensitive and Cloud Run's HTTP/2 frontend returns them
+    lowercased, so `dict(response.headers)["Content-Disposition"]` finds nothing. The first
+    run of this harness reported every export header as blank for exactly that reason -- the
+    headers were present and correct and the harness was looking for the wrong keys, which is
+    one debugging session away from someone "fixing" a working service.
+    """
+    return {k.lower(): v for k, v in (headers or {}).items()}
 
 
 class Journey:
@@ -187,7 +199,14 @@ class Journey:
         return dict(json.loads(body))
 
     def watch(self, review_id: str, round_id: str, wait_seconds: int) -> dict[str, Any]:
-        """Read what the browser reads until the round settles or the clock runs out."""
+        """Read what the browser reads until the round settles or the clock runs out.
+
+        Reaching the timeout is recorded as a **failed step**, not as a neutral outcome. The
+        first version of this harness returned whatever state it found and then reported PASS
+        because every HTTP call had succeeded — on a run that held 309 of 312 answers and never
+        assembled. A harness that passes a review which did not finish is worse than no harness,
+        because it is the artefact someone quotes.
+        """
         started = time.perf_counter()
         print(f"\n  watching (reading only the endpoints the browser reads, every {POLL_SECONDS}s)")
         print("   elapsed  state             answers  cited  held")
@@ -217,8 +236,16 @@ class Journey:
                 break
             time.sleep(POLL_SECONDS)
 
+        settled = state in {"delivered", "awaiting_human", "failed"}
+        self.step(
+            "the review settles on its own",
+            settled,
+            {"state": state, "answers": len(answers)},
+            time.perf_counter() - started,
+        )
         return {
             "state": state,
+            "settled": settled,
             "answers": len(answers),
             "cited": sum(1 for a in answers if a.get("citations")),
             "held_for_a_human": sum(1 for a in answers if a.get("status") == "needs_human"),
@@ -240,10 +267,10 @@ class Journey:
             "status": status,
             "bytes": len(payload),
             "magic": magic.decode("latin-1", "replace"),
-            "disposition": headers.get("Content-Disposition", ""),
-            "rows": headers.get("X-Attestor-Rows", ""),
-            "sendable": headers.get("X-Attestor-Sendable", ""),
-            "source": headers.get("X-Attestor-Source", ""),
+            "disposition": headers.get("content-disposition", ""),
+            "rows": headers.get("x-attestor-rows", ""),
+            "sendable": headers.get("x-attestor-sendable", ""),
+            "source": headers.get("x-attestor-source", ""),
         }
         if not ok:
             detail["body"] = payload.decode("utf-8", "replace")[:300]

@@ -294,9 +294,81 @@ class TestRateLimitsAreRetriedOnTheCall:
         pipeline = self._pipeline(_Throttled())
         result = pipeline._guarded_retrieve(Department.SECURITY, self._question())
 
-        assert calls["n"] == 3
+        # Three calls to get past the 429, then two more because the engine came back with
+        # prose and NO passages -- which is now retried rather than believed. Written out
+        # rather than left as a bare 5, because the interaction between the two retry loops is
+        # the kind of thing a later reader would otherwise have to derive.
+        assert calls["n"] == 3 + (remote.EMPTY_RETRIEVAL_ATTEMPTS - 1)
         assert pipeline._local.drafted == "drafted"
         assert result.evidence == []
+        assert pipeline.empty_retrievals_confirmed == 1
+        assert pipeline.empty_retrievals_recovered == 0
+
+    def test_an_empty_retrieval_is_retried_and_can_recover(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The eighth failure-impersonating-empty, and the first one in the platform.
+
+        A deployed 312-question run recorded 58 of 88 questions as retrieving zero passages.
+        The same corpus queried directly returned passages for five of six of them at a top
+        relevance of 0.950, and the same engines queried one at a time returned five passages
+        each. The engine's search returns empty under load, and returns it *successfully* — so
+        the transient-error retry never saw it and the pipeline recorded "no supporting
+        evidence was found in the corpus" about a question the corpus answers.
+        """
+        import dispatcher.remote as remote
+
+        monkeypatch.setattr(remote.time, "sleep", lambda _: None)
+        calls = {"n": 0}
+
+        class _EmptyThenFound:
+            def stream_query(self, **_: Any) -> Any:
+                calls["n"] += 1
+                if calls["n"] < 2:
+                    # A successful call that returns nothing. Not an exception, which is why
+                    # `_query_with_retry` could never have caught it.
+                    return iter([_text_event("INSUFFICIENT_EVIDENCE")])
+                return iter(
+                    [
+                        _tool_event([_passage("2. Multi-factor authentication", 0.71)]),
+                        _text_event("Yes, enforced by policy."),
+                    ]
+                )
+
+        pipeline = self._pipeline(_EmptyThenFound())
+        result = pipeline._guarded_retrieve(Department.SECURITY, self._question())
+
+        assert calls["n"] == 2
+        assert len(result.evidence) == 1
+        # The count of false "the corpus has nothing" statements this run did not make.
+        assert pipeline.empty_retrievals_recovered == 1
+        assert pipeline.empty_retrievals_confirmed == 0
+
+    def test_a_genuinely_empty_corpus_is_still_reported_as_empty(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Retrying must not turn a real refusal into an invented answer.
+
+        "The corpus does not support this" is a load-bearing thing for this system to be able
+        to say. The retry exists so that sentence is true when it is said, not so it is never
+        said.
+        """
+        import dispatcher.remote as remote
+
+        monkeypatch.setattr(remote.time, "sleep", lambda _: None)
+        calls = {"n": 0}
+
+        class _AlwaysEmpty:
+            def stream_query(self, **_: Any) -> Any:
+                calls["n"] += 1
+                return iter([_text_event("INSUFFICIENT_EVIDENCE")])
+
+        pipeline = self._pipeline(_AlwaysEmpty())
+        result = pipeline._guarded_retrieve(Department.SECURITY, self._question())
+
+        assert calls["n"] == remote.EMPTY_RETRIEVAL_ATTEMPTS
+        assert result.evidence == []
+        assert pipeline.empty_retrievals_confirmed == 1
 
     def test_a_non_throttle_error_is_not_retried(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Backing off four times on a permission error wastes four ack deadlines."""

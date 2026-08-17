@@ -1,4 +1,4 @@
-# ADR-0008 — Answers persist as they are drafted, and a redelivered partition resumes
+# ADR-0008 — A drafting attempt persists as it goes, and ends itself before the deadline
 
 **Status:** Accepted · **Date:** 17 Aug 2026 (Phase 6.5) · Extends
 [ADR-0005](ADR-0005-work-partitioning-and-the-dedup-key.md) and
@@ -43,8 +43,11 @@ questions being drafted.
 
 ## Decision
 
-**Persist each answer at the moment it is drafted, and skip on redelivery what is already
-written.**
+**Persist each answer at the moment it is drafted, skip on redelivery what is already written,
+and stop the attempt before the ack deadline rather than being stopped by it.**
+
+The first two were the original decision. The third was added after the first deployed run to
+use them, and the run is why — see "The half that persistence did not solve" below.
 
 Three changes, one per layer:
 
@@ -55,11 +58,67 @@ Three changes, one per layer:
 3. `HandlerRegistry.draft_answer` reads the round's existing answers, hands the fleet only the
    questions that have none, and passes `self.answers.put` as the callback.
 
+Then a fourth, which the measurement forced:
+
+4. `HandlerRegistry.draft_answer` passes a **time budget** (`ATTESTOR_DRAFT_BUDGET_SECONDS`,
+   420s). `draft_many` starts no new question after it expires; in-flight questions finish.
+   If anything is left, the handler publishes a continuation for the same department and
+   returns normally — which Pub/Sub acks.
+
 `AnswerRepository.put` is keyed on `(round_id, question_id)`, so a rewrite of the same answer
 is idempotent and a resume needs no extra bookkeeping collection. The skip set is derived from
 the answers themselves rather than from a progress document, which means it cannot disagree
 with the data — a progress record claiming question 62 was done while no answer exists for it
 is a state this design cannot enter.
+
+## The half that persistence did not solve
+
+Measured, on the first deployed 312-question run with the resume in place
+(`docs/proof/journey.json`, first attempt):
+
+| Partition | Questions | Outcome |
+|---|---|---|
+| engineering | 93 | **completed** on attempt 5, having resumed 70 |
+| security | 121 | 118 answered, dead-lettered after 5 attempts |
+| legal | 98 | 98 answered, dead-lettered after 5 attempts |
+
+309 of 312 answers written — against 189 on the best previous run — and the round still never
+reached `assemble_round`. The resume was doing exactly what it was designed to do and it was
+not enough.
+
+The reason is that **being interrupted is what costs a delivery attempt.** A partition too
+large for the 600s ack deadline runs past it; Pub/Sub redelivers; the live 900s lease refuses
+the redelivery with a 409; and *that refusal consumes an attempt*. Five attempts can be spent
+on refusals of one long attempt rather than on five pieces of work. The attempt count was never
+the binding constraint here either — the same shape of mistake as reading the original failure
+as a quota problem.
+
+So the attempt ends itself. That converts a redelivery into a continuation, which resets the
+counter, and the round advances by however many attempts it needs.
+
+**The continuation needs a different dedup key, and a test caught that it would not have had
+one.** `WorkEnvelope.for_work` derives the key from `(review_id, round_id, question_id,
+partition, kind)` and deliberately *not* from `message_id` (ADR-0005), so that a redelivery is
+recognised as the same work. A continuation published with the same partition would therefore
+carry the identical key, be refused by the claim repository as a duplicate, and stall the round
+**permanently** — a worse failure than the one being fixed, and one that would have looked from
+outside exactly like the problem it was meant to solve.
+
+The fix is that the partition string carries a sequence: `security`, then `security@2`. It is
+the only component of the dedup tuple that can honestly differ between one attempt at a
+department's slice and the next. `partition` was `str | None` and stays `str | None`, so the
+frozen envelope and `generated.ts` are untouched; what changed is that the dispatcher reads
+structure in a string it was already the only consumer of.
+
+The join still closes on the **department**, never on the suffixed string. `_close_partition`
+compares against `{d.value for d in DRAFT_PARTITIONS}`, so closing as `security@2` would leave
+the set one short forever and no round would ever assemble. Pinned by
+`test_the_join_closes_on_the_department_not_the_sequence`.
+
+**A continuation that makes no progress is refused.** If an attempt drafts zero questions
+within its budget, the handler raises `ContractViolation` rather than republishing — permanent,
+so it dead-letters. A continuation loop that republishes itself forever is a stalled round that
+keeps spending money, which is strictly worse than a stalled round.
 
 ## Consequences
 
@@ -139,12 +198,16 @@ uploading a questionnaire and watching the fleet answer it, and the questionnair
 
 ## Verification
 
-`tests/unit/test_incremental_persistence.py` — nine tests. The two that carry the decision:
+`tests/unit/test_incremental_persistence.py` — seventeen tests. The three that carry the
+decision:
 
 - `test_an_interrupted_partition_leaves_its_finished_work_behind` — a fleet that raises
   part-way through leaves four persisted answers where it previously left zero.
 - `test_the_second_attempt_is_handed_only_the_unfinished_questions` — the redelivery drafts
   six of ten, not ten.
+- `test_it_publishes_a_continuation_and_does_not_close_the_join` — the budgeted attempt
+  publishes the remainder and leaves the join open, because releasing `assemble_round` on an
+  unfinished slice would look like success.
 
 `test_every_answer_is_written_before_the_slice_returns` asserts the write log rather than the
 final state, because `for answer in answers: put(answer)` after the fact produces an identical
