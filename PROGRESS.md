@@ -2680,3 +2680,84 @@ line as a named data frame before checking whether the payload was a heartbeat. 
 named *deliberately*, so it can be kept off the data path. Fixed, re-run, and worth recording —
 a verification harness that reports a false failure is one debugging session away from someone
 "fixing" a correct system.
+
+### A3 — 312 at low concurrency: it does not throttle, it misses the deadline
+
+Run at **2 workers per partition, 6 concurrent engine queries**, on dispatcher revision
+`00010-gqp`. Review `rev-deployed-7539a650`.
+
+**The instruction was "if it still throttles, stop and say so." It did not throttle.** Not one
+429 in the whole run. The quota was avoided exactly as intended, and the run failed anyway — on
+the other constraint.
+
+```
+intake_document    completed     att=1
+triage_questions   completed     att=1     all 312 triaged, three partitions published
+draft_answer       completed     att=2     91 answers persisted, 54 cited
+draft_answer       in_progress   att=5     redelivered to the last attempt
+draft_answer       in_progress   att=5     redelivered to the last attempt
+```
+
+The arithmetic is the whole finding. A 123-question partition at 2 workers is ~62 sequential
+rounds; at the ~25s per-question latency these engines actually show under load that is
+**~1,550s**, against a 600s ack deadline which is already the Pub/Sub maximum. So every
+partition is redelivered roughly every ten minutes, the lease correctly refuses each
+redelivery with 409, and the attempt counter climbs to five and stops. One of three partitions
+was small enough to finish inside its attempts. Two were not.
+
+`docs/proof/deployed-run-quota-ceiling.md` predicted exactly this — "reducing concurrency
+further trades the quota error for the ack deadline" — and it is now measured rather than
+predicted.
+
+#### There is no concurrency setting that satisfies both constraints
+
+Four settings across two sessions, and they bracket the problem:
+
+| Workers/partition | Concurrent | Quota | Ack deadline |
+|---|---|---|---|
+| 24 | 72 | **429 immediately** | would have been fine |
+| 8 | 24 | sustained throttling | partitions exhausted retries |
+| 4 | 12 | throttling halved | one partition exhausted attempt 5 |
+| 2 | 6 | **clean** | **two of three exhausted attempt 5** |
+
+Both constraints are simultaneous: `123 × latency / workers < 600` wants workers ≥ 6 per
+partition, and `workers × 3 < quota` wants fewer than 8 in total. The window is narrow at best
+and empty at the latency actually observed. **Fifth cycle spent; stopping here**, as the cap
+requires.
+
+#### The fix is not a concurrency setting, and it is already identified
+
+**A partition is all-or-nothing, and that is what makes the deadline fatal rather than merely
+slow.** `draft_answer` writes answers only after `draft_many` returns, so a redelivered
+partition redrafts every question in it — including the sixty it had already finished. Attempt 2
+starts from zero, attempt 3 starts from zero, and five attempts of the same 1,550s of work is
+guaranteed to fail no matter how many attempts there are.
+
+Persisting answers as they complete would make each redelivery *resume*. Attempt 2 would start
+at question 62, attempt 3 at question 124, and the partition would finish comfortably inside its
+attempts at any of the four concurrency settings above — including the one that does not throttle.
+
+This was recorded as a known cost in session three and deliberately not changed then, because it
+alters when answers become visible to `assemble_round`, which is the join. It is now the single
+highest-value change available to the deployed run, and it is a **Phase 7 change with a decision
+logged** rather than something to attempt at the end of a long session. Naming it precisely is
+worth more than a sixth cycle.
+
+#### What the 312 run does prove
+
+Every stage before drafting completed on the deployed stack, at full scale, first time: intake
+parsed all 312 questions, triage classified all 312 and published three partitions, and all
+three were claimed within a second of each other. Ninety-one answers were drafted on a deployed
+department engine under its own Agent Identity and persisted, 54 of them cited. And the lease
+did its job under sustained pressure — **every one of the eleven redeliveries across this run was
+refused while a claim was live, and no partition was ever drafted twice.**
+
+**Fallback J2 stands.** The deployed run of record remains the 60-question one
+(`docs/proof/deployed-review-60-clean.json`, 73.3% cited, six of six reachable stages), and
+Phase 3's local 312 remains authoritative with its provenance labelled. That is unchanged from
+session three, and the citation-rate agreement measured in A1 — 86.7% on both paths on identical
+questions — is what makes the local figure a converging second measurement rather than a
+substitute.
+
+The dispatcher is restored to `ATTESTOR_REMOTE_CONCURRENCY=8`, the setting the 60-question run
+of record was measured at, so the deployed system is left in its known-good configuration.
