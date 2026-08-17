@@ -66,6 +66,7 @@ import json
 import logging
 import os
 import threading
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -91,6 +92,10 @@ ENGINE_ENV = {
     Department.LEGAL: "ATTESTOR_ENGINE_LEGAL",
     Department.ENGINEERING: "ATTESTOR_ENGINE_ENGINEERING",
 }
+
+#: Remote drafting fan-out. See `RemoteDraftingPipeline.draft_many` for why this is 24
+#: rather than the in-process 8, and why the number is load-bearing rather than a knob.
+REMOTE_DRAFT_CONCURRENCY = int(os.environ.get("ATTESTOR_REMOTE_CONCURRENCY", "24"))
 
 #: How the engine is asked for one question. Terse on purpose: the engine already carries
 #: its department instruction, its corpus binding, and the INSUFFICIENT_EVIDENCE contract,
@@ -293,6 +298,32 @@ class RemoteDraftingPipeline(ReviewPipeline):
             matched_by={e.document_uri: "engine" for e in drafted.evidence},
             queries_run=drafted.queries_run,
         )
+
+    def draft_many(self, questions: list[Question]) -> list[Any]:
+        """Fan out wider than the in-process pipeline, because the work is now waiting.
+
+        `DRAFT_CONCURRENCY = 8` was sized for in-process drafting, where each worker holds
+        a thread that is genuinely computing and the ceiling is the local machine. A remote
+        call is a thread parked on a socket while an Agent Runtime instance does the work,
+        so the ceiling is the platform's, not ours.
+
+        The number matters rather than being a knob. Measured against the deployed security
+        engine, one question costs ~45s end to end. At 8 workers the 123-question security
+        partition runs ~690s — **past the 600s Pub/Sub ack deadline**, which means a
+        redelivery mid-partition every time, five of them, and the message dead-lettered
+        while the handler that owns it is still working and about to succeed. At 24 it runs
+        ~230s and the margin `docs/proof/ack-deadline-margin.md` reasons about is real
+        again.
+
+        This is exactly the "different kind of parallelism, measure it on its own terms"
+        that `docs/proof/permission-surfaces-and-composition.md` predicted would be needed
+        once drafting moved off-process.
+        """
+        if not questions:
+            return []
+        workers = min(REMOTE_DRAFT_CONCURRENCY, len(questions))
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            return list(pool.map(self.draft, questions))
 
     def _generate(self, model: str, prompt: str) -> str:
         """Return the engine's draft, or fall through for the calls that stay local.

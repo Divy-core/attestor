@@ -1,0 +1,29 @@
+{
+  "ack_deadline_seconds": 600,
+  "against": "the deployed project's Firestore, via the real WorkClaimRepository",
+  "case": "crash_and_lease_takeover_drill",
+  "cases": {
+    "completed": {
+      "correct": true,
+      "expected": "DUPLICATE",
+      "outcome": "DUPLICATE"
+    },
+    "lapsed_lease": {
+      "attempts": 2,
+      "correct": true,
+      "expected": "RECLAIMED",
+      "new_worker": "attestor-dispatcher-99999-takeover",
+      "outcome": "RECLAIMED",
+      "previous_worker": "attestor-dispatcher-00000-crashed"
+    },
+    "live_lease": {
+      "correct": true,
+      "expected": "HELD",
+      "outcome": "HELD"
+    }
+  },
+  "lease_seconds": 900,
+  "not_real": "no process was killed and no message was published; the abandoned claim is manufactured, and the ack decisions above it are covered by unit tests",
+  "pass": true,
+  "real": "the repository, the transaction, the datastore, the claim decisions"
+}

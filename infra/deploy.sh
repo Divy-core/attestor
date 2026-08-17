@@ -31,9 +31,14 @@ PROJECT_ID="${PROJECT_ID:?PROJECT_ID must be set}"
 REGION="${REGION:-us-central1}"
 SERVICES_ONLY=0
 
+DISPATCHER_ONLY=0
+
 for arg in "$@"; do
     case "$arg" in
-        --services-only) SERVICES_ONLY=1 ;;
+        --services-only)   SERVICES_ONLY=1 ;;
+        # The dispatcher changes far more often than the control plane, and rebuilding
+        # both doubles a five-minute cycle for nothing.
+        --dispatcher-only) DISPATCHER_ONLY=1 ;;
         *) echo "unknown flag: $arg" >&2; exit 2 ;;
     esac
 done
@@ -111,6 +116,7 @@ else
     printf '  created: %s\n' "$REGISTRY"
 fi
 
+if (( ! DISPATCHER_ONLY )); then
 section "Cloud Run: control plane"
 gcloud builds submit . \
     --project "$PROJECT_ID" --region "$REGION" \
@@ -130,6 +136,7 @@ gcloud run deploy attestor-control-plane \
     --allow-unauthenticated \
     --set-env-vars "PROJECT_ID=${PROJECT_ID},VERTEX_LOCATION=${REGION}" \
     --quiet
+fi
 
 section "Cloud Run: dispatcher"
 gcloud builds submit . \
