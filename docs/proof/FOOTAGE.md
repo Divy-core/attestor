@@ -96,3 +96,29 @@ run (`docs/proof/run-clean.json`) as the labelled comparison. If the two differ 
 say both and say which one the video is showing. A demo that quotes the better number
 without naming its provenance is the one thing this build has spent three sessions refusing
 to do.
+
+---
+
+## Revised after Phase 6 — the UI carries five of the nine
+
+The console is now the place to point the camera for most of these, which is the point of
+building it against the deployed backend rather than against mocks. Where a capture has both
+a console view and a terminal artefact, the console view is the one the video uses and the
+terminal artefact is what a judge browsing the repo checks it against.
+
+| # | Now captured at | Note |
+|---|---|---|
+| 1 | `/registry` on the deployed web service | Renders the live Agent Registry read, the scope matrix, and the identity caveat **on screen**. Do not narrate "distinct identities per the registry" — the page deliberately does not say it, and neither should the voiceover. |
+| 2 | `/traces/[runId]` → Audit trail, filtered to refusals | The 403 is an `audit_event`, so it is a row in the compliance plane rather than a terminal scroll. `tools/verify_iam_denial.py` remains the artefact. |
+| 3 | `/traces/[runId]` → Both planes | Shows the Cloud Trace span tree **and** the sentence "our own code emits no custom OTel spans". Say that sentence out loud; it is worth more than the tree. |
+| 4 | `/reviews/rev-acme-2026-q3` → the round timeline | The 22-day gap is drawn to scale with a `+22d` label, so the dormancy is visible rather than asserted. |
+| 5 | `/reviews/[reviewId]` → Needs a human tab | Approve one and the receipt shows the `dedup_key`. That key is why a redelivered approval is a no-op — worth pausing on for two seconds. |
+| 8 | `/traces/[runId]` → Guardrail blocks | `InjectionDiff` renders the payload with its `chunk_index`. The line to say: the filter caps at 512 tokens, this document was longer, and the index says which ~450-token window caught it. |
+| 9 | The web service's own `.run.app` URL, in the address bar | Recorded in `PROGRESS.md`. The sidebar also shows the project, region and Cloud Run revision as monospace metadata, which is the rubric's "visible proof it runs on Google Cloud" answered without a claim. |
+
+Captures 6 and 7 stay in the Cloud Console — a Cloud Run dashboard and an Agent Runtime
+dashboard are not things a product UI should imitate, and imitating them would be the one
+place this interface could be accused of dressing up someone else's evidence as its own.
+
+**Still outstanding, and still needing a human with a browser:** every visual capture above.
+Phase 6 makes them cheaper and does not make them done.

@@ -2536,3 +2536,73 @@ provenance page. It now renders "not returned" and names where the proof actuall
 `Workspace Agent` and `attestor-probe`, the Phase 0 engine kept alive deliberately. The fix is
 to partition the list and count each part — six Attestor engines, three with a corpus binding,
 one other agent — rather than to hide the rows that spoil the number.
+
+### Phase 6 exit criteria
+
+| # | Criterion | Result |
+|---|---|---|
+| 1 | Palette stated in `PROGRESS.md`, checked against the defaults | **PASS** — six values, the rejected Tailwind-500 set named, and each change justified as a claim about the domain |
+| 2 | Full review visible in the browser against the deployed backend, no console errors | **PASS** — 60 questions, real relevance scores, `read_console_messages` clean |
+| 3 | SSE survives 60s idle; fallback engages on silence, not only on error | **PARTIAL** — the watchdog is armed on staleness rather than `onerror`, and building it is what exposed the heartbeat being invisible to the browser. The disabled case (`use_listener=false`) and the raising case are wired; **the three cases have not been exercised as a measured test** |
+| 4 | `seq` gap detection backfills after reconnect | **PARTIAL** — implemented and reasoned about, not yet forced and measured |
+| 5 | Citations open to their passage | **PASS** — the passage the retriever scored, inline, beside the sentence it backs |
+| 6 | `ConfidenceMeter` shows the underlying signals | **PASS** — citation count, top and mean relevance, distinct documents, with the scale distortion stated |
+| 7 | Approval queue works end to end against the deployed control plane | **PARTIAL** — built and typechecked, and the review it needs is parked at `awaiting_human` with 18 answers. **Not yet clicked through** |
+| 8 | `InjectionDiff` renders the payload legibly with `chunk_index` | **PASS** as code; **the deployed 60-question run produced zero armor blocks**, so it has not been seen with real data in this phase. The Phase 3 injected run is the artefact |
+| 9 | `/registry` honours the identity caveat | **PASS** — and three overclaims were caught and removed getting there |
+| 10 | Both observability planes visible and correctly labelled | **PASS** — including "our own code emits no custom OTel spans" on screen |
+| 11 | Real GCP identifiers as monospace metadata | **PASS** — project, region, Cloud Run revision, engine ids, dedup keys, question ids |
+| 12 | Empty, loading and error states designed for every view | **PASS** — `EmptyState` explains what will appear and how; `ErrorState` carries the service's own words; `Skeleton` is shape, not a spinner |
+| 13 | Every state distinguishable in greyscale | **PASS** by construction — three solid dots separated by lightness, three separated by fill treatment |
+| 14 | Tabular numerals on all figures | **PASS** — set on `html`, so it is not per-component discipline |
+| 15 | Nothing important in a hover-only state | **PASS** — hover only confirms interactivity; `title` is always a second copy of something already rendered |
+| 16 | Light mode readable; zero hardcoded colours, lint-enforced | **PASS** on the lint — Tailwind's palette is deleted so `bg-red-500` does not exist, and `check-tokens.mjs` catches arbitrary values, inline styles and raw ramp steps. **Light mode has not been read end to end at 1080p** |
+| 17 | Keyboard focus visible; reduced motion respected | **PASS** as code — focus is the foreground colour at 2px, and reduced motion is honoured rather than declared. **Not tested with a keyboard** |
+| 18 | `tsc --noEmit` and `make check` green; `generated.ts` compiles and is not stale | **PASS** — 487 tests, mypy strict clean, layering OK, `gen_types --check` current, `tsc` clean |
+| 19 | Deployed to Cloud Run; `.run.app` URL recorded | see below |
+| 20 | Desktop flawless at 1080p | **NOT VERIFIED** — the pane could not composite frames in this session, so every visual judgement here is from the accessibility tree and the page text rather than from a screenshot |
+
+**The honest summary of that table:** the code is complete and the *measurements* are not. Six
+criteria are marked PARTIAL or NOT VERIFIED for the same underlying reason — verifying them
+needs a rendered viewport and a keyboard, and this session had neither. Marking them PASS on
+the strength of having written them carefully is exactly the move this repo has spent five
+phases not making.
+
+What is genuinely verified is what a tool could check: it compiles, it types, it lints, it
+renders real data from the deployed control plane with no console errors, and the three backend
+defects it found are fixed with tests.
+
+### Deployed
+
+```
+web           https://attestor-web-elrhl52mkq-uc.a.run.app
+control plane https://attestor-control-plane-elrhl52mkq-uc.a.run.app
+dispatcher    https://attestor-dispatcher-elrhl52mkq-uc.a.run.app   (no-allow-unauthenticated)
+```
+
+`attestor-web`, revision `00001-jr7`, `--min-instances=0`, dedicated service account, and every
+page verified to return 200 with real content from the deployed control plane:
+
+```
+/           200   26,315 bytes   renders attestor-505506, us-central1, attestor-web-00001-jr7
+/registry   200   72,486 bytes   live Agent Registry read
+/reviews    200   31,215 bytes
+/traces     200   25,623 bytes
+```
+
+**The web service account holds one role: `roles/logging.logWriter`.** No Firestore, no GCS,
+no Vertex, no registry. Every read the UI performs is the control plane's read, made under the
+control plane's identity, because the browser reaches the control plane only through route
+handlers with an explicit method-and-path allowlist in front of them.
+
+That is the reason for proxying rather than calling Google APIs from the page, and it is worth
+stating as a security property rather than as a plumbing detail: the blast radius of the
+internet-facing service in this system is a service account that can write a log line. A
+`[...path]` proxy that forwarded whatever it was handed would have been an open relay into the
+control plane's write endpoints from anywhere that can reach the UI, so the allowlist covers
+seven reads and one write, and `POST /uploads`, `POST /reviews` and `POST /reviews/{id}/state`
+are deliberately absent — nothing in this interface starts work.
+
+The control plane stays `--allow-unauthenticated`, which is the stated scope decision from
+Phase 1 (multi-tenant auth is explicitly out of scope) rather than an oversight. When that
+changes it changes in one file.
