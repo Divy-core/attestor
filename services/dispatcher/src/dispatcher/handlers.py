@@ -347,7 +347,9 @@ class HandlerRegistry:
             or (q.department is Department.UNASSIGNED and department is UNASSIGNED_OWNER)
         ]
 
-        answers = self.fleet.draft(envelope.review_id, envelope.run_id, department, mine)
+        answers = self.fleet.draft(
+            envelope.review_id, envelope.run_id, round_.round_id, department, mine
+        )
         for answer in answers:
             self.answers.put(answer)
 

@@ -1,0 +1,61 @@
+{
+  "applied": true,
+  "case": "memory_bank_migration",
+  "pass": true,
+  "reviews": [
+    {
+      "altered": [],
+      "identical": true,
+      "missing": [],
+      "review_id": "rev-acme-2026-q3",
+      "source_count": 5,
+      "source_pairs": [
+        [
+          "0c64c45e619aa91d",
+          "Kestrel Data encrypts all customer data at rest with AES-256-GCM."
+        ],
+        [
+          "139f213a723f3c9a",
+          "Kestrel Data commits to a Recovery Time Objective of 4 hours."
+        ],
+        [
+          "928a74e05ba09dff",
+          "Kestrel Data does not offer on-premises or self-hosted deployment. Kestrel Insight is multi-tenant SaaS only, with no single-tenant, private-cloud, air-gapped, or customer-VPC option, and none on the roadmap."
+        ],
+        [
+          "f2a7ea1c80f0167e",
+          "Kestrel Data enforces hardware-backed multi-factor authentication for 100% of personnel with production access."
+        ],
+        [
+          "f50012c81d378bef",
+          "Kestrel Data has never experienced a customer data breach."
+        ]
+      ],
+      "target_count": 5,
+      "target_pairs": [
+        [
+          "0c64c45e619aa91d",
+          "Kestrel Data encrypts all customer data at rest with AES-256-GCM."
+        ],
+        [
+          "139f213a723f3c9a",
+          "Kestrel Data commits to a Recovery Time Objective of 4 hours."
+        ],
+        [
+          "928a74e05ba09dff",
+          "Kestrel Data does not offer on-premises or self-hosted deployment. Kestrel Insight is multi-tenant SaaS only, with no single-tenant, private-cloud, air-gapped, or customer-VPC option, and none on the roadmap."
+        ],
+        [
+          "f2a7ea1c80f0167e",
+          "Kestrel Data enforces hardware-backed multi-factor authentication for 100% of personnel with production access."
+        ],
+        [
+          "f50012c81d378bef",
+          "Kestrel Data has never experienced a customer data breach."
+        ]
+      ]
+    }
+  ],
+  "source_engine": "8598754324522205184",
+  "target_engine": "511608807718125568"
+}

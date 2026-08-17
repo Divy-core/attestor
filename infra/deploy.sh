@@ -80,8 +80,14 @@ grant() {
         --member="serviceAccount:$1" --role="$2" --condition=None --format=none --quiet
     printf '  %s -> %s\n' "${1%%@*}" "$2"
 }
+# `modelarmor.user` is not optional and its absence is not obvious. Model Armor fails
+# CLOSED by design -- `execution_failed` maps to DENY -- so a dispatcher that cannot call
+# `sanitizeUserPrompt` does not error, it quarantines every question it is given. The
+# first deployed run delivered a review with twelve quarantined answers and zero
+# citations, reported `delivered`, and the only sign was a 403 in the logs.
 for role in roles/datastore.user roles/pubsub.publisher roles/aiplatform.user \
-            roles/storage.objectViewer roles/cloudtrace.agent roles/logging.logWriter; do
+            roles/storage.objectViewer roles/cloudtrace.agent roles/logging.logWriter \
+            roles/modelarmor.user roles/discoveryengine.viewer; do
     grant "$DISPATCHER_SA" "$role"
 done
 for role in roles/datastore.user roles/pubsub.publisher roles/storage.objectAdmin \
@@ -182,6 +188,10 @@ pairs = [
     for e in record["engines"]
     if e["role"] in names
 ]
+# Memory Bank is scoped per engine, so this is which engine holds the commitments --
+# the orchestrator, because commitments are review-scoped rather than department-scoped.
+orchestrator = next(e for e in record["engines"] if e["role"] == "orchestrator")
+pairs.append(f"AGENT_ENGINE_ID={orchestrator['resource_name'].rsplit('/', 1)[-1]}")
 print(",".join(pairs))
 PY
 )"

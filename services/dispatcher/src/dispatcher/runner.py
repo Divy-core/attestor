@@ -33,10 +33,16 @@ from attestor_platform.memory import MemoryBankCommitments
 
 logger = logging.getLogger(__name__)
 
-#: The Agent Engine that scopes Memory Bank. Phase 0 created this one; Phase 5 replaces it
-#: with the deployed fleet. Memory Bank contents are scoped per engine, so that swap is a
-#: migration -- recorded here rather than discovered then.
-AGENT_ENGINE_ID = os.environ.get("AGENT_ENGINE_ID", "8598754324522205184")
+#: The Agent Engine that scopes Memory Bank. Memory Bank contents are scoped per engine,
+#: so changing this is a migration and not a configuration change -- Phase 5 session three
+#: performed it (`tools/migrate_memory.py`, `docs/proof/memory-bank-migration.json`), with
+#: the readback verified identical before the Phase 0 probe engine was removed.
+#:
+#: The orchestrator engine rather than a department one, because commitments are scoped by
+#: review: putting them on a department engine would mean the legal drafter could not see
+#: a promise the security drafter made, which is the cross-department contradiction the
+#: consistency check exists to catch.
+AGENT_ENGINE_ID = os.environ.get("AGENT_ENGINE_ID", "511608807718125568")
 
 
 class FleetRunner(Protocol):
@@ -47,7 +53,12 @@ class FleetRunner(Protocol):
     def triage(self, review_id: str, run_id: str, questions: list[Question]) -> list[Question]: ...
 
     def draft(
-        self, review_id: str, run_id: str, department: Department, questions: list[Question]
+        self,
+        review_id: str,
+        run_id: str,
+        round_id: str,
+        department: Department,
+        questions: list[Question],
     ) -> list[Answer]: ...
 
     def load_commitments(self, review_id: str) -> list[tuple[str, str]]: ...
@@ -84,7 +95,7 @@ class PipelineFleetRunner:
         self._answers = answers
         self._commitments = commitments
         self._engine_id = engine_id
-        self._pipelines: dict[tuple[str, str], Any] = {}
+        self._pipelines: dict[tuple[str, str, str], Any] = {}
         #: What the last `draft` call measured. Read by the handler so the figures end up
         #: in the audit trail rather than only in a log line nobody correlates.
         self.last_draft_stats: dict[str, Any] = {}
@@ -109,17 +120,22 @@ class PipelineFleetRunner:
             self._commitments = CommitmentRepository()
         return self._commitments
 
-    def _pipeline(self, review_id: str, run_id: str) -> Any:
+    def _pipeline(self, review_id: str, run_id: str, round_id: str | None = None) -> Any:
         from attestor_fleet.callbacks.audit import FirestoreAuditSink
         from attestor_fleet.callbacks.budget import BudgetLedger
         from attestor_fleet.callbacks.guard import ArmorGuard
         from attestor_fleet.pipeline import ReviewPipeline
 
-        key = (review_id, run_id)
+        # The round is part of the key. `triage` builds a pipeline before the round is
+        # known and `draft` needs one that stamps the real round on its answers; sharing
+        # one cache entry between them would hand drafting a pipeline still stamping the
+        # run id, which is the defect this parameter exists to fix.
+        key = (review_id, run_id, round_id or "-")
         if key not in self._pipelines:
             self._pipelines[key] = ReviewPipeline(
                 review_id=review_id,
                 run_id=run_id,
+                round_id=round_id,
                 guard=ArmorGuard(),
                 audit=FirestoreAuditSink(),
                 ledger=BudgetLedger(review_id=review_id),
@@ -143,11 +159,16 @@ class PipelineFleetRunner:
         return triaged
 
     def draft(
-        self, review_id: str, run_id: str, department: Department, questions: list[Question]
+        self,
+        review_id: str,
+        run_id: str,
+        round_id: str,
+        department: Department,
+        questions: list[Question],
     ) -> list[Answer]:
         """Draft one department's slice with the fan-out intact."""
         del department  # the questions are already scoped; kept for the log line
-        pipeline = self._pipeline(review_id, run_id)
+        pipeline = self._pipeline(review_id, run_id, round_id)
         started = time.perf_counter()
         outcomes = pipeline.draft_many(questions)
         wall = time.perf_counter() - started
@@ -239,17 +260,22 @@ class AgentRuntimeFleetRunner(PipelineFleetRunner):
     surface is defended in depth *where the work happens*.
     """
 
-    def _pipeline(self, review_id: str, run_id: str) -> Any:
+    def _pipeline(self, review_id: str, run_id: str, round_id: str | None = None) -> Any:
         from attestor_fleet.callbacks.audit import FirestoreAuditSink
         from attestor_fleet.callbacks.budget import BudgetLedger
         from attestor_fleet.callbacks.guard import ArmorGuard
         from dispatcher.remote import RemoteDraftingPipeline
 
-        key = (review_id, run_id)
+        # The round is part of the key. `triage` builds a pipeline before the round is
+        # known and `draft` needs one that stamps the real round on its answers; sharing
+        # one cache entry between them would hand drafting a pipeline still stamping the
+        # run id, which is the defect this parameter exists to fix.
+        key = (review_id, run_id, round_id or "-")
         if key not in self._pipelines:
             self._pipelines[key] = RemoteDraftingPipeline(
                 review_id=review_id,
                 run_id=run_id,
+                round_id=round_id,
                 guard=ArmorGuard(),
                 audit=FirestoreAuditSink(),
                 ledger=BudgetLedger(review_id=review_id),

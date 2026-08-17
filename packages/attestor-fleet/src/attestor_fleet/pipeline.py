@@ -201,9 +201,20 @@ class ReviewPipeline:
         prior_commitments: Sequence[tuple[str, str]] = (),
         screen_ingress: bool = True,
         screen_tool_output: bool = True,
+        round_id: str | None = None,
     ) -> None:
         self.review_id = review_id
         self.run_id = run_id
+        #: Which round these answers belong to. Defaults to `run_id`, which is what this
+        #: stamped unconditionally until Phase 5 session three -- and that was a real
+        #: defect, invisible locally and fatal once the answers round-tripped through
+        #: Firestore. `AnswerRepository.for_round` queries on `round_id`, so a run driven
+        #: by the dispatcher wrote every answer under the *run* and then `assemble_round`
+        #: read the *round* and found nothing: no human ever paused, no commitment was
+        #: ever recorded, and the review reported `delivered` with zero answers. Phase 3's
+        #: local runs never noticed because they hold outcomes in memory and never query
+        #: back by round.
+        self.round_id = round_id or run_id
         self.guard = guard
         self.audit: AuditSink = audit if audit is not None else NullAuditSink()
         self.ledger = ledger if ledger is not None else BudgetLedger(review_id=review_id)
@@ -442,7 +453,7 @@ class ReviewPipeline:
                 )
                 outcome.answer = Answer(
                     question_id=question.question_id,
-                    round_id=self.run_id,
+                    round_id=self.round_id,
                     text="Quarantined: Model Armor blocked this question.",
                     citations=[],
                     confidence=Confidence.LOW,
@@ -639,7 +650,7 @@ class ReviewPipeline:
 
         outcome.answer = Answer(
             question_id=question.question_id,
-            round_id=self.run_id,
+            round_id=self.round_id,
             text=text,
             citations=citations,
             confidence=confidence,
@@ -655,7 +666,7 @@ class ReviewPipeline:
         """The system saying it does not know. Zero citations is legal ONLY here."""
         return Answer(
             question_id=question.question_id,
-            round_id=self.run_id,
+            round_id=self.round_id,
             text="No supporting evidence was found in the corpus for this question.",
             citations=[],
             confidence=Confidence.LOW,

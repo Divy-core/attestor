@@ -197,3 +197,42 @@ class TestDraftedTextIsConsumedOnce:
 
         assert seen == [None]
         assert pipeline._local.drafted == "main thread draft"
+
+
+class TestAnswersAreStampedWithTheRound:
+    """The defect that made every deployed review deliver nothing.
+
+    `AnswerRepository.for_round` queries on `Answer.round_id`. The pipeline stamped every
+    answer with the *run* id, so `assemble_round` and `close_round` -- which read by round
+    -- found zero answers on a review that had just drafted twelve. Nothing errored: no
+    human was ever asked to approve anything, no commitment was ever recorded, and the
+    review reported `delivered`.
+
+    It was invisible in Phase 3 because a local run holds its outcomes in memory and never
+    queries back by round. It only appears once the answers round-trip through Firestore,
+    which is to say only on the deployed path.
+    """
+
+    def test_the_round_is_stamped_when_given(self) -> None:
+        from attestor_fleet.pipeline import ReviewPipeline
+
+        pipeline = ReviewPipeline(review_id="rev-1", run_id="run-9", round_id="rev-1-r1")
+        assert pipeline.round_id == "rev-1-r1"
+
+    def test_it_falls_back_to_the_run_id(self) -> None:
+        """Existing callers -- `adk web`, the Phase 3 harnesses -- pass no round."""
+        from attestor_fleet.pipeline import ReviewPipeline
+
+        assert ReviewPipeline(review_id="rev-1", run_id="run-9").round_id == "run-9"
+
+    def test_a_no_evidence_answer_carries_the_round_too(self) -> None:
+        """The refusal path is the one that matters most: an answer the system declined
+        to give still has to be findable by the round that has to explain it."""
+        from attestor_core.domain import Department, Question
+        from attestor_fleet.pipeline import ReviewPipeline
+
+        pipeline = ReviewPipeline(review_id="rev-1", run_id="run-9", round_id="rev-1-r1")
+        question = Question(
+            question_id="a" * 16, raw_text="q", text="q", department=Department.SECURITY
+        )
+        assert pipeline._no_evidence_answer(question).round_id == "rev-1-r1"
