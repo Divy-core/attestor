@@ -6,6 +6,13 @@ requires-python = ">=3.12,<3.13"
 dependencies = [
     "attestor-core",
     "attestor-platform",
+    # The dispatcher runs the fleet. Phase 4 imported it lazily inside methods so the
+    # module could be imported without credentials; Phase 5 made the dependency explicit
+    # because `RemoteDraftingPipeline` subclasses `ReviewPipeline` at import time.
+    "attestor-fleet",
+    # Calling the deployed engines. Same pin as the runtime bundle, so the client the
+    # dispatcher speaks with is the one the engines were deployed by.
+    "google-cloud-aiplatform[agent-engines]==1.164.0",
     "fastapi>=0.115",
     "uvicorn[standard]>=0.30",
 ]

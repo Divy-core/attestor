@@ -1,0 +1,59 @@
+# The dispatcher on Cloud Run. Built by Cloud Build from the REPO ROOT as context.
+#
+#   gcloud run deploy attestor-dispatcher --source . \
+#       --dockerfile infra/cloudrun/Dockerfile.dispatcher
+#
+# Repo root rather than `services/dispatcher/` because this is a uv workspace: the
+# dispatcher depends on three sibling packages by path, and a build context that cannot
+# see `packages/` produces an image that resolves them from PyPI (where they do not
+# exist) or not at all. Phase 5's engine deploy failed for the mirror-image reason -- a
+# bundle whose module was not where the loader looked -- and the error named none of it.
+
+FROM python:3.12-slim AS runtime
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy \
+    PORT=8080
+
+RUN pip install --no-cache-dir "uv==0.12.4"
+
+WORKDIR /app
+
+# Manifests first, so a source-only change reuses the dependency layer. The lock is
+# copied and honoured with `--frozen`: an image that silently resolved a different
+# version than the one tested is not the thing that was tested.
+COPY pyproject.toml uv.lock .python-version ./
+COPY packages/attestor-core/pyproject.toml packages/attestor-core/
+COPY packages/attestor-platform/pyproject.toml packages/attestor-platform/
+COPY packages/attestor-fleet/pyproject.toml packages/attestor-fleet/
+COPY services/control-plane/pyproject.toml services/control-plane/
+COPY services/dispatcher/pyproject.toml services/dispatcher/
+COPY services/runtime/pyproject.toml services/runtime/
+
+COPY packages/ packages/
+COPY services/ services/
+
+# `--package dispatcher`, not a bare `uv sync`. In a uv workspace a bare sync installs the
+# ROOT project's dependencies, and this workspace's root declares none -- so the image
+# built, pushed, and deployed cleanly, then died with `exec: uvicorn: not found`. Naming
+# the package installs that member and its dependency closure, and nothing else: the
+# control plane's fastapi pin and the runtime bundle's google-adk stay out of this image.
+RUN uv sync --frozen --no-dev --package dispatcher
+
+ENV PATH="/app/.venv/bin:$PATH"
+
+# Non-root: this process handles content that originated in an untrusted vendor document.
+RUN groupadd --system --gid 1001 attestor \
+ && useradd --system --uid 1001 --gid attestor --no-create-home attestor \
+ && chown -R attestor:attestor /app
+USER attestor
+
+EXPOSE 8080
+
+# One worker. Concurrency inside a handler is the drafting fan-out, which is already a
+# thread pool; a second uvicorn worker would double the memory for no throughput and
+# would give two processes independent claims on the same lease bookkeeping.
+CMD exec uvicorn dispatcher.main:app --host 0.0.0.0 --port "${PORT}" --workers 1

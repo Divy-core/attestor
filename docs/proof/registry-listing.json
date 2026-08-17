@@ -1,0 +1,96 @@
+{
+  "agents": [
+    {
+      "agent_framework": null,
+      "agent_id": "urn:agent:googleapis.com:locations:global:workspaceagent:workspaceagent--a2a",
+      "department": "unassigned",
+      "display_name": "Workspace Agent",
+      "effective_identity": null,
+      "identity_type": null,
+      "resource_name": "projects/attestor-505506/locations/us-central1/agents/agentregistry-00000000-0000-0000-630f-070a9d06e171",
+      "scopes": [],
+      "tools": []
+    },
+    {
+      "agent_framework": null,
+      "agent_id": "urn:agent:projects-906988347581:projects:906988347581:locations:us-central1:aiplatform:reasoningEngines:4340794390889889792",
+      "department": "engineering",
+      "display_name": "attestor-engineering",
+      "effective_identity": null,
+      "identity_type": null,
+      "resource_name": "projects/attestor-505506/locations/us-central1/agents/agentregistry-00000000-0000-0000-c03a-e2a2f50e3400",
+      "scopes": [],
+      "tools": []
+    },
+    {
+      "agent_framework": null,
+      "agent_id": "urn:agent:projects-906988347581:projects:906988347581:locations:us-central1:aiplatform:reasoningEngines:511608807718125568",
+      "department": "unassigned",
+      "display_name": "attestor-orchestrator",
+      "effective_identity": null,
+      "identity_type": null,
+      "resource_name": "projects/attestor-505506/locations/us-central1/agents/agentregistry-00000000-0000-0000-8ad4-3fd7f824d5ce",
+      "scopes": [],
+      "tools": []
+    },
+    {
+      "agent_framework": null,
+      "agent_id": "urn:agent:projects-906988347581:projects:906988347581:locations:us-central1:aiplatform:reasoningEngines:6333637226001334272",
+      "department": "security",
+      "display_name": "attestor-security",
+      "effective_identity": null,
+      "identity_type": null,
+      "resource_name": "projects/attestor-505506/locations/us-central1/agents/agentregistry-00000000-0000-0000-6658-f2a974db4103",
+      "scopes": [],
+      "tools": []
+    },
+    {
+      "agent_framework": null,
+      "agent_id": "urn:agent:projects-906988347581:projects:906988347581:locations:us-central1:aiplatform:reasoningEngines:8173357673782181888",
+      "department": "legal",
+      "display_name": "attestor-legal",
+      "effective_identity": null,
+      "identity_type": null,
+      "resource_name": "projects/attestor-505506/locations/us-central1/agents/agentregistry-00000000-0000-0000-af56-7ea2a82fe10c",
+      "scopes": [],
+      "tools": []
+    },
+    {
+      "agent_framework": null,
+      "agent_id": "urn:agent:projects-906988347581:projects:906988347581:locations:us-central1:aiplatform:reasoningEngines:8598754324522205184",
+      "department": "unassigned",
+      "display_name": "attestor-probe",
+      "effective_identity": null,
+      "identity_type": null,
+      "resource_name": "projects/attestor-505506/locations/us-central1/agents/agentregistry-00000000-0000-0000-4de3-c514ed555932",
+      "scopes": [],
+      "tools": []
+    },
+    {
+      "agent_framework": null,
+      "agent_id": "urn:agent:projects-906988347581:projects:906988347581:locations:us-central1:aiplatform:reasoningEngines:9024538003355205632",
+      "department": "unassigned",
+      "display_name": "attestor-evidence",
+      "effective_identity": null,
+      "identity_type": null,
+      "resource_name": "projects/attestor-505506/locations/us-central1/agents/agentregistry-00000000-0000-0000-c6c2-ac29cdc96f2a",
+      "scopes": [],
+      "tools": []
+    }
+  ],
+  "api": "agentregistry.googleapis.com/v1",
+  "case": "agent_registry_listing",
+  "deployed_engines": {
+    "engineering": "projects/906988347581/locations/us-central1/reasoningEngines/4340794390889889792",
+    "evidence": "projects/906988347581/locations/us-central1/reasoningEngines/9024538003355205632",
+    "legal": "projects/906988347581/locations/us-central1/reasoningEngines/8173357673782181888",
+    "orchestrator": "projects/906988347581/locations/us-central1/reasoningEngines/511608807718125568",
+    "security": "projects/906988347581/locations/us-central1/reasoningEngines/6333637226001334272"
+  },
+  "distinct_agent_urns": 7,
+  "entries_with_identity_field": 0,
+  "identity_note": "the registry list endpoint returns effective_identity and identity_type as null; identity distinctness is proven from the reasoningEngine resource's spec.effectiveIdentity and from the live conditioned IAM bindings",
+  "missing_from_registry": {},
+  "pass": true,
+  "registry_count": 7
+}

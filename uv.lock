@@ -452,16 +452,20 @@ version = "0.1.0"
 source = { editable = "services/dispatcher" }
 dependencies = [
     { name = "attestor-core" },
+    { name = "attestor-fleet" },
     { name = "attestor-platform" },
     { name = "fastapi" },
+    { name = "google-cloud-aiplatform", extra = ["agent-engines"] },
     { name = "uvicorn", extra = ["standard"] },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "attestor-core", editable = "packages/attestor-core" },
+    { name = "attestor-fleet", editable = "packages/attestor-fleet" },
     { name = "attestor-platform", editable = "packages/attestor-platform" },
     { name = "fastapi", specifier = ">=0.115" },
+    { name = "google-cloud-aiplatform", extras = ["agent-engines"], specifier = "==1.164.0" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.30" },
 ]
 

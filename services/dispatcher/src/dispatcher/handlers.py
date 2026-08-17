@@ -18,9 +18,9 @@ three with one department having run twice and another never at all.
 
 ## What is deliberately not here
 
-The fleet itself. Handlers call a `FleetRunner`, which in Phase 4 is the in-process
-`ReviewPipeline` from Phase 3. Phase 5 swaps it for a resumed Agent Runtime session
-without touching this module.
+The fleet itself. Handlers call a `FleetRunner`, which in Phase 4 was the in-process
+`ReviewPipeline` from Phase 3. Phase 5 swapped it for the deployed department engines —
+and this module did not change to allow it, which is the seam doing its job.
 """
 
 from __future__ import annotations
@@ -53,7 +53,7 @@ from attestor_platform.firestore import (
     RoundRepository,
 )
 from attestor_platform.pubsub import WorkPublisher
-from dispatcher.runner import FleetRunner, PipelineFleetRunner
+from dispatcher.runner import FleetRunner, build_fleet_runner
 
 logger = logging.getLogger(__name__)
 
@@ -170,7 +170,7 @@ class HandlerRegistry:
     @property
     def fleet(self) -> FleetRunner:
         if self._fleet is None:
-            self._fleet = PipelineFleetRunner()
+            self._fleet = build_fleet_runner()
         return self._fleet
 
     @property
@@ -352,11 +352,21 @@ class HandlerRegistry:
             self.answers.put(answer)
 
         remaining = self._close_partition(round_.round_id, envelope.partition)
+        cited = sum(1 for a in answers if a.citations)
         detail = {
             "department": department.value,
             "questions": len(mine),
             "answers": len(answers),
+            "cited": cited,
+            "needs_human": sum(1 for a in answers if a.status.value == "needs_human"),
+            "flagged_no_evidence": sum(
+                1 for a in answers if a.status.value == "flagged_no_evidence"
+            ),
             "partitions_outstanding": sorted(remaining),
+            # The concurrency figure, recorded per partition. Reported here so the
+            # deployed run's number is in the immutable audit trail next to the work it
+            # describes, rather than reconstructed afterwards from timestamps.
+            **getattr(self.fleet, "last_draft_stats", {}),
         }
         self._audit_stage(envelope, detail)
 

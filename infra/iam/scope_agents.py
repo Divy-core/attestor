@@ -33,6 +33,24 @@ Each department engine gets `roles/storage.objectViewer` on the corpus bucket, *
 IAM Condition** restricting it to objects under its own prefix. The other prefixes are not
 denied explicitly; they are simply never granted, which is the stronger form — there is no
 deny rule to misconfigure, only an allow that does not reach.
+
+## The second surface, added in Phase 5 session three
+
+Retrieval touches the platform twice — the GCS objects above, and the Discovery Engine
+datastore that produces the candidates. `docs/proof/permission-surfaces-and-composition.md`
+measured that Agent Identity's automatic grant carries **no `discoveryengine.*` permission
+at all**, and moving drafting onto the deployed engines turned that from an observation
+into a hard blocker: the engine's own logs named it exactly.
+
+    PERMISSION_DENIED  permission: discoveryengine.servingConfigs.search
+    resource: .../dataStores/attestor-corpus-security/servingConfigs/default_config
+
+So `--datastores` grants `roles/discoveryengine.viewer`, which carries that permission.
+Datastores live at the *project* level here (standard edition, no engine resource whose
+policy could hold a binding), so the grant is a project-level one and a **conditioned**
+binding is attempted first. Whether the condition actually restricts anything is a
+measured question, not an assumed one — `tools/verify_datastore_scoping.py` answers it by
+asking one engine to read its own datastore and another department's.
 """
 
 from __future__ import annotations
@@ -95,6 +113,114 @@ def condition_for(bucket: str, prefix: str) -> str:
     return f'resource.name.startsWith("projects/_/buckets/{bucket}/objects/{prefix}")'
 
 
+#: Which datastore each department engine queries. The names come from Phase 2's seed.
+DATASTORE: dict[str, str] = {
+    "security": "attestor-corpus-security",
+    "legal": "attestor-corpus-legal",
+    "engineering": "attestor-corpus-engineering",
+}
+
+#: The role carrying `discoveryengine.servingConfigs.search`, which is the one permission
+#: the search tool actually needs. Confirmed from the role definition rather than assumed.
+DATASTORE_ROLE = "roles/discoveryengine.viewer"
+
+
+def datastore_condition(project: str, datastore: str) -> str:
+    """An IAM Condition naming one datastore's serving config.
+
+    Attempted rather than assumed to work: IAM conditions on `resource.name` are only
+    honoured for services that publish the attribute, and a service that does not leaves
+    `resource.name` empty — which makes `startsWith` false and denies *everything*. That
+    failure mode is indistinguishable from "not granted" unless both directions are
+    measured, which is what the verifier does.
+    """
+    return (
+        'resource.name.startsWith("projects/'
+        f'{project}/locations/global/collections/default_collection/dataStores/{datastore}")'
+    )
+
+
+def grant_datastores(
+    project: str,
+    project_number: str,
+    engines: list[dict[str, Any]],
+    *,
+    conditioned: bool,
+) -> list[dict[str, Any]]:
+    """Grant each department engine search on its datastore.
+
+    `conditioned=True` attempts the per-datastore condition; `conditioned=False` removes
+    that binding and grants the project-level role outright. Both were run, in that order,
+    and the difference between them is the measurement — see
+    `docs/proof/datastore-permission-surface.md`.
+    """
+    records: list[dict[str, Any]] = []
+    for engine in engines:
+        role = engine["role"]
+        datastore = DATASTORE.get(role)
+        if datastore is None:
+            continue
+        principal = principal_for(engine["resource_name"], project_number)
+        condition = datastore_condition(project, datastore)
+        record: dict[str, Any] = {
+            "role": role,
+            "principal": principal,
+            "datastore": datastore,
+            "role_granted": DATASTORE_ROLE,
+            "conditioned": conditioned,
+            "condition": condition if conditioned else None,
+        }
+        print(f"  {role:14} -> {datastore}")
+
+        if conditioned:
+            args = [
+                "gcloud",
+                "projects",
+                "add-iam-policy-binding",
+                project,
+                f"--member={principal}",
+                f"--role={DATASTORE_ROLE}",
+                f"--condition=title={role}-datastore-only,expression={condition}",
+                "--format=none",
+            ]
+        else:
+            # Drop the conditioned binding first, so the policy does not carry a rule
+            # that was measured not to work. Failure here is fine -- it means the
+            # conditioned binding was never added.
+            _run(
+                [
+                    "gcloud",
+                    "projects",
+                    "remove-iam-policy-binding",
+                    project,
+                    f"--member={principal}",
+                    f"--role={DATASTORE_ROLE}",
+                    f"--condition=title={role}-datastore-only,expression={condition}",
+                    "--format=none",
+                ]
+            )
+            args = [
+                "gcloud",
+                "projects",
+                "add-iam-policy-binding",
+                project,
+                f"--member={principal}",
+                f"--role={DATASTORE_ROLE}",
+                "--condition=None",
+                "--format=none",
+            ]
+
+        code, output = _run(args)
+        record["applied"] = code == 0
+        if code != 0:
+            record["error"] = output[:600]
+            print(f"      FAILED: {output[:160]}")
+        else:
+            print(f"      bound ({'conditioned' if conditioned else 'project-level'})")
+        records.append(record)
+    return records
+
+
 def load_engines() -> list[dict[str, Any]]:
     if not DEPLOYMENT.exists():
         sys.exit(f"error: {DEPLOYMENT} not found -- deploy the fleet first")
@@ -105,6 +231,16 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--apply", action="store_true", help="add the IAM bindings")
     parser.add_argument("--show", action="store_true", help="print what would be bound")
+    parser.add_argument(
+        "--datastores",
+        action="store_true",
+        help="also grant Discovery Engine search, which drafting on the engines needs",
+    )
+    parser.add_argument(
+        "--datastore-condition",
+        action="store_true",
+        help="attempt the per-datastore IAM Condition rather than the project-level role",
+    )
     args = parser.parse_args()
     if not (args.apply or args.show):
         parser.error("pass --apply or --show")
@@ -174,6 +310,13 @@ def main() -> int:
                 print("      bound")
         records.append(record)
 
+    datastore_records: list[dict[str, Any]] = []
+    if args.datastores and args.apply:
+        print("\ndatastore search grants (project-level -- no per-datastore policy exists)\n")
+        datastore_records = grant_datastores(
+            project, project_number, engines, conditioned=args.datastore_condition
+        )
+
     PROOF.parent.mkdir(parents=True, exist_ok=True)
     PROOF.write_text(
         json.dumps(
@@ -183,6 +326,7 @@ def main() -> int:
                 "bucket": bucket,
                 "applied": args.apply,
                 "bindings": records,
+                "datastore_bindings": datastore_records,
             },
             indent=2,
             sort_keys=True,

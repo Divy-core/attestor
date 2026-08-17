@@ -9,12 +9,20 @@ this file changes when it does.
 in-process drafting concurrency, the section reranking, the guardrail surfaces, and the
 constrained redraft all come along exactly as they were, because none of them was coupled
 to how the work was scheduled.
+
+`AgentRuntimeFleetRunner` is the other implementation, added in Phase 5 session three: the
+same pipeline with retrieval and drafting executed by the deployed department engine, so
+the work runs under the Agent Identity the conditioned IAM bindings actually scope. Which
+one runs is a configuration choice (`ATTESTOR_FLEET_RUNNER`), defaulting to Agent Runtime,
+and `PipelineFleetRunner` stays selectable because it is what produced Phase 3's
+authoritative numbers and is the documented fallback if the remote path misbehaves.
 """
 
 from __future__ import annotations
 
 import logging
 import os
+import time
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -77,6 +85,9 @@ class PipelineFleetRunner:
         self._commitments = commitments
         self._engine_id = engine_id
         self._pipelines: dict[tuple[str, str], Any] = {}
+        #: What the last `draft` call measured. Read by the handler so the figures end up
+        #: in the audit trail rather than only in a log line nobody correlates.
+        self.last_draft_stats: dict[str, Any] = {}
 
     # -- lazy dependencies -------------------------------------------------------------
 
@@ -134,10 +145,28 @@ class PipelineFleetRunner:
     def draft(
         self, review_id: str, run_id: str, department: Department, questions: list[Question]
     ) -> list[Answer]:
-        """Draft one department's slice with the in-process fan-out intact."""
+        """Draft one department's slice with the fan-out intact."""
         del department  # the questions are already scoped; kept for the log line
         pipeline = self._pipeline(review_id, run_id)
+        started = time.perf_counter()
         outcomes = pipeline.draft_many(questions)
+        wall = time.perf_counter() - started
+
+        # Measured here rather than inferred later. `achieved_concurrency` lives on
+        # `RunReport`, which only `ReviewPipeline.run` builds -- and the dispatcher never
+        # calls `run`, it calls `draft_many` one partition at a time. Without this, the
+        # deployed run could only report a configured `max_workers`, which proves nothing:
+        # if the remote calls serialised on a connection pool this lands near 1.
+        latencies = [o.draft_seconds for o in outcomes if o.draft_seconds]
+        self.last_draft_stats = {
+            "questions": len(questions),
+            "wall_seconds": round(wall, 2),
+            "latency_sum_seconds": round(sum(latencies), 2),
+            "achieved_concurrency": round(sum(latencies) / wall, 2) if wall > 0 else 0.0,
+            "slowest_question_seconds": round(max(latencies), 2) if latencies else 0.0,
+            "remote_calls": getattr(pipeline, "remote_calls", 0),
+            "degraded_commitment_matches": pipeline.degraded_commitment_matches,
+        }
         return [o.answer for o in outcomes if o.answer is not None]
 
     def load_commitments(self, review_id: str) -> list[tuple[str, str]]:
@@ -193,3 +222,65 @@ class PipelineFleetRunner:
         )
         self.answers.put(updated)
         return True
+
+
+class AgentRuntimeFleetRunner(PipelineFleetRunner):
+    """Drafting executed by the deployed department engines.
+
+    The only difference from `PipelineFleetRunner` is which pipeline class it builds, and
+    that is the point: everything about how a review advances — the stages, the claim, the
+    join, the commitments — is unchanged, because none of it was ever coupled to where the
+    drafting ran. What changes is the identity the corpus is read under.
+
+    Why that matters rather than being an implementation detail: sessions one and two
+    proved the platform refuses `attestor-security` a legal object, using the engine's own
+    Agent Identity. With drafting in this process that proof described a component that was
+    idle. With drafting on the engines it describes the production path, and the object
+    surface is defended in depth *where the work happens*.
+    """
+
+    def _pipeline(self, review_id: str, run_id: str) -> Any:
+        from attestor_fleet.callbacks.audit import FirestoreAuditSink
+        from attestor_fleet.callbacks.budget import BudgetLedger
+        from attestor_fleet.callbacks.guard import ArmorGuard
+        from dispatcher.remote import RemoteDraftingPipeline
+
+        key = (review_id, run_id)
+        if key not in self._pipelines:
+            self._pipelines[key] = RemoteDraftingPipeline(
+                review_id=review_id,
+                run_id=run_id,
+                guard=ArmorGuard(),
+                audit=FirestoreAuditSink(),
+                ledger=BudgetLedger(review_id=review_id),
+                prior_commitments=self.load_commitments(review_id),
+            )
+        return self._pipelines[key]
+
+
+#: Which implementation the dispatcher builds. Agent Runtime by default -- the fleet
+#: exists to run the review, and a default that quietly kept execution in the dispatcher
+#: would make the architecture diagram a claim rather than a description.
+FLEET_RUNNER = os.environ.get("ATTESTOR_FLEET_RUNNER", "agent_runtime").strip().lower()
+
+_RUNNERS: dict[str, type[PipelineFleetRunner]] = {
+    "agent_runtime": AgentRuntimeFleetRunner,
+    "in_process": PipelineFleetRunner,
+}
+
+
+def build_fleet_runner(name: str | None = None) -> FleetRunner:
+    """Construct the configured fleet runner.
+
+    Raises:
+        ValueError: on an unknown name. Deliberately not a silent fallback to the
+            in-process runner: a typo in a Cloud Run environment variable must not
+            quietly move 312 questions off the deployed engines and leave the run
+            reporting success.
+    """
+    selected = (name or FLEET_RUNNER).strip().lower()
+    implementation = _RUNNERS.get(selected)
+    if implementation is None:
+        raise ValueError(f"unknown ATTESTOR_FLEET_RUNNER {selected!r}; expected {sorted(_RUNNERS)}")
+    logger.info("fleet runner: %s", selected)
+    return implementation()

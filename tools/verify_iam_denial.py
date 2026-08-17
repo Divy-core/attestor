@@ -18,6 +18,22 @@ the pair is evidence:
 
 The engine's Agent Identity is the principal being refused. Nothing in this harness holds
 that credential; the engine does, and the engine is what runs the read.
+
+## Which observability plane this belongs in
+
+Attestor keeps two deliberately: **Cloud Trace** for engineering questions — latency,
+spans, which tool called what — and the **`audit_events`** collection for compliance
+questions, which are immutable, queryable, and expected to be answerable in six months.
+
+A permission denial is a compliance event. Sessions one and two spent three cycles trying
+to correlate this 403 to a Cloud Trace span and could not: `enable_tracing=True` is set on
+every engine, but the engines' log entries carry no populated `trace` field, so the
+log-to-trace join is unavailable by that route. Rather than keep chasing it, the denial is
+written where the architecture already said this class of event goes. That is not a
+consolation prize for the missing span — a span would tell you the read took 240ms, and
+the audit event tells you which identity was refused which object and when, which is the
+question an auditor actually asks. The span tree is demonstrated separately, on the review
+pipeline, where latency is the thing worth seeing.
 """
 
 from __future__ import annotations
@@ -26,6 +42,7 @@ import argparse
 import json
 import os
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -62,6 +79,56 @@ def ask(engine: Any, prompt: str) -> str:
             if response:
                 chunks.append(json.dumps(response.get("response", response)))
     return "\n".join(chunks)
+
+
+#: The review this probe is recorded against. A synthetic id rather than a real review's,
+#: because the denial is a property of the deployment and not of any customer's questions
+#: -- filing it under a real review would make it look like that review had been attacked.
+PROBE_REVIEW_ID = "rev-platform-boundary-probe"
+
+
+def _record_audit_event(
+    engine: str,
+    bucket: str,
+    probes: dict[str, Any],
+    *,
+    allowed: bool,
+    denied: bool,
+) -> str | None:
+    """Write the denial into the compliance plane. Returns the event id, or None.
+
+    `append_safe` rather than `append`: a failure to record the probe must not turn a
+    successful measurement into a failed one. The verdict printed above stands on the
+    platform's own words either way, and the missing event is reported rather than hidden.
+    """
+    from attestor_platform.firestore import AuditEventRepository
+
+    forbidden = probes["forbidden"]
+    event = {
+        "kind": "tool_denied",
+        "review_id": PROBE_REVIEW_ID,
+        "run_id": f"iam-probe-{int(time.time())}",
+        "question_id": None,
+        "actor": "SecurityAgent",
+        "detail": {
+            "layer": "platform",
+            "surface": "gcs_object",
+            "engine": engine,
+            "principal_kind": "AGENT_IDENTITY",
+            "bucket": bucket,
+            "requested_uri": forbidden["gcs_uri"],
+            "granted_prefix": f"gs://{bucket}/security/",
+            "own_prefix_readable": allowed,
+            "other_prefix_refused": denied,
+            # Verbatim, and truncated only for document size. The platform's own words are
+            # the entire evidentiary value; a paraphrase would be us asserting the denial.
+            "platform_response": " ".join(forbidden["response"].split())[:1500],
+            "interceptor_bypassed": True,
+            "tool": "probe_platform_boundary",
+        },
+    }
+    written = AuditEventRepository().append_safe(event)
+    return str(written) if written else None
 
 
 def main() -> int:
@@ -114,6 +181,10 @@ def main() -> int:
     print(f"  legal prefix refused  : {denied_ok}")
     print(f"\n  RESULT : {'PASS' if passed else 'FAIL'}")
 
+    audit_event_id = _record_audit_event(resource, bucket, results, allowed=allowed_ok,
+                                         denied=denied_ok)
+    print(f"  audit_event           : {audit_event_id or 'NOT WRITTEN'}")
+
     report = {
         "case": "platform_layer_iam_denial",
         "pass": passed,
@@ -121,6 +192,7 @@ def main() -> int:
         "bucket": bucket,
         "own_prefix_readable": allowed_ok,
         "other_prefix_refused": denied_ok,
+        "audit_event_id": audit_event_id,
         "probes": results,
     }
     if args.write_proof:

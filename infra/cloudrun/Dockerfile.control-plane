@@ -1,0 +1,49 @@
+# The control plane on Cloud Run. Built from the REPO ROOT as context -- see
+# `Dockerfile.dispatcher` for why the workspace root and not the service directory.
+#
+# `services/control-plane/Dockerfile` predates this and pins three packages by hand; it
+# was written in Phase 0 when the service was a hello-world and had no workspace
+# dependencies. It is left in place rather than deleted, and this is the one Cloud Build
+# is pointed at.
+
+FROM python:3.12-slim AS runtime
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy \
+    PORT=8080
+
+RUN pip install --no-cache-dir "uv==0.12.4"
+
+WORKDIR /app
+
+COPY pyproject.toml uv.lock .python-version ./
+COPY packages/attestor-core/pyproject.toml packages/attestor-core/
+COPY packages/attestor-platform/pyproject.toml packages/attestor-platform/
+COPY packages/attestor-fleet/pyproject.toml packages/attestor-fleet/
+COPY services/control-plane/pyproject.toml services/control-plane/
+COPY services/dispatcher/pyproject.toml services/dispatcher/
+COPY services/runtime/pyproject.toml services/runtime/
+
+COPY packages/ packages/
+COPY services/ services/
+
+# `--package control-plane`, not a bare `uv sync` -- see `Dockerfile.dispatcher` for the
+# failure a bare sync produced.
+RUN uv sync --frozen --no-dev --package control-plane
+
+ENV PATH="/app/.venv/bin:$PATH"
+
+RUN groupadd --system --gid 1001 attestor \
+ && useradd --system --uid 1001 --gid attestor --no-create-home attestor \
+ && chown -R attestor:attestor /app
+USER attestor
+
+EXPOSE 8080
+
+# One worker, because SSE fan-out holds per-process subscriber state: a second worker
+# would serve half the browser connections from a process that never sees the other
+# half's events.
+CMD exec uvicorn control_plane.main:app --host 0.0.0.0 --port "${PORT}" --workers 1

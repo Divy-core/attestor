@@ -1,0 +1,28 @@
+{
+  "ack_deadline_seconds": 10,
+  "case": "lost_drafting_partitions",
+  "confirmed": false,
+  "dead_lettered": [],
+  "held_partition": "security",
+  "hold_seconds": 60,
+  "hypothesis": "holding one message past the ack deadline consumes the sibling messages' delivery attempts, dead-lettering them unseen",
+  "max_delivery_attempts": 5,
+  "siblings_drained": [
+    {
+      "delivery_attempt": 1,
+      "partition": "engineering"
+    },
+    {
+      "delivery_attempt": 2,
+      "partition": "security"
+    },
+    {
+      "delivery_attempt": 1,
+      "partition": "legal"
+    }
+  ],
+  "siblings_expected": [
+    "engineering",
+    "legal"
+  ]
+}

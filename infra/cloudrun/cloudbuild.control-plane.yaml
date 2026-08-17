@@ -1,0 +1,14 @@
+# Build the control-plane image from the repo root. See `cloudbuild.dispatcher.yaml`
+# for why this is a build config rather than a `--source` deploy.
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - --file=infra/cloudrun/Dockerfile.control-plane
+      - --tag=${_IMAGE}
+      - .
+images:
+  - ${_IMAGE}
+options:
+  machineType: E2_HIGHCPU_8
+timeout: 1800s

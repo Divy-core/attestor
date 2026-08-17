@@ -1,0 +1,21 @@
+# Build the dispatcher image from the repo root.
+#
+# A build config rather than `gcloud run deploy --source .`, because that flag only finds
+# a Dockerfile at the root of the source directory and this repo has two services that
+# need different images from the same context. Naming the Dockerfile explicitly is the
+# only way to keep the workspace root as the build context, which the uv workspace
+# requires -- see `Dockerfile.dispatcher` for why.
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - --file=infra/cloudrun/Dockerfile.dispatcher
+      - --tag=${_IMAGE}
+      - .
+images:
+  - ${_IMAGE}
+options:
+  # The default pool times out at ten minutes; a uv sync of the whole workspace, google-adk
+  # included, does not reliably fit in that.
+  machineType: E2_HIGHCPU_8
+timeout: 1800s
