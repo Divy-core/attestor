@@ -1,0 +1,47 @@
+Agent Gateway — discovery evidence, 17 Aug 2026
+==============================================
+
+1. NOT an agent-platform API. Filtering the enableable surface on agent*.googleapis.com:
+     projects/906988347581/services/agentidentity.googleapis.com
+     projects/906988347581/services/agentidentitycredentials.googleapis.com
+     projects/906988347581/services/agentregistry.googleapis.com
+     projects/906988347581/services/libraryagent.googleapis.com
+
+   -> no agentgateway.googleapis.com. This is why the first pass concluded it did not exist.
+
+2. It lives under Network Services. Verb surface:
+          delete
+          describe
+          export
+          import
+          list
+
+   -> delete/describe/export/import/list. NO create verb.
+
+3. The resource type is real and reachable in this project (0 items, no error):
+     us-central1: API [networkservices.googleapis.com] not enabled on project [attestor-505506]. 
+     global     : Listed 0 items.
+
+4. What it models, from the REST discovery document (authoritative):
+     --- AgentGateway
+         googleManaged              Optional. Proxy is orchestrated and managed by GoogleCloud in a tenant project.
+         selfManaged                Optional. Attach to existing Application Load Balancers or Secure Web Proxies.
+         name                       Identifier. Name of the AgentGateway resource. It matches pattern `projects/*/locations/*/ag
+         createTime                 Output only. The timestamp when the resource was created.
+         updateTime                 Output only. The timestamp when the resource was updated.
+         labels                     Optional. Set of label tags associated with the AgentGateway resource.
+         description                Optional. A free-text description of the resource. Max length 1024 characters.
+         etag                       Optional. Etag of the resource. If this is provided, it must match the server's etag. If the
+         protocols                  Optional. Deprecated.
+         registries                 Optional. A list of Agent registries containing the agents, MCP servers and tools governed b
+         networkConfig              Optional. Network configuration for the AgentGateway.
+         agentGatewayCard           Output only. Field for populated AgentGateway card.
+         agentConnectivityTemplate  Optional. The resource name of the AgentConnectivityTemplate. Format: projects/{project}/loc
+     --- AgentGatewayGoogleManaged
+         governedAccessPath         Optional. Operating Mode of Agent Gateway.
+     --- AgentGatewaySelfManaged
+         resourceUri                Optional. A supported Google Cloud networking proxy in the Project and Location
+         resourceUris               Optional. List of supported Google Cloud networking proxies in the Project and Location. res
+     --- AgentGatewayNetworkConfig
+         egress                     Optional. Optional PSC-Interface network attachment for connectivity to your private VPCs ne
+         dnsPeeringConfig           Optional. Optional DNS peering configuration for connectivity to your private VPC network.
