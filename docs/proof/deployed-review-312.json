@@ -1,0 +1,110 @@
+{
+  "answers": {
+    "citation_rate": null,
+    "flagged_no_evidence": 0,
+    "needs_human": 0,
+    "total": 0,
+    "with_citation": 0
+  },
+  "case": "deployed_pubsub_review",
+  "concurrency": {
+    "in_process_reference": 7.84,
+    "measured": {}
+  },
+  "execution": {
+    "dispatcher": "Cloud Run (attestor-dispatcher), Eventarc push subscription",
+    "drafting": "Agent Runtime department engines",
+    "harness_role": "published one envelope, then observed"
+  },
+  "final_state": "drafting",
+  "gcs_uri": "gs://attestor-505506-uploads/questionnaires/deployed-e2732d32/acme-vendor-review-r1.xlsx",
+  "partitions": {
+    "ack_deadline_seconds": 600,
+    "distinct_workers": [
+      "attestor-dispatcher-00008-8k8"
+    ],
+    "in_process_estimate_seconds": 269.0,
+    "lease_seconds": 900,
+    "longest_seconds": 0.0,
+    "margin_seconds": 600.0,
+    "overlap_seconds": {
+      "?|?": 0.0,
+      "?|legal": 0.0
+    }
+  },
+  "pass": false,
+  "questions_requested": 312,
+  "redelivered_claims": [
+    {
+      "attempts": 5,
+      "dedup_key": "dd309c5cddfc0840",
+      "state": "failed"
+    },
+    {
+      "attempts": 5,
+      "dedup_key": "5cc56de28afee3a5",
+      "state": "failed"
+    },
+    {
+      "attempts": 5,
+      "dedup_key": "f6525c03c3c266f3",
+      "state": "failed"
+    }
+  ],
+  "review_id": "rev-deployed-9c33633e",
+  "round_id": "rev-deployed-9c33633e-r1",
+  "run_id": "run-1786964392",
+  "trace": [
+    {
+      "attempts": 1,
+      "dedup_key": "f91eae50bf2d63ab",
+      "kind": "intake_document",
+      "n": 1,
+      "partition": null,
+      "seconds": 2.9,
+      "state": "completed",
+      "worker": "attestor-dispatcher-00007-tfj"
+    },
+    {
+      "attempts": 1,
+      "dedup_key": "d6f15ca163aabba7",
+      "kind": "triage_questions",
+      "n": 2,
+      "partition": null,
+      "seconds": 77.3,
+      "state": "completed",
+      "worker": "attestor-dispatcher-00007-tfj"
+    },
+    {
+      "attempts": 5,
+      "dedup_key": "dd309c5cddfc0840",
+      "kind": "draft_answer",
+      "n": 3,
+      "partition": null,
+      "seconds": null,
+      "state": "failed",
+      "worker": "attestor-dispatcher-00008-8k8"
+    },
+    {
+      "attempts": 5,
+      "dedup_key": "5cc56de28afee3a5",
+      "kind": "draft_answer",
+      "n": 4,
+      "partition": null,
+      "seconds": null,
+      "state": "failed",
+      "worker": "attestor-dispatcher-00008-8k8"
+    },
+    {
+      "attempts": 5,
+      "dedup_key": "f6525c03c3c266f3",
+      "kind": "draft_answer",
+      "n": 5,
+      "partition": "legal",
+      "seconds": null,
+      "state": "failed",
+      "worker": "attestor-dispatcher-00008-8k8"
+    }
+  ],
+  "wall_seconds": 1002.7
+}

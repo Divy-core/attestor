@@ -1781,3 +1781,317 @@ Order for session three: diagnose the missing partitions and make the puller con
 re-run 312; then the 22-day resume artefact; then Memory Bank migration off the probe
 engine; then Cloud Run + Eventarc, which would also replace the harness's pull loop with a
 real push subscription and make the concurrency question moot.
+
+### Session three (17 Aug 2026) — the fleet stops being decorative
+
+Sessions one and two deployed five engines, gave each its own Agent Identity, and proved
+the platform refuses one of them a cross-department read. Session two also recorded,
+correctly, that the engines **were not on the drafting path** — so the strongest evidence
+in the project was attached to a component that was idle, and the honest sentence about
+Track 3's first rubric bullet was "the fleet is deployed to Agent Runtime; the review runs
+in a script."
+
+This session closed that, moved the whole stack onto Cloud Run behind an Eventarc push
+subscription, and found four defects by running the real thing at full scale.
+
+#### Drafting executes on the deployed engines (ADR-0007)
+
+`AgentRuntimeFleetRunner` selects `RemoteDraftingPipeline`, which subclasses the Phase 3
+`ReviewPipeline` and overrides exactly **two** methods. The per-passage Model Armor
+screening, the commitment consistency check, the one-shot constrained redraft, the computed
+confidence, the audit events and the escalation rule are the same code on the same objects
+— which is the only way the deployed numbers are comparable with Phase 3's at all.
+
+Precisely what moved, because a vague version of this claim would be worse than none:
+
+| Call | Where it runs | Under whose identity |
+|---|---|---|
+| Corpus retrieval | the department engine | the engine's Agent Identity |
+| The draft itself | the department engine | the engine's Agent Identity |
+| Triage classification | the dispatcher | the dispatcher's service account |
+| Commitment consistency check | the dispatcher | the dispatcher's service account |
+| Constrained redraft | the dispatcher | the dispatcher's service account |
+
+The IAM proof is now load-bearing rather than decorative: the conditioned GCS bindings
+scope the identity the production path actually runs under.
+
+**The fifth failure-impersonating-empty, caught before it shipped.** `ReviewPipeline.draft`
+wraps its model call in `except Exception` and falls back to "no supporting evidence was
+found in the corpus" — right for a local hiccup, catastrophic for a remote executor,
+because it would file *"the engine was unreachable"* as *"we have no policy on this"* at
+`confidence: low` with a human flag and no error anywhere. So the whole remote round-trip
+happens inside `_guarded_retrieve`, and `EngineUnavailable` is deliberately **not** a
+`SearchUnavailable`, so it propagates to the dispatcher's retry path instead.
+
+#### The engines could not query their own datastores
+
+Section B had measured that `roles/aiplatform.agentDefaultAccess` carries 19 permissions and
+not one is `discoveryengine.*`. Moving retrieval onto the engines turned that observation
+into a hard blocker, and the engine's own log named it exactly:
+
+```
+PERMISSION_DENIED  permission: discoveryengine.servingConfigs.search
+resource: .../dataStores/attestor-corpus-security/servingConfigs/default_config
+```
+
+Each department engine now holds `roles/discoveryengine.viewer` at **project** level. A
+conditioned binding scoped to its own datastore was attempted first — and **that result is
+inconclusive, not a failure**: the probe that judged it ran inside the IAM propagation
+window, and the project-level grant only started working about five minutes after it was
+applied. Recorded as untested rather than as evidence, because "we tried it and it did not
+work" would be a claim the measurement does not support.
+
+#### Cloud Run + Eventarc, and the session-two mystery solved
+
+The stall that ended session two is **diagnosed and closed**
+(`docs/proof/lost-partitions-diagnosis.md`). The suggested explanation — a client-side
+prefetch buffer whose ack deadlines expire during a long synchronous dispatch — was
+**refuted by experiment** (`tools/diagnose_lost_partitions.py`): holding one message across
+six ack deadlines cost the siblings nothing, and both arrived at `delivery_attempt=1`.
+
+The actual cause was four lines apart from itself in the harness. `last_message_at` was
+stamped when a message *arrived*, and the idle check ran *after* a ten-minute dispatch, so
+the very next iteration declared 240 seconds of silence and stopped **without ever pulling
+again**. The legal and engineering messages were never lost; they were never asked for. The
+line `no message for 240s` was not measuring silence, it was measuring how long the previous
+message took, printed under the wrong label.
+
+Not fixed — deleted. The dispatcher and control plane now run on Cloud Run behind an
+Eventarc push subscription, so there is no client loop, no idle timer, and no
+single-threaded dispatch to get it wrong. Two incidental findings survive the loop and are
+recorded: a held message really does come back at `delivery_attempt=2` once its deadline
+lapses (which is what the 900s lease makes harmless), and a unary `pull` against an empty
+backlog can raise `DeadlineExceeded` rather than returning empty.
+
+#### Four defects, all found by running it rather than reasoning about it
+
+**1. Every deployed round assembled nothing.** `AnswerRepository.for_round` queries on
+`Answer.round_id`, and the pipeline stamped every answer with the **run** id. So
+`assemble_round` and `close_round` read the round and found zero answers on a review that
+had just drafted twelve. Nothing errored: no human was ever asked to approve anything, no
+commitment was ever recorded, and the review reported `delivered`. Invisible in Phase 3 —
+a local run holds outcomes in memory and never queries back by round — and latent since
+Phase 4. It only exists once answers round-trip through Firestore, which is to say only on
+the deployed path.
+
+**2. The dispatcher could not call Model Armor.** Armor fails **closed** by design
+(`execution_failed` maps to DENY), which is correct — so a missing `roles/modelarmor.user`
+did not raise, it quarantined every question. The first deployed review delivered twelve
+quarantined answers with zero citations and the only sign was a 403 in a log line.
+
+**3. `teardown.sh` reported success while six engines kept billing.** It enumerated engines
+with bare `python` — no `agentplatform` module — under `|| true`, so the traceback was
+swallowed, the listing came back empty, and it printed "none found" for the most expensive
+resources in the project. Exactly what the script's own header warns against. Now
+`uv run python`, and a failed listing aborts the teardown rather than continuing.
+
+**4. `deploy.sh` wiped its own engine wiring.** Engine names were applied with a separate
+`services update` *after* the deploy, but `--set-env-vars` replaces rather than merges — so
+every redeploy left one whole revision live and receiving pushes with no engines
+configured. Resolved before the deploy and passed in the same flag.
+
+`uv sync` in a workspace syncs the **root** project, and this workspace's root declares no
+dependencies, so the first Cloud Run image built, pushed and deployed cleanly and then died
+with `exec: uvicorn: not found`. `--package <name>` fixes it. Same family as the Phase 0
+and session-one deploy failures: the status field said nothing and the detail field said
+everything.
+
+#### Memory Bank migrated off the probe engine
+
+Five commitments for the backdated `rev-acme-2026-q3` moved from the Phase 0 probe engine
+to the orchestrator engine, with the readback compared on the exact `(question_id,
+statement)` pairs the **production read path** returns rather than on a count.
+`docs/proof/memory-bank-migration.json`:
+
+```
+source commitments : 5
+target commitments : 5
+missing on target  : 0
+altered in transit : 0
+readback           : IDENTICAL
+```
+
+The orchestrator rather than a department engine, because commitments are scoped by review:
+on a department engine the legal drafter could not see a promise the security drafter made,
+which is the cross-department contradiction the consistency check exists to catch. The
+migration tool deliberately **does not delete its source** — a migration that deletes what
+it just copied is one bug away from being an erasure tool.
+
+#### The full-scale run: PARTIAL, and the ceiling is a platform quota
+
+312 questions were attempted three times on the deployed stack. Every stage **except
+drafting** completed every time, and the failure that ended session two is gone: all three
+drafting partitions were claimed within one second of each other, by three separate Cloud
+Run instances. Under the old pull harness they ran in series when they ran at all.
+
+Drafting hit `429 RESOURCE_EXHAUSTED` on
+`Query Reasoning Engine requests per minute per region`. Moving drafting onto the engines
+(ADR-0007) turned every question into one such query. Three settings were measured:
+
+| Workers per partition | Concurrent queries | Outcome |
+|---|---|---|
+| 24 | 72 | every partition failed within a second |
+| 8 | 24 | ~77 throttles / 5 min; partitions exhausted call retries, then message attempts 2–5 |
+| 4 | 12 | throttling roughly halved, still sustained; one partition exhausted attempt 5 |
+
+Between the second and third, rate limiting moved to the individual call
+(`_query_with_retry`) rather than letting one throttled question cost a redraft of all 123
+in its partition. Kept, and not sufficient. Four cycles; the cap is five; the fifth was
+spent on a run that completes. Full record: `docs/proof/deployed-run-quota-ceiling.md`.
+
+**Fallback J2 taken.** The deployed run is at **60 questions**
+(`docs/proof/deployed-review-60.json`), and Phase 3's local 312 remains authoritative with
+its provenance labelled.
+
+```
+  1  intake_document    -            completed     1.6s  att=1
+  2  triage_questions   -            completed     5.7s  att=1
+  3  draft_answer       legal        completed    99.1s  att=2
+  4  draft_answer       engineering  completed    71.4s  att=2
+  5  draft_answer       security     completed    55.2s  att=3
+  6  assemble_round     -            completed     0.2s  att=1
+  7  close_round        -            FAILED          --  att=5
+```
+
+| Figure | Deployed (60) | Phase 3 local (312) |
+|---|---|---|
+| Longest partition | 99.1s | 269s |
+| Margin to the 600s ack deadline | 500.9s (6.1x) | 331s (2.2x) |
+| Partitions genuinely overlapped | **yes** — 52.2s / 55.2s / 66.3s pairwise | n/a (single process) |
+| Achieved concurrency | 3.97 / 3.72 / 3.53 of **4** | 7.84 of **8** |
+| Citation rate | **48.3%** | ~90% |
+| Refused for no evidence | 31 of 60 | far fewer |
+| Redeliveries, lease held | 4 claims retried; **no partition drafted twice** | n/a |
+
+**Two of those numbers are good news and one is not.**
+
+The concurrency figure is the good news: 3.97 of 4 is the same *efficiency* as 7.84 of 8 —
+99% against 98% — so the fan-out is as parallel as it ever was. The ceiling moved, not the
+mechanism, and it moved because of the quota rather than the architecture.
+
+The redeliveries are the second: three partitions were redelivered mid-flight and **every
+one was refused with 409 while its claim was live**. Nothing was drafted twice. That is the
+900s-lease-over-600s-ack-deadline ordering doing its job on the first run that genuinely
+needed it, rather than in a unit test.
+
+**The citation rate is a real regression and it is not explained away here.** 48.3% cited
+against Phase 3's ~90%, with 31 of 60 answers refused for want of evidence. The local path
+retrieves and then drafts under a prompt this repo controls; the deployed path asks the
+engine to search and answer, and the engine's own instruction tells it to reply
+`INSUFFICIENT_EVIDENCE` when the passages do not support an answer. The deployed fleet is
+plainly stricter. Whether that is *correctly* stricter or a retrieval regression is **not
+established**, and the honest reading is that it needs a side-by-side on identical questions
+before either number is quoted as the system's accuracy. **The video uses Phase 3's local
+figures and says so.**
+
+`close_round` then exhausted five attempts writing 60 commitments to Memory Bank — one
+engine API call each, against the same quota, and `MemoryBankCommitments` has none of the
+retry the Armor and search clients carry. It raised `ContextUnavailable` rather than
+reporting success, which is the behaviour this codebase insists on, so the review sits at
+`assembling` with 60 answers persisted and no commitments recorded. The correct failure,
+and still a gap.
+
+#### Both observability planes, demonstrated
+
+`docs/proof/observability-planes.json`. The compliance plane for one review: 949 events —
+312 `question_triaged`, 221 `evidence_retrieved`, 221 `answer_drafted`, 180
+`human_required`, 10 `armor_blocked`, 3 `work_dead_lettered` — attributed across
+`TriageAgent`, `SecurityAgent`, `LegalAgent`, `EngineeringAgent`, `EvidenceAgent`,
+`AssemblerAgent`, `ArmorGuard` and `Dispatcher`.
+
+The engineering plane, from Cloud Trace, has the span tree the plan asked for:
+
+```
+/pubsub/push
+invoke_workflow security_agent
+  invoke_agent security_agent
+    execute_tool search_security_corpus
+    call_llm -> generate_content gemini-3.7-flash
+```
+
+Stated plainly: **our own code emits no custom OTel spans.** `attestor_platform.telemetry`
+contains the audit writer and nothing else. The spans above are the platform's — Agent
+Runtime's `enable_tracing=True` and Cloud Run's request span. The compliance plane is the
+one this system leans on and it is complete; the engineering plane is real but inherited.
+
+**The 403 is now an `audit_event`, by design rather than as a consolation prize.** Sessions
+one and two spent three cycles trying to correlate it to a Cloud Trace span and could not —
+engine log entries carry no populated `trace` field. A permission denial is a compliance
+event: it belongs in the plane that is immutable, queryable, and expected to answer "which
+identity was refused which object, and when" in six months. A span would have said the read
+took 240ms.
+
+#### Drills
+
+| Drill | Result | What was real |
+|---|---|---|
+| Dead-letter | **PASS, live** | published to the real topic, refused by the Cloud Run dispatcher, `work_dead_lettered` audit event written, message read back off `attestor.deadletter.sub` |
+| Crash / lease takeover | **PASS** | real Firestore, real `WorkClaimRepository`: live lease → `HELD`, lapsed lease → `RECLAIMED` with the new worker recorded, completed → `DUPLICATE`. **Not real:** no process was killed and no message published — the abandoned claim is manufactured |
+| Approval | **NOT RUN** | needs a review parked in `awaiting_human`; the 60-question run produced zero `needs_human` answers, so there was nothing to approve |
+
+The dead-letter topic had **no subscription** until this session, so anything the platform
+moved there was discarded on arrival. That is why session two's stall had nothing to
+inspect, and it is fixed.
+
+#### Registry, via the Registry API rather than our own records
+
+`docs/proof/registry-listing.json`. All five engines appear in Agent Registry
+(`agentregistry.googleapis.com/v1`) with no manual registration step — a different service
+from the Agent Runtime listing sessions one and two used, which is the point.
+
+One honest caveat: the registry's **list** endpoint returns `effective_identity` and
+`identity_type` as `null` on every entry. Each entry's `agent_id` URN names a distinct
+`reasoningEngine`, and identity distinctness is proven from the engine resource's
+`spec.effectiveIdentity` and the live conditioned bucket bindings — not from this page.
+"Distinct identities, per the registry" would not be a true sentence.
+
+### Exit criteria — status at end of session three
+
+| # | Criterion | Result |
+|---|---|---|
+| 1 | Drafting on the deployed engines under their own identities | **PASS** — ADR-0007; retrieval and drafting execute on the department engine |
+| 2 | Control plane + dispatcher on Cloud Run with Eventarc push | **PASS** — both live, `attestor.work.push` at 600s ack, OIDC-authenticated |
+| 3 | The undiagnosed missing-partition cause confirmed or refuted | **PASS** — hypothesis refuted by experiment, actual cause found and written up |
+| 4 | Full 312 review by Pub/Sub with every figure | **PARTIAL (J2)** — 60 questions completed 6 of 7 stages; 312 blocked by an Agent Runtime quota |
+| 5 | 22-day resume artefact | **NOT DONE** — tool written (`tools/verify_resume.py`), not run |
+| 6 | Memory Bank migrated, byte-identical | **PASS** — 5 commitments, identical readback |
+| 6b | Consistency fault injection against the deployed path | **NOT DONE** |
+| 7 | Live approval / crash / DLQ drills | **PARTIAL** — DLQ live PASS, crash PASS against real Firestore, approval not run |
+| 8 | All five agents via the Registry API | **PASS** — with the identity-field caveat stated |
+| 9 | Span tree captured; 403 as an `audit_event`; both planes | **PASS** — with "no custom OTel spans of our own" stated |
+| 10 | `teardown.sh` → `deploy.sh` round trip | **PARTIAL** — teardown verified by dry run enumerating all six engines, both services, three subscriptions, the registry and the Armor template; the destructive round trip was **not** run, because it would have destroyed the deployment the remaining evidence depends on |
+| 11 | Footage for every section H item | **NOT DONE** — `docs/proof/FOOTAGE.md` lists all nine captures with their backing artefacts; the visual capture needs a browser and a human |
+| 12 | `make check` green, layering holds, pushed | **PASS** — 447 tests, `mypy --strict` clean, layering OK |
+| 13 | Cumulative spend | **PASS** — see below |
+
+### Cost
+
+Six Cloud Build runs, two Cloud Run services at `min-instances=0`, six engines idle at
+zero, and roughly 700 drafting calls across the attempted and completed runs — a large
+share of which were refused by quota before reaching a model, and therefore free.
+Cumulative spend across every phase remains under **$14** of the $150 credit.
+
+### State right now
+
+The sentence that was not true at the end of session two is true now: **the fleet is what
+runs the review.** Retrieval and drafting execute on the deployed department engines under
+their own Agent Identities, driven by real Pub/Sub push into Cloud Run, and the 403 proof
+now describes the production path rather than a probe.
+
+Four latent defects were found by running the real thing rather than reasoning about it, and
+every one was invisible locally: answers stamped with the run id so every deployed round
+assembled nothing; a missing Model Armor grant that quarantined every question instead of
+erroring; a teardown script that reported success while six engines kept billing; and a
+deploy script that wiped its own engine wiring on every redeploy.
+
+**The open items, in the order they matter.** The 312-question deployed run needs an Agent
+Runtime quota increase — a request with a multi-day turnaround, not a code change, and Phase
+3's local numbers carry the demo until it lands. The citation-rate gap between the deployed
+and local paths (48.3% against ~90%) needs a side-by-side on identical questions before
+either number is quoted as accuracy. `MemoryBankCommitments` needs the retry the other
+clients already have, or `close_round` will keep failing at scale. Then the 22-day resume,
+the approval beat, and the teardown round trip — all of which have their tools written and
+none of which have been run.
+
+**Carried, unchanged:** timers are still not built and remain additive
+(`WorkKind.TIMER_FIRED` is already in the frozen protocol).
