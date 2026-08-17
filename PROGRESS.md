@@ -1638,3 +1638,146 @@ with Eventarc, the crash and DLQ drills, the approval beat, and the teardown rou
 
 **Carried, unchanged:** timers are still not built and remain additive
 (`WorkKind.TIMER_FIRED` is already in the frozen protocol).
+
+### Session two (17 Aug 2026)
+
+#### The runtime 403 — PASS, and it is the strongest evidence in the project
+
+The deployed `attestor-security` engine, using **its own Agent Identity**, with the policy
+interceptor bypassed entirely, was asked to read both prefixes. `probe_platform_boundary`
+is the one deliberate bypass tool in the fleet and its docstring says so; every other tool
+is bound to a department at build time and pickled into the artifact.
+
+```
+security/access-control-standard.txt -> {"allowed": true, "bytes": 4298}
+legal/data-processing-agreement.txt  -> {"allowed": false, "error_type": "Forbidden",
+    "error": "403 GET https://storage.mtls.googleapis.com/download/storage/v1/b/..."}
+```
+
+Both directions, because only the pair is evidence: a denial with no matching success is
+indistinguishable from a broken deployment. `docs/proof/iam-runtime-denial.json`.
+
+**Not captured: the Cloud Trace span.** `enable_tracing=True` is set on every engine and
+the engines emit execution logs, but those log entries carry no populated `trace` field, so
+log-to-trace correlation is unavailable by that route. Stopped at three cycles. The 403
+itself is not in doubt — it is the platform's verbatim response above.
+
+#### Section B — two permission surfaces, one scopable. Claim narrowed.
+
+Measured, and it narrows a claim rather than supporting one
+(`docs/proof/permission-surfaces-and-composition.md`):
+
+1. `roles/aiplatform.agentDefaultAccess` — the automatic project-level grant every Agent
+   Identity receives — has **19 permissions and not one is `discoveryengine.*`**. The
+   datastore surface is therefore not *unscoped*, it is **ungranted**.
+2. Discovery Engine v1 exposes `setIamPolicy`/`getIamPolicy` on **`engines` only**, never
+   on `dataStores`. Attestor queries datastores directly (standard edition, ADR-0003), so
+   no resource exists whose policy could carry a per-department binding.
+
+| Surface | Policy layer | Platform layer |
+|---|---|---|
+| GCS objects | ✅ refuses, audited | ✅ conditioned binding, 403 proven |
+| Datastore query | ✅ refuses, audited | ❌ not expressible |
+
+**The narrowed claim:** the object surface is defended in depth, twice and independently.
+The datastore surface is defended by the policy interceptor plus a build-time tool binding
+— a code and deploy control, not an IAM one. That is not defence in depth and is no longer
+described as such. Enterprise-edition engines would make it bindable; ADR-0003 declined
+them for retrieval-quality reasons and this is a second, independent argument for
+revisiting that.
+
+#### Section C — the fleet is deployed; it is not what runs the review
+
+```
+$ grep -rn "async_stream_query|stream_query|reasoningEngines" services/dispatcher packages/attestor-fleet
+(no matches)
+```
+
+`PipelineFleetRunner` still runs the Phase 3 pipeline **in this process**. So:
+
+- **Composition is unchanged.** Not an ADK workflow agent calling remote engines — the
+  same Python workflow in `pipeline.py`, `draft_many` over a `ThreadPoolExecutor`. The
+  ADR-0002 argument holds exactly as written because the path it describes is the one
+  still running.
+- **The fan-out is still in-process**, so it is parallel in the same way as Phase 3.
+- **Concurrency versus 7.84 is unchanged**, because nothing about how drafting executes
+  changed.
+
+The `FleetRunner` Protocol was built as the seam for this swap; the
+`AgentRuntimeFleetRunner` implementation does not exist. "The fleet is deployed" and "the
+fleet is what runs the review" are different claims and only the first is true. Saying
+"312 questions ran on Agent Runtime" would not be.
+
+#### The full-scale run — FAILED, and the failure is the finding
+
+312 questions, real topic, real subscription. It stalled:
+
+```
+  1  intake_document    -         f4c8ef554910f43e  ok   published 1
+  2  triage_questions   -         9ed0beb9c746bdee  ok   published 3
+  3  draft_answer       security  930868ff28fef3e8  ok   published 0
+     no message for 240s -- stopping
+  final state: drafting · 645.0s
+```
+
+Triage published all three partitions. **Only one was ever claimed** — the `work_claims`
+collection for this review contains exactly three records (intake, triage, one
+`draft_answer`), so legal and engineering were published and never delivered to the puller.
+
+Two things are true and only one is diagnosed:
+
+- **Diagnosed:** the harness pulls `max_messages=1` and dispatches **synchronously**, so
+  partitions cannot overlap. Sequential execution makes the wall clock the *sum* of the
+  partitions rather than the max, which both defeats the point of partitioning and pushes
+  the security partition's own dispatch close to the 600s ack deadline that section C
+  sized the margin against.
+- **Not diagnosed:** why legal and engineering never arrived at a subsequent pull. They
+  were published (triage reports `published: 3` and returned `ok`), and no claim exists for
+  either. Whether they were delivered to an unconsumed pull and are sitting out their ack
+  deadline, or were lost some other way, is not established, and speculating in this
+  document would be worse than recording the gap.
+
+The 24-question run passed because every partition finished inside one idle window; at 312
+the same code path stalls. That is exactly the class of thing the brief warned about — a
+number that becomes binding at full scale and does not exist at a quarter of it — and it
+was found by running the real thing rather than by extrapolating the 24-question result.
+
+**This blocks the demo numbers.** Phase 3's authoritative 312-question numbers stand and
+are local; there are no deployed 312-question numbers yet.
+
+### Exit criteria — status at end of session two
+
+| # | Criterion | Result |
+|---|---|---|
+| 1 | Datastore surface scoped, or limitation documented and claim narrowed | **PASS** — not expressible, claim narrowed |
+| 2 | Runtime 403 captured | **PASS** — verbatim, both directions |
+| 2b | …with its Cloud Trace span | **NOT DONE** — no `trace` field on engine logs |
+| 3 | Full 312 review by Pub/Sub with all six figures | **FAIL** — stalled after one partition; root cause partly open |
+| 4 | Pipeline composition stated; concurrency re-measured | **PASS (stated)** — unchanged, and why |
+| 5 | 22-day resume artefact | **NOT DONE** |
+| 6 | Memory Bank migrated | **NOT DONE** — memories still on the probe engine, which stays alive |
+| 7 | Control plane + dispatcher on Cloud Run with Eventarc | **NOT DONE** |
+| 8 | Crash / DLQ / approval drills | **NOT DONE** — crash and DLQ remain proven in unit tests |
+| 9 | Cloud Trace span tree; two planes distinguishable | **NOT DONE** |
+| 10 | All five agents confirmed via the Registry API | **NOT DONE** — confirmed as `reasoningEngine` resources only |
+| 11 | teardown → deploy round trip | **NOT DONE** |
+| 12 | Footage for every section F item | **PARTIAL** — the 403 evidence is captured |
+| 13 | `make check` green, layering holds, pushed | **PASS** — 434 tests |
+| 14 | Cumulative spend | **PASS** — under $8 of $150 |
+
+### State right now
+
+Session two closed the IAM story properly — the runtime 403 is real, from a deployed
+engine, with both directions — and answered both analysis questions by measurement, each
+of which **narrowed** a claim rather than supporting one.
+
+The full-scale run is the open item and it is a genuine defect, not a missing step: the
+harness serialises partitions, and two of three drafting messages went missing between
+publish and delivery. **Next session starts there**, because every remaining protected item
+depends on a working full-scale run: the 22-day resume, the approval beat, the span tree,
+and the demo numbers themselves.
+
+Order for session three: diagnose the missing partitions and make the puller concurrent;
+re-run 312; then the 22-day resume artefact; then Memory Bank migration off the probe
+engine; then Cloud Run + Eventarc, which would also replace the harness's pull loop with a
+real push subscription and make the concurrency question moot.

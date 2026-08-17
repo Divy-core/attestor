@@ -1,102 +1,54 @@
 {
   "case": "pubsub_driven_review",
-  "duplicate_mode": true,
-  "duplicates_suppressed": 7,
-  "final_state": "delivered",
-  "gcs_uri": "gs://attestor-505506-uploads/questionnaires/async-bb935948/attestor-slice-24.xlsx",
-  "messages": 7,
-  "pass": true,
-  "questions": 24,
-  "review_id": "rev-async-5d12d900",
-  "round_id": "rev-async-5d12d900-r1",
-  "seconds": 267.2,
+  "duplicate_mode": false,
+  "duplicates_suppressed": 0,
+  "final_state": "drafting",
+  "gcs_uri": "gs://attestor-505506-uploads/questionnaires/async-c6734388/acme-vendor-review-r1.xlsx",
+  "messages": 3,
+  "pass": false,
+  "questions": 312,
+  "review_id": "rev-async-7450f371",
+  "round_id": "rev-async-7450f371-r1",
+  "seconds": 645.0,
   "subscription": "attestor.work.local",
   "trace": [
     {
-      "dedup_key": "18759088260a3540",
-      "duplicate_result": "duplicate",
+      "dedup_key": "f4c8ef554910f43e",
+      "duplicate_result": null,
       "kind": "intake_document",
       "n": 1,
       "partition": null,
       "published": [
-        "61e5263bdf9f54be"
+        "9ed0beb9c746bdee"
       ],
       "result": "ok",
       "state": "triaging",
       "status_code": 204
     },
     {
-      "dedup_key": "61e5263bdf9f54be",
-      "duplicate_result": "duplicate",
+      "dedup_key": "9ed0beb9c746bdee",
+      "duplicate_result": null,
       "kind": "triage_questions",
       "n": 2,
       "partition": null,
       "published": [
-        "a95f9d55b5318293",
-        "ab80c1805a8f9e27",
-        "e25b60cc5362ca47"
+        "930868ff28fef3e8",
+        "fb866b84ccc9049c",
+        "9dcf0c040faff9f3"
       ],
       "result": "ok",
       "state": "drafting",
       "status_code": 204
     },
     {
-      "dedup_key": "a95f9d55b5318293",
-      "duplicate_result": "duplicate",
+      "dedup_key": "930868ff28fef3e8",
+      "duplicate_result": null,
       "kind": "draft_answer",
       "n": 3,
       "partition": "security",
       "published": [],
       "result": "ok",
       "state": null,
-      "status_code": 204
-    },
-    {
-      "dedup_key": "ab80c1805a8f9e27",
-      "duplicate_result": "duplicate",
-      "kind": "draft_answer",
-      "n": 4,
-      "partition": "legal",
-      "published": [],
-      "result": "ok",
-      "state": null,
-      "status_code": 204
-    },
-    {
-      "dedup_key": "e25b60cc5362ca47",
-      "duplicate_result": "duplicate",
-      "kind": "draft_answer",
-      "n": 5,
-      "partition": "engineering",
-      "published": [
-        "4cf22d0abb67b8da"
-      ],
-      "result": "ok",
-      "state": null,
-      "status_code": 204
-    },
-    {
-      "dedup_key": "4cf22d0abb67b8da",
-      "duplicate_result": "duplicate",
-      "kind": "assemble_round",
-      "n": 6,
-      "partition": null,
-      "published": [
-        "257de56794f96106"
-      ],
-      "result": "ok",
-      "state": "assembling",
-      "status_code": 204
-    },
-    {
-      "dedup_key": "257de56794f96106",
-      "duplicate_result": "duplicate",
-      "kind": "close_round",
-      "n": 7,
-      "partition": null,
-      "published": [],
-      "result": "ok",
-      "state": "delivered",
       "status_code": 204
     }
   ]
