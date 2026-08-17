@@ -326,3 +326,59 @@ class TestRateLimitsAreRetriedOnTheCall:
 
         assert calls["n"] == remote.ENGINE_RETRY_ATTEMPTS
         assert "429" in str(raised.value)
+
+
+class TestTransientClassification:
+    """Which engine failures earn another attempt.
+
+    The rate limits were found by the first full-scale run. The *dropped stream* was found
+    by a single-question smoke test that looked like a hang and was initially written off
+    as output buffering:
+
+        RemoteProtocolError: peer closed connection without sending complete message body
+        (incomplete chunked read)
+
+    `stream_query` holds a chunked response open for a whole drafting call. On one question
+    that is a curiosity; on a 123-question partition it is a matter of time, and without
+    retrying it the whole partition fails and every question in it is redrafted.
+    """
+
+    @pytest.mark.parametrize(
+        "message",
+        [
+            "429 RESOURCE_EXHAUSTED Quota exceeded",
+            "RemoteProtocolError: peer closed connection without sending complete "
+            "message body (incomplete chunked read)",
+            "503 Service Unavailable",
+            "504 DEADLINE_EXCEEDED",
+            "ConnectionResetError: [Errno 104] Connection reset by peer",
+        ],
+    )
+    def test_transient_failures_are_retried(self, message: str) -> None:
+        from dispatcher.remote import _is_transient
+
+        assert _is_transient(RuntimeError(message))
+
+    @pytest.mark.parametrize(
+        "message",
+        [
+            "403 PERMISSION_DENIED",
+            "404 not found",
+            "400 INVALID_ARGUMENT: malformed request",
+        ],
+    )
+    def test_permanent_failures_are_not(self, message: str) -> None:
+        """Backing off four times on a denial burns four ack deadlines to reach it."""
+        from dispatcher.remote import _is_transient
+
+        assert not _is_transient(RuntimeError(message))
+
+    def test_the_exception_type_counts_too(self) -> None:
+        """httpx raises `RemoteProtocolError` whose str() can be empty-ish, so the type
+        name is part of what is matched."""
+        from dispatcher.remote import _is_transient
+
+        class RemoteProtocolError(Exception):
+            pass
+
+        assert _is_transient(RemoteProtocolError(""))

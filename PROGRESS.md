@@ -1666,6 +1666,15 @@ Two POSTs to the deployed control plane, which **publishes** rather than applyin
 decision itself, so the dispatcher applies it and a redelivered approval is idempotent
 rather than usually-fine.
 
+**A third round was refused, correctly.** Re-running the harness against the same review
+tried to open round 3 while it was still parked in `awaiting_human`, and the state machine
+dead-lettered it: `illegal transition 'awaiting_human' -> 'follow_up'`. A review waiting on
+a human cannot open a new round until that human has acted, which is the transition table
+doing exactly its job. That re-run therefore recorded `prior_commitments=0` for its own
+attempt and **overwrote this artefact with a FAIL** — the figures above are read back from
+Firestore and describe the round-2 resume that did happen. A harness that overwrites a
+passing artefact with a failure from a different attempt is its own small lesson.
+
 **One caveat, stated rather than buried.** The first version of the resume harness exited on
 its first poll and reported a 4.6-second resume — because the review *begins* in a terminal
 state, so "wait until delivered" was already true. It would have been a very convincing

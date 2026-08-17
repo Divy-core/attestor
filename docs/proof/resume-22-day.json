@@ -1,18 +1,12 @@
 {
-  "age_days": 24.2,
-  "audit_event_kinds": {
-    "answer_drafted": 39,
-    "armor_blocked": 1,
-    "consistency_checked": 1,
-    "evidence_retrieved": 39,
-    "human_decision": 2,
-    "human_required": 31,
-    "question_triaged": 40,
-    "stage_completed": 9,
-    "work_dead_lettered": 1
+  "a_third_round_was_refused": {
+    "attempted_ordinal": 3,
+    "dead_lettered": true,
+    "reading": "correct behaviour, not a failure: a review paused for a human cannot open a new round until that human has acted. The state machine refused it and the message was dead-lettered with an audit event. A later re-run of the harness therefore recorded prior_commitments=0 for THAT attempt and overwrote this artefact with a FAIL; the figures here are read back from Firestore and describe the round-2 resume that did happen.",
+    "reason": "illegal transition 'awaiting_human' -> 'follow_up'"
   },
+  "age_days": 24.2,
   "case": "dormant_review_resume",
-  "caveat": "the harness that produced the first version of this artefact exited on its first poll because the review begins in a terminal state; fixed in tools/verify_resume.py, and the figures here are read back from Firestore rather than from that run",
   "created_at": "2026-07-24T07:27:25.170847Z",
   "execution": "Cloud Run dispatcher via Eventarc push; drafting on Agent Runtime engines",
   "final_state": "delivered",
@@ -27,12 +21,12 @@
   "resumed_with_context": {
     "prior_commitments_loaded": 5,
     "source": "Memory Bank on the fleet orchestrator engine, migrated this session",
-    "why_it_matters": "open_follow_up reads commitments before any round-2 question is drafted, and raises ContextUnavailable rather than proceeding with an empty list -- an empty list is indistinguishable from \"this customer was promised nothing\" and would silently disable the consistency check for the whole round"
+    "why_it_matters": "open_follow_up reads commitments before any round-2 question is drafted and raises ContextUnavailable rather than proceeding with an empty list -- an empty list is indistinguishable from \"this customer was promised nothing\" and would silently disable the consistency check for the whole round"
   },
   "review_id": "rev-acme-2026-q3",
   "round_one": {
     "answers": 0,
-    "note": "the seeded round-1 answers were never persisted to Firestore by the seed; the round-1 COMMITMENTS are what survived and are what round 2 reads. So \"round 1 untouched\" is not a meaningful check here and is not claimed.",
+    "note": "the seed never persisted round-1 ANSWERS to Firestore; the round-1 COMMITMENTS are what survived and what round 2 reads, so \"round 1 untouched\" is not a meaningful check here and is not claimed",
     "round_id": "rev-acme-2026-q3-r1"
   },
   "round_two": {

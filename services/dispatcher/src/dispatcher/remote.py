@@ -115,6 +115,52 @@ DRAFT_REQUEST = (
 )
 
 
+#: Substrings that mark an engine failure as worth trying again. Two families, and the
+#: second was nearly missed.
+#:
+#: **Rate limits** are the obvious one, and the first full-scale run found them.
+#:
+#: **Dropped streams** are the other. `stream_query` holds a chunked HTTP response open for
+#: the whole of a drafting call, and a long-lived stream is a thing that gets cut:
+#:
+#:     RemoteProtocolError: peer closed connection without sending complete message body
+#:     (incomplete chunked read)
+#:
+#: That was observed on a single-question smoke test and initially mistaken for the harness
+#: hanging. On a 123-question partition it is not an oddity, it is a matter of time — and
+#: without this it fails the entire partition, which then redrafts every question in it.
+#:
+#: Matched on the message rather than on exception classes: the SDK wraps httpx, grpc and
+#: google-api-core errors at several layers and the type that surfaces is not stable across
+#: versions. Coarser than isinstance and considerably harder to break by a dependency bump.
+TRANSIENT_ENGINE_ERRORS = (
+    "429",
+    "RESOURCE_EXHAUSTED",
+    "RemoteProtocolError",
+    "incomplete chunked read",
+    "peer closed connection",
+    "ServerDisconnected",
+    "ConnectionReset",
+    "ConnectionError",
+    "503",
+    "UNAVAILABLE",
+    "504",
+    "DEADLINE_EXCEEDED",
+    "Timeout",
+)
+
+
+def _is_transient(exc: BaseException) -> bool:
+    """Whether an engine failure is worth another attempt.
+
+    Deliberately a whitelist. Anything unrecognised -- a 403, a malformed request, a
+    contract error -- fails on the first attempt, because backing off four times on a
+    permission error burns four ack deadlines to arrive at the same denial.
+    """
+    text = f"{type(exc).__name__}: {exc}"
+    return any(marker in text for marker in TRANSIENT_ENGINE_ERRORS)
+
+
 class EngineUnavailable(AttestorError):
     """A deployed engine could not be reached, or failed while drafting.
 
@@ -333,13 +379,11 @@ class RemoteDraftingPipeline(ReviewPipeline):
                 )
             except Exception as exc:  # noqa: BLE001 - classified immediately below
                 last = exc
-                text = str(exc)
-                throttled = "429" in text or "RESOURCE_EXHAUSTED" in text
-                if not throttled or attempt == ENGINE_RETRY_ATTEMPTS - 1:
+                if not _is_transient(exc) or attempt == ENGINE_RETRY_ATTEMPTS - 1:
                     break
                 delay = ENGINE_RETRY_BACKOFF_SECONDS * (2**attempt) + random.uniform(0, 2.0)
                 logger.warning(
-                    "engine %s throttled on %s (attempt %d/%d); retrying in %.1fs",
+                    "engine %s transient failure on %s (attempt %d/%d); retrying in %.1fs",
                     department.value,
                     question.question_id,
                     attempt + 1,
