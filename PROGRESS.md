@@ -2691,19 +2691,48 @@ Run at **2 workers per partition, 6 concurrent engine queries**, on dispatcher r
 the other constraint.
 
 ```
-intake_document    completed     att=1
-triage_questions   completed     att=1     all 312 triaged, three partitions published
-draft_answer       completed     att=2     91 answers persisted, 54 cited
-draft_answer       in_progress   att=5     redelivered to the last attempt
-draft_answer       in_progress   att=5     redelivered to the last attempt
+  #  kind               part      state       sec
+  1  intake_document    -         completed    2.9
+  2  triage_questions   -         completed   45.0    all 312 triaged, 3 partitions published
+  3  draft_answer       -         completed  661.2
+  4  draft_answer       legal     completed  793.2
+  5  draft_answer       -         failed        --    exhausted 5 delivery attempts
+
+wall clock              2571.3s (43 min)
+answers                 189 of 312, 142 cited (75.1%)
+flagged for a human     50        refused for no evidence  45
+longest partition       793.2s
+margin to ack deadline  -193.2s  (0.8x)
+achieved concurrency    1.98 of 2
+partition overlap       0.0s on all three pairs
+final state             drafting
 ```
 
-The arithmetic is the whole finding. A 123-question partition at 2 workers is ~62 sequential
-rounds; at the ~25s per-question latency these engines actually show under load that is
-**~1,550s**, against a 600s ack deadline which is already the Pub/Sub maximum. So every
-partition is redelivered roughly every ten minutes, the lease correctly refuses each
-redelivery with 409, and the attempt counter climbs to five and stops. One of three partitions
-was small enough to finish inside its attempts. Two were not.
+**Two of three partitions completed. One exhausted its five attempts.** The arithmetic is the
+finding: a 123-question partition at 2 workers is ~62 sequential rounds, and at the per-question
+latency these engines show under load that runs to 661s and 793s — against a 600s ack deadline
+which is already the Pub/Sub maximum. Each expiry is a redelivery, the lease refuses it with 409,
+and the attempt counter climbs. Two partitions finished inside their attempts; the largest did not.
+
+**The margin went negative for the first time: −193.2s.** Every previous run had the longest
+partition comfortably inside the deadline — 99.1s and 84.5s on the two 60-question runs. Here the
+longest ran 193 seconds *past* it, and the only reason that was survivable is the 900s lease
+sitting above the 600s deadline. That ordering was sized in
+`docs/proof/ack-deadline-margin.md` on an estimate; this is the first run where it was the thing
+standing between a redelivery and a second copy of 123 questions being drafted. Three of the five
+claims were redelivered — nine redeliveries in total — and **not one produced a duplicate answer.**
+
+**The partitions did not overlap at all on this run: 0.0s on all three pairs.** Earlier runs
+measured 52–66s of pairwise overlap. Recorded rather than smoothed over — at 2 workers each
+partition is slow enough that they queued behind one another instead of running together, which is
+its own cost of the low setting.
+
+**What did not fail is the fan-out.** Achieved concurrency was 1.98 of 2 — 99% efficient, the same
+efficiency as 7.84 of 8. The parallelism is fine at every setting tried; the ceiling is elsewhere.
+
+**And the citation rate held at scale.** 75.1% across 189 answers, slightly *above* the
+60-question run's 73.3%, which is a useful independent check that the A1 result is not an artefact
+of the smaller sample.
 
 `docs/proof/deployed-run-quota-ceiling.md` predicted exactly this — "reducing concurrency
 further trades the quota error for the ack deadline" — and it is now measured rather than
@@ -2718,7 +2747,7 @@ Four settings across two sessions, and they bracket the problem:
 | 24 | 72 | **429 immediately** | would have been fine |
 | 8 | 24 | sustained throttling | partitions exhausted retries |
 | 4 | 12 | throttling halved | one partition exhausted attempt 5 |
-| 2 | 6 | **clean** | **two of three exhausted attempt 5** |
+| 2 | 6 | **clean** | **two of three completed; the largest exhausted attempt 5** |
 
 Both constraints are simultaneous: `123 × latency / workers < 600` wants workers ≥ 6 per
 partition, and `workers × 3 < quota` wants fewer than 8 in total. The window is narrow at best
@@ -2736,6 +2765,8 @@ guaranteed to fail no matter how many attempts there are.
 Persisting answers as they complete would make each redelivery *resume*. Attempt 2 would start
 at question 62, attempt 3 at question 124, and the partition would finish comfortably inside its
 attempts at any of the four concurrency settings above — including the one that does not throttle.
+Concretely: the partition that failed here had already drafted most of its questions more than
+once, and at 793s per attempt a resume would have needed one more attempt rather than five.
 
 This was recorded as a known cost in session three and deliberately not changed then, because it
 alters when answers become visible to `assemble_round`, which is the join. It is now the single
@@ -2746,12 +2777,11 @@ worth more than a sixth cycle.
 #### What the 312 run does prove
 
 Every stage before drafting completed on the deployed stack, at full scale, first time: intake
-parsed all 312 questions, triage classified all 312 and published three partitions, and all
-three were claimed within a second of each other. Ninety-one answers were drafted on a deployed
-department engine under its own Agent Identity and persisted, 54 of them cited. And the lease
-did its job under sustained pressure — **all nine redeliveries across this run were refused while
-a claim was live, and no partition was ever drafted twice.** Counted from the claims rather than
-estimated: attempts of 2, 5 and 5 on the three drafting partitions, one each on intake and triage.
+parsed all 312 questions in 2.9s, triage classified all 312 in 45.0s and published three
+partitions, and all three were claimed within a second of each other. **189 answers were drafted
+on deployed department engines under their own Agent Identities and persisted, 142 of them cited.**
+And the lease
+did its job under sustained pressure, and this time it was load-bearing rather than precautionary.
 
 **Fallback J2 stands.** The deployed run of record remains the 60-question one
 (`docs/proof/deployed-review-60-clean.json`, 73.3% cited, six of six reachable stages), and
