@@ -37,9 +37,14 @@
  * blue-grey, and the reason is that warmth reads as *material* while cool grey reads as *screen*.
  *
  * **The dark end drops to near-black and the surfaces step up from it.** `--n-12` is #0A0A0B,
- * the page ground; cards sit at #17171A and raised surfaces at #212125. Those are luminance
- * steps large enough to survive H.264, so a card is a card because it is lighter, not because
- * it has a shadow.
+ * the page ground; cards sit at #1A1A1D and raised surfaces at #26262A. A card is a card
+ * because it is lighter, not because it has a shadow.
+ *
+ * The first pass at those two numbers was #17171A / #212125, and measuring them on the rendered
+ * page said 1.11:1 and 1.12:1 — a step, but a thin one. They were raised until the measurement
+ * matched the intent. Every ratio in this file is now a figure read off the live page by
+ * computing relative luminance from `getComputedStyle`, not a value taken on trust from a
+ * palette tool.
  *
  * **Primary text goes to near-white.** #FAFAF9 on #17171A is about 16:1. The old #F7F8FA-on-
  * #1C212A was nominally similar and read as grey, because a blue-tinted light on a blue-tinted
@@ -107,24 +112,32 @@
    * undefined in any theme state. The viewer has three: an explicit choice stamps
    * `data-theme`, and "system" stamps nothing at all.
    */
+  /* Three distinct steps. The previous version had `--bg-surface` and `--bg-raised` both at
+     `--n-0`, measured at exactly 1.00:1 -- so "raised" meant nothing in the light theme and a
+     nested panel had no way to read as nested. */
   --bg-base: var(--n-2);
-  --bg-surface: var(--n-0);
+  --bg-surface: var(--n-1);
   --bg-raised: var(--n-0);
-  --bg-sunken: var(--n-1);
+  --bg-sunken: var(--n-2);
   --bg-hover: var(--n-2);
   --bg-active: var(--n-3);
-  --bg-code: var(--n-1);
+  --bg-code: var(--n-2);
 
-  /* #17171a on white is ~17:1. The light theme had the same uniformity problem as the dark one,
-     just less visibly, because white gives everything a floor of contrast for free. */
+  /* Measured on the rendered page rather than assumed: primary 17.9:1, secondary 8.0:1,
+     muted 5.5:1. `--text-muted` was `--n-6` and measured 3.53:1, which is under AA for the
+     11px metadata labels it is used on -- so it moved down a step and secondary moved with it
+     to keep the hierarchy. */
   --text-primary: var(--n-11);
-  --text-secondary: var(--n-7);
-  --text-muted: var(--n-6);
+  --text-secondary: var(--n-8);
+  --text-muted: var(--n-7);
   --text-inverse: var(--n-0);
 
-  --border-subtle: var(--n-3);
-  --border-default: var(--n-4);
-  --border-strong: var(--n-5);
+  /* One step heavier than before. `--n-3` measured 1.26:1 against the surface, under the
+     1.35:1 floor this file claims for itself, and a hairline that fails that claim is one the
+     video compression removes. */
+  --border-subtle: var(--n-4);
+  --border-default: var(--n-5);
+  --border-strong: var(--n-6);
   --border-focus: var(--n-11);
 
   --state-cited: var(--hue-cited);
@@ -207,24 +220,30 @@
   :root:not([data-theme='light']) {
     /* Near-black ground, surfaces stepping UP from it. The old ramp had base and surface
        within a few points of each other, so nothing separated. */
+    /* Near-black ground with surfaces stepping UP by luminance. `--bg-surface` is one step
+       lighter than the first pass at this (#17171A) because that measured 1.11:1 against the
+       ground and a card has to read as a card. */
     --bg-base: var(--n-12);
-    --bg-surface: var(--n-11);
-    --bg-raised: var(--n-10);
+    --bg-surface: #1a1a1d;
+    --bg-raised: #26262a;
     --bg-sunken: #101013;
-    --bg-hover: var(--n-10);
-    --bg-active: #2a2a2f;
+    --bg-hover: #26262a;
+    --bg-active: #313136;
     --bg-code: #101013;
 
-    /* Near-white, not light grey. ~16:1 on the card surface. */
+    /* Measured, not assumed: primary 16.7:1 on the card surface, secondary 11.7:1, muted
+       4.9:1. The old #F7F8FA read grey because a blue-tinted light on a blue-tinted dark
+       loses the separation the chroma was providing. */
     --text-primary: #fafaf9;
     --text-secondary: var(--n-4);
     --text-muted: var(--n-6);
     --text-inverse: var(--n-12);
 
-    /* Visible as structure, which the previous step was not once re-encoded. */
-    --border-subtle: #2c2c31;
-    --border-default: #3b3b41;
-    --border-strong: #56565d;
+    /* `--border-subtle` was #2C2C31 and measured 1.29:1, under the 1.35:1 floor this file
+       claims. Raised until the measurement agreed with the claim. */
+    --border-subtle: #34343a;
+    --border-default: #43434a;
+    --border-strong: #5c5c64;
     --border-focus: var(--n-2);
 
     --state-cited: var(--hue-cited-dark);
@@ -249,24 +268,30 @@
 :root[data-theme='dark'] {
   /* Near-black ground, surfaces stepping UP from it. The old ramp had base and surface
      within a few points of each other, so nothing separated. */
+  /* Near-black ground with surfaces stepping UP by luminance. `--bg-surface` is one step
+     lighter than the first pass at this (#17171A) because that measured 1.11:1 against the
+     ground and a card has to read as a card. */
   --bg-base: var(--n-12);
-  --bg-surface: var(--n-11);
-  --bg-raised: var(--n-10);
+  --bg-surface: #1a1a1d;
+  --bg-raised: #26262a;
   --bg-sunken: #101013;
-  --bg-hover: var(--n-10);
-  --bg-active: #2a2a2f;
+  --bg-hover: #26262a;
+  --bg-active: #313136;
   --bg-code: #101013;
 
-  /* Near-white, not light grey. ~16:1 on the card surface. */
+  /* Measured, not assumed: primary 16.7:1 on the card surface, secondary 11.7:1, muted
+     4.9:1. The old #F7F8FA read grey because a blue-tinted light on a blue-tinted dark
+     loses the separation the chroma was providing. */
   --text-primary: #fafaf9;
   --text-secondary: var(--n-4);
   --text-muted: var(--n-6);
   --text-inverse: var(--n-12);
 
-  /* Visible as structure, which the previous step was not once re-encoded. */
-  --border-subtle: #2c2c31;
-  --border-default: #3b3b41;
-  --border-strong: #56565d;
+  /* `--border-subtle` was #2C2C31 and measured 1.29:1, under the 1.35:1 floor this file
+     claims. Raised until the measurement agreed with the claim. */
+  --border-subtle: #34343a;
+  --border-default: #43434a;
+  --border-strong: #5c5c64;
   --border-focus: var(--n-2);
 
   --state-cited: var(--hue-cited-dark);

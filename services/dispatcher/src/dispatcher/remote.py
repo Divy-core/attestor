@@ -401,6 +401,7 @@ class RemoteDraftingPipeline(ReviewPipeline):
         self,
         questions: list[Question],
         on_outcome: Callable[[Any], None] | None = None,
+        deadline: float | None = None,
     ) -> list[Any]:
         """Fan out wider than the in-process pipeline, because the work is now waiting.
 
@@ -453,6 +454,10 @@ class RemoteDraftingPipeline(ReviewPipeline):
         workers = min(REMOTE_DRAFT_CONCURRENCY, len(questions))
 
         def one(question: Question) -> Any:
+            if deadline is not None and time.monotonic() >= deadline:
+                from attestor_fleet.pipeline import QuestionOutcome
+
+                return QuestionOutcome(question=question, error="deadline")
             outcome = self.draft(question)
             if on_outcome is not None:
                 on_outcome(outcome)

@@ -10,17 +10,32 @@ version that looked right rather than the version that happened. Everything belo
 already true and already recorded in `docs/proof/`, so a capture session is transcription
 rather than performance.
 
-**What this build cannot do for itself.** Screen recordings and Cloud Console screenshots
-need a browser and a human. The console outputs and JSON artefacts below were produced by
-the tools named; the *visual* capture of each is the outstanding half, and it is marked as
-such rather than implied to be done.
+**What this build cannot do for itself.** Screen recordings and Cloud Console screenshots need a
+browser and a human. The console outputs and JSON artefacts below were produced by the tools
+named; the *visual* capture of each is the outstanding half, and it is marked as such rather
+than implied to be done.
+
+**The one thing to say out loud on capture 0a.** The file does not transit either of our
+services. `POST /uploads` mints a v4 signed URL and the browser PUTs straight to
+`storage.googleapis.com` — visible in the network tab if anyone asks, and stated in the dialog
+while it happens. That is worth twelve seconds because it is the difference between a demo and
+an architecture.
 
 ---
 
-## The nine captures
+## The captures
+
+Phase 6.5 added three, and they go **first** in the video rather than being appended. The
+opening beat is a founder handing over a 312-question spreadsheet, and until this phase that
+beat had to cut to a terminal at 0:30 — which costs the "live, unedited demo" requirement in the
+30% category and undercuts the 40% one, because a judge cannot see hand-holding-free operation
+if the only way to hand work in is a CLI.
 
 | # | Capture | Where | Backing artefact | Reproduce with |
 |---|---|---|---|---|
+| 0a | **Upload and start** — drag the .xlsx into **New review**, name the customer, click Start | `/` or `/reviews` | `journey.json` | `tools/verify_journey.py` |
+| 0b | **The fleet working, hands off** — counters climbing, three department engines advancing in parallel, the orchestrator's `decided_by` | `/reviews/{id}` | `journey.json` | the same run, watched |
+| 0c | **The deliverable** — download the completed workbook, open it, show the answers in the customer's own rows next to their own columns | `/reviews/{id}` → Export | `export-{id}.xlsx`, `export-{id}.pdf` | `tools/verify_journey.py` |
 | 1 | Registry with five agents and distinct identities | Console → Agent Registry, or `/registry` | `registry-listing.json` | `tools/verify_registry.py` |
 | 2 | The 403, **both directions** | terminal | `iam-runtime-denial.json` | `tools/verify_iam_denial.py` |
 | 3 | The span tree | Console → Cloud Trace | `observability-planes.json` | `tools/capture_traces.py` |
@@ -34,6 +49,26 @@ such rather than implied to be done.
 ---
 
 ## Notes per capture, in the order the video uses them
+
+**0a — Upload and start.** Drag `seed/questionnaires/clean/acme-vendor-review-r1.xlsx` onto the
+drop target. 312 questions, 20KB. The dialog names each step as it happens — signing, uploading
+direct to Cloud Storage, creating, publishing `intake_document` to `attestor.work` — and then
+navigates to the review page, where the stream is already open. Do not narrate over the
+navigation; let the counters start moving on their own. That silence is the point of the beat.
+
+**0b — Hands off.** The three progress bars are the fan-out. Point at the fact that nothing is
+being clicked. The `decided_by` chip on each orchestrator decision is worth naming: it reads
+`model` when the orchestrator's own judgement produced the call and `fallback:<why>` when a
+deterministic path did, and showing the fallbacks is deliberate — a judgement layer that
+silently degraded and still reported a decision would be the overclaim this build spends its
+time avoiding.
+
+**0c — The deliverable.** Download the workbook and **open it**. The whole beat is that the
+answers are in the customer's own rows, beside the customer's own columns, in the customer's own
+file — not a report to reconcile. Then show the `Release status` column and say the true
+sentence: only an answer a named human approved reads as approved; a drafted answer says it was
+drafted with citations and lists them. Then open the PDF at any page and show one answer with
+its passages, sections and relevance scores.
 
 **1 — Registry.** Show all five, then show that each entry's `agent_id` URN names a
 different `reasoningEngine`. Say the true sentence: the registry's *list* endpoint returns

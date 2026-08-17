@@ -148,9 +148,14 @@ class _Fleet:
     gets part-way through and then dies, exactly as one running past the ack deadline does.
     """
 
-    def __init__(self, *, interrupt_after: int | None = None) -> None:
+    def __init__(
+        self, *, interrupt_after: int | None = None, budget_after: int | None = None
+    ) -> None:
         self.seen: list[list[Question]] = []
         self.interrupt_after = interrupt_after
+        #: How many questions this attempt gets through before its budget expires. Models the
+        #: real `deadline`, which stops NEW questions rather than raising.
+        self.budget_after = budget_after
         self.last_draft_stats: dict[str, Any] = {"achieved_concurrency": 1.0}
 
     def draft(
@@ -161,12 +166,17 @@ class _Fleet:
         department: Department,
         questions: list[Question],
         on_answer: Callable[[Answer], None] | None = None,
+        budget_seconds: float | None = None,
     ) -> list[Answer]:
         self.seen.append(list(questions))
         produced: list[Answer] = []
         for index, question in enumerate(questions):
             if self.interrupt_after is not None and index >= self.interrupt_after:
                 raise TimeoutError("the partition ran past its ack deadline")
+            if self.budget_after is not None and index >= self.budget_after:
+                # The budget stops new questions; it does not raise. Everything already
+                # drafted is returned, which is what the handler continues from.
+                break
             answer = _answer(question)
             if on_answer is not None:
                 on_answer(answer)
@@ -308,6 +318,101 @@ class TestARedeliveredPartitionResumes:
         registry = parts.build(_Fleet())
         registry.closed = {"legal", "engineering"}
         result = registry.draft_answer(_envelope("run-2"))
+        assert [e.kind for e in result.published] == [WorkKind.ASSEMBLE_ROUND]
+
+
+class TestABudgetedAttemptContinuesItself:
+    """The half incremental persistence did not solve.
+
+    With answers persisted an interrupted attempt keeps its work — but it is still killed, and
+    being killed is what costs a delivery attempt. The first deployed 312-question run to use
+    the resume ended with 309 of 312 answers written, two partitions dead-lettered after five
+    attempts, and no assembly. The attempt has to end itself.
+    """
+
+    def test_it_publishes_a_continuation_and_does_not_close_the_join(self, parts: Any) -> None:
+        registry = parts.build(_Fleet(budget_after=4))
+        registry.closed = {"legal", "engineering"}
+        result = registry.draft_answer(_envelope())
+
+        assert [e.kind for e in result.published] == [WorkKind.DRAFT_ANSWER]
+        # The sequence suffix is what gives the continuation a different dedup key.
+        assert result.published[0].partition == "security@2"
+        # THE assertion. Closing a partition with undrafted questions left would release
+        # `assemble_round` on a slice that was never finished -- a worse failure than the one
+        # this fixes, because it would look like success.
+        assert "security" not in registry.closed
+        assert result.detail["deferred_to_next_attempt"] == 6
+
+    def test_the_continuation_has_a_different_dedup_key(self, parts: Any) -> None:
+        """Otherwise the claim repository refuses it as a duplicate and the round stalls."""
+        original = _envelope()
+        result = parts.build(_Fleet(budget_after=4)).draft_answer(original)
+        assert result.published[0].dedup_key != original.dedup_key
+
+    def test_the_continuation_resumes_and_finishes(self, parts: Any) -> None:
+        first = parts.build(_Fleet(budget_after=4))
+        first.closed = {"legal", "engineering"}
+        continuation = first.draft_answer(_envelope()).published[0]
+
+        second = _Fleet()
+        registry = parts.build(second)
+        registry.closed = {"legal", "engineering"}
+        result = registry.draft_answer(continuation)
+
+        # Six left, drafted, and only then is assembly released.
+        assert len(second.seen[0]) == 6
+        assert len(parts.answers.store) == 10
+        assert [e.kind for e in result.published] == [WorkKind.ASSEMBLE_ROUND]
+
+    def test_an_attempt_that_drafts_nothing_refuses_to_continue(self, parts: Any) -> None:
+        """A continuation that makes no progress republishes itself forever, at cost.
+
+        Permanent rather than transient, so it dead-letters instead of retrying.
+        """
+        from attestor_core.errors import ContractViolation
+
+        with pytest.raises(ContractViolation, match="0 of 10"):
+            parts.build(_Fleet(budget_after=0)).draft_answer(_envelope())
+        assert parts.publisher.published == []
+
+
+class TestPartitionSequences:
+    def test_a_plain_department_is_sequence_one(self) -> None:
+        from dispatcher.handlers import split_partition
+
+        assert split_partition("security") == (Department.SECURITY, 1)
+
+    def test_a_suffixed_partition_carries_its_sequence(self) -> None:
+        from dispatcher.handlers import split_partition
+
+        assert split_partition("legal@4") == (Department.LEGAL, 4)
+
+    def test_an_unknown_department_raises(self) -> None:
+        from dispatcher.handlers import split_partition
+
+        with pytest.raises(ValueError):
+            split_partition("marketing@2")
+
+    def test_the_join_closes_on_the_department_not_the_sequence(self, parts: Any) -> None:
+        """The failure this would otherwise cause is a round that never assembles.
+
+        `_close_partition` compares against `{d.value for d in DRAFT_PARTITIONS}`, so a
+        partition closed as `security@3` would leave the set permanently one short.
+        """
+        registry = parts.build(_Fleet())
+        registry.closed = {"legal", "engineering"}
+        result = registry.draft_answer(
+            WorkEnvelope.for_work(
+                message_id="run-1-draft-security@3",
+                review_id=REVIEW_ID,
+                run_id="run-1",
+                round_id=ROUND_ID,
+                kind=WorkKind.DRAFT_ANSWER,
+                partition="security@3",
+            )
+        )
+        assert "security" in registry.closed
         assert [e.kind for e in result.published] == [WorkKind.ASSEMBLE_ROUND]
 
 

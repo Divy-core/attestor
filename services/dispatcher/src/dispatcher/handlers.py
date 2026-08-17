@@ -82,6 +82,55 @@ ROUND_PROGRESS = "round_progress"
 UNASSIGNED_OWNER = Department.SECURITY
 
 
+def split_partition(raw: str) -> tuple[Department, int]:
+    """Read a drafting partition as a department and an attempt sequence.
+
+        "security"    -> (SECURITY, 1)
+        "security@3"  -> (SECURITY, 3)
+
+    The suffix exists because a bounded attempt has to publish a continuation, and a
+    continuation needs a **different dedup key** — which `WorkEnvelope.for_work` derives from
+    `(review, round, question, partition, kind)` and not from `message_id` (ADR-0005). The
+    partition string is the only component of that tuple which can honestly vary between one
+    attempt at a department's slice and the next.
+
+    Not a protocol change: `partition` is `str | None` and stays `str | None`, so nothing in
+    `generated.ts` or the frozen envelope moves. What changes is that the dispatcher reads
+    structure in a string it was already the only consumer of.
+
+    The **department** is what closes the join. `_close_partition` compares against
+    `{d.value for d in DRAFT_PARTITIONS}`, so passing `security@3` there would leave the join
+    permanently one short and no round would ever assemble.
+
+    Raises:
+        ValueError: on an unknown department or a non-numeric sequence, which the caller turns
+            into a `ContractViolation` -- permanent, because a malformed partition will not
+            become well-formed on a retry.
+    """
+    name, _, sequence = raw.partition("@")
+    return Department(name), int(sequence) if sequence else 1
+
+
+#: How long one `draft_answer` attempt may spend starting new questions.
+#:
+#: The number this exists to stay under is the Pub/Sub ack deadline, 600s, which is the
+#: platform maximum. A partition of 121 questions at ~45s each cannot finish inside it however
+#: it is scheduled, and until this budget existed the handler simply tried: the attempt ran
+#: past 600s, Pub/Sub redelivered, the live lease refused the redelivery with a 409 -- and
+#: **that refusal consumed a delivery attempt**. Five attempts could be spent on refusals of a
+#: single long attempt rather than on work.
+#:
+#: The measured shape of that, on the first deployed 312-question run with incremental
+#: persistence: engineering completed on attempt 5 having resumed 70 of 93; security reached
+#: 118 of 121 and legal 98 of 98, and both were dead-lettered with the round holding 309 of 312
+#: answers and no assembly. The resume was working. The attempt budget was the missing half.
+#:
+#: 420s leaves 180s of margin for the questions already in flight when the budget expires,
+#: plus the join write. Configurable because the right value depends on per-question latency,
+#: which depends on the engine.
+DRAFT_BUDGET_SECONDS = float(os.environ.get("ATTESTOR_DRAFT_BUDGET_SECONDS", "420"))
+
+
 def _apply_ceiling(questions: list[Question]) -> tuple[list[Question], int]:
     """Cap a round at this deployment's question ceiling.
 
@@ -390,7 +439,7 @@ class HandlerRegistry:
                 review_id=envelope.review_id,
             )
         try:
-            department = Department(envelope.partition)
+            department, sequence = split_partition(envelope.partition)
         except ValueError as exc:
             raise ContractViolation(
                 f"unknown drafting partition {envelope.partition!r}",
@@ -435,9 +484,18 @@ class HandlerRegistry:
             department,
             outstanding,
             self.answers.put,
+            DRAFT_BUDGET_SECONDS,
         )
 
-        remaining = self._close_partition(round_.round_id, envelope.partition)
+        # Whatever the budget stopped this attempt from starting.
+        drafted_ids = {a.question_id for a in answers}
+        deferred = [q for q in outstanding if q.question_id not in drafted_ids]
+        if deferred:
+            return self._continue_partition(
+                envelope, round_, department, sequence, mine, resumed, answers, deferred
+            )
+
+        remaining = self._close_partition(round_.round_id, department.value)
         cited = sum(1 for a in answers if a.citations)
         detail = {
             "department": department.value,
@@ -625,6 +683,90 @@ class HandlerRegistry:
         ]
         self._audit_stage(envelope, detail)
         return HandlerResult(state=state, published=published, detail=detail)
+
+    def _continue_partition(
+        self,
+        envelope: WorkEnvelope,
+        round_: Round,
+        department: Department,
+        sequence: int,
+        mine: list[Question],
+        resumed: list[Question],
+        answers: list[Any],
+        deferred: list[Question],
+    ) -> HandlerResult:
+        """The budget expired with work left. Publish the rest and ack this attempt.
+
+        This is the half of ADR-0008 that incremental persistence alone did not solve. With
+        answers persisted, an interrupted attempt keeps its work — but it is still *killed*,
+        and being killed is what costs a delivery attempt. A partition too large for the 600s
+        ack deadline therefore burned its five attempts on being interrupted rather than on
+        being finished, and the first deployed run to use the resume ended with 309 of 312
+        answers written and no assembly.
+
+        So the attempt ends itself instead. It publishes a fresh `draft_answer` for the same
+        partition with a new dedup key, returns normally, and Pub/Sub acks it — a continuation
+        rather than a redelivery, which means the attempt counter resets and the round advances
+        by however many attempts it needs.
+
+        The partition is deliberately **not** closed. `_close_partition` is what releases
+        `assemble_round`, and closing a partition that still has undrafted questions would
+        assemble a round from a slice that was never finished — a far worse failure than the
+        one this fixes, because it would look like success.
+
+        Raises:
+            ContractViolation: if the attempt drafted nothing at all. A continuation that makes
+                no progress republishes itself forever, at cost, and the only thing worse than
+                a stalled round is a stalled round that keeps paying. Permanent, so it
+                dead-letters rather than retrying.
+        """
+        if not answers:
+            raise ContractViolation(
+                f"partition {envelope.partition!r} drafted 0 of {len(deferred)} questions "
+                "within its budget, so a continuation would make no progress",
+                review_id=envelope.review_id,
+                run_id=envelope.run_id,
+            )
+
+        # The partition string carries the sequence, and that is load-bearing rather than
+        # cosmetic. `WorkEnvelope.for_work` derives the dedup key from
+        # `(review, round, question, partition, kind)` and deliberately NOT from `message_id`
+        # -- ADR-0005, so that a redelivery is recognised as the same work. A continuation
+        # published with the same partition would therefore carry the *same* dedup key, be
+        # refused by the claim repository as a duplicate, and stall the round permanently.
+        # A unit test caught that before it was deployed.
+        next_partition = f"{department.value}@{sequence + 1}"
+        continuation = self._emit(
+            WorkEnvelope.for_work(
+                message_id=f"{envelope.run_id}-draft-{next_partition}",
+                review_id=envelope.review_id,
+                run_id=envelope.run_id,
+                round_id=round_.round_id,
+                kind=WorkKind.DRAFT_ANSWER,
+                partition=next_partition,
+            )
+        )
+        detail = {
+            "department": department.value,
+            "questions": len(mine),
+            "answers": len(answers),
+            "resumed_from_previous_attempt": len(resumed),
+            "drafted_this_attempt": len(answers),
+            "partition_total": len(resumed) + len(answers),
+            "deferred_to_next_attempt": len(deferred),
+            "continued_as": continuation.dedup_key,
+            "cited": sum(1 for a in answers if a.citations),
+            **getattr(self.fleet, "last_draft_stats", {}),
+        }
+        self._audit_stage(envelope, detail)
+        logger.info(
+            "partition %s hit its budget: %d drafted, %d deferred to %s",
+            envelope.partition,
+            len(answers),
+            len(deferred),
+            continuation.dedup_key,
+        )
+        return HandlerResult(published=[continuation], detail=detail)
 
     # -- the join ----------------------------------------------------------------------
 

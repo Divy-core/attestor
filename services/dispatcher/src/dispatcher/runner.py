@@ -62,6 +62,7 @@ class FleetRunner(Protocol):
         department: Department,
         questions: list[Question],
         on_answer: Callable[[Answer], None] | None = None,
+        budget_seconds: float | None = None,
     ) -> list[Answer]: ...
 
     def load_commitments(self, review_id: str) -> list[tuple[str, str]]: ...
@@ -169,6 +170,7 @@ class PipelineFleetRunner:
         department: Department,
         questions: list[Question],
         on_answer: Callable[[Answer], None] | None = None,
+        budget_seconds: float | None = None,
     ) -> list[Answer]:
         """Draft one department's slice with the fan-out intact.
 
@@ -181,12 +183,13 @@ class PipelineFleetRunner:
         del department  # the questions are already scoped; kept for the log line
         pipeline = self._pipeline(review_id, run_id, round_id)
         started = time.perf_counter()
+        deadline = time.monotonic() + budget_seconds if budget_seconds else None
 
         def forward(outcome: Any) -> None:
             if on_answer is not None and outcome.answer is not None:
                 on_answer(outcome.answer)
 
-        outcomes = pipeline.draft_many(questions, forward if on_answer else None)
+        outcomes = pipeline.draft_many(questions, forward if on_answer else None, deadline)
         wall = time.perf_counter() - started
 
         # Measured here rather than inferred later. `achieved_concurrency` lives on
@@ -203,6 +206,9 @@ class PipelineFleetRunner:
             "slowest_question_seconds": round(max(latencies), 2) if latencies else 0.0,
             "remote_calls": getattr(pipeline, "remote_calls", 0),
             "degraded_commitment_matches": pipeline.degraded_commitment_matches,
+            # Questions the budget stopped this attempt from starting. Zero means the slice
+            # finished; anything else is what the continuation will pick up.
+            "deferred_to_next_attempt": sum(1 for o in outcomes if o.error == "deadline"),
         }
         return [o.answer for o in outcomes if o.answer is not None]
 

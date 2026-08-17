@@ -820,6 +820,7 @@ class ReviewPipeline:
         self,
         questions: list[Question],
         on_outcome: Callable[[QuestionOutcome], None] | None = None,
+        deadline: float | None = None,
     ) -> list[QuestionOutcome]:
         """Draft a set of questions with the fan-out intact.
 
@@ -843,11 +844,25 @@ class ReviewPipeline:
                 deliberate: the callback's job is to persist, and a persist that silently
                 failed would produce exactly the resume that reports progress it does not
                 have.
+            deadline: A `time.monotonic()` value after which no NEW question is started.
+                Questions not reached come back as outcomes with no answer, which the
+                dispatcher's resume treats exactly as it treats a question an interrupted
+                attempt never got to -- so a bounded attempt and a killed one leave the same
+                shape of state behind, and only one of them costs a delivery attempt.
+
+                In-flight questions are allowed to finish. Cancelling a drafting call that has
+                already been made would throw away the retrieval and the generation it has
+                already paid for, and the cost of finishing one is bounded by the engine's own
+                timeout.
         """
         if not questions:
             return []
 
         def one(question: Question) -> QuestionOutcome:
+            if deadline is not None and time.monotonic() >= deadline:
+                # Not an error and not a no-evidence answer -- an outcome with no answer, which
+                # is the one shape that means "this question has not been attempted".
+                return QuestionOutcome(question=question, error="deadline")
             outcome = self.draft(question)
             if on_outcome is not None:
                 on_outcome(outcome)
