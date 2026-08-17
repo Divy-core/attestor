@@ -1,0 +1,14 @@
+{
+  "engines": [
+    {
+      "created": true,
+      "display_name": "attestor-security",
+      "resource_name": "projects/906988347581/locations/us-central1/reasoningEngines/3145088689823023104",
+      "role": "security",
+      "seconds": 172.8
+    }
+  ],
+  "identity_type": "AGENT_IDENTITY",
+  "project": "attestor-505506",
+  "region": "us-central1"
+}
