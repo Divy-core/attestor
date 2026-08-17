@@ -91,12 +91,31 @@ that is genuinely computing. A remote call is a thread parked on a socket while 
 Runtime instance does the work, so the ceiling is the platform's rather than the local
 machine's.
 
-The number is load-bearing rather than a knob. Measured against the deployed security
-engine, one question costs ~45s end to end. At 8 workers the 123-question security
-partition runs ~690s — **past the 600s Pub/Sub ack deadline** — which means a redelivery
-mid-partition every time, five of them, and the message dead-lettered while the handler
-that owns it is still working and about to succeed. `REMOTE_DRAFT_CONCURRENCY = 24` brings
-it back inside the margin `docs/proof/ack-deadline-margin.md` reasons about.
+The number is load-bearing rather than a knob, and it was settled by being wrong twice.
+
+Measured against the deployed security engine, one question costs ~45s end to end. At 8
+workers the arithmetic put the 123-question security partition at ~690s — past the 600s
+ack deadline — so the first full-scale attempt used 24. Every partition then died inside a
+second:
+
+```
+429 RESOURCE_EXHAUSTED  Quota exceeded for quota metric
+'Query Reasoning Engine requests' and limit
+'Query Reasoning Engine requests per minute per region'
+```
+
+Three partitions at 24 is 72 concurrent queries, and the binding limit is **regional**,
+not per-engine — so the fan-out that fixed the deadline broke the quota. The resolution is
+8 per partition (24 in total) plus backoff on the individual call in `_query_with_retry`,
+which is where the Model Armor and search clients already handle rate limits. Retrying at
+the *message* level was the wrong altitude: one throttled question would cost a redraft of
+all 123, arriving back into the same congestion.
+
+A partition may still outrun the ack deadline, and that is what the lease is for. The
+redelivery at 600s finds a live, heartbeated claim and is refused with 409 rather than
+starting a second copy of the same drafting work — the 900s-over-600s ordering doing
+exactly the job `docs/proof/ack-deadline-margin.md` sized it for, on the first run that
+genuinely needed it rather than in a unit test.
 
 ### The datastore surface had to be granted at all
 

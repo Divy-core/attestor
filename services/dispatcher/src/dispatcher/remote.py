@@ -65,7 +65,9 @@ from __future__ import annotations
 import json
 import logging
 import os
+import random
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
@@ -93,9 +95,16 @@ ENGINE_ENV = {
     Department.ENGINEERING: "ATTESTOR_ENGINE_ENGINEERING",
 }
 
-#: Remote drafting fan-out. See `RemoteDraftingPipeline.draft_many` for why this is 24
-#: rather than the in-process 8, and why the number is load-bearing rather than a knob.
-REMOTE_DRAFT_CONCURRENCY = int(os.environ.get("ATTESTOR_REMOTE_CONCURRENCY", "24"))
+#: Remote drafting fan-out, PER PARTITION. Three partitions run at once, so this is a
+#: third of the concurrent load on Agent Runtime -- which is the number that matters,
+#: because the quota that bites is per region, not per engine. See
+#: `RemoteDraftingPipeline.draft_many` and `_query_with_retry`.
+REMOTE_DRAFT_CONCURRENCY = int(os.environ.get("ATTESTOR_REMOTE_CONCURRENCY", "8"))
+
+#: Retrying a rate-limited engine call. Same shape as the Model Armor and search clients:
+#: transient refusals are retried with exponential backoff before anything gives up.
+ENGINE_RETRY_ATTEMPTS = 4
+ENGINE_RETRY_BACKOFF_SECONDS = 4.0
 
 #: How the engine is asked for one question. Terse on purpose: the engine already carries
 #: its department instruction, its corpus binding, and the INSUFFICIENT_EVIDENCE contract,
@@ -269,25 +278,9 @@ class RemoteDraftingPipeline(ReviewPipeline):
             agent_name=f"{agent_department.value.capitalize()}Agent",
         )
 
-        try:
-            engine = self._pool.get(agent_department)
-            events = list(
-                engine.stream_query(
-                    message=DRAFT_REQUEST.format(question=question.text),
-                    user_id=f"{self.review_id}:{self.run_id}",
-                )
-            )
-        except EngineUnavailable:
-            raise
-        except Exception as exc:
-            # Transient by default. The dispatcher decides whether attempts remain; what
-            # must never happen is this being recorded as a question with no evidence.
-            raise EngineUnavailable(
-                f"engine for {agent_department.value!r} failed on "
-                f"{question.question_id}: {type(exc).__name__}: {exc}",
-                review_id=self.review_id,
-                run_id=self.run_id,
-            ) from exc
+        engine = self._pool.get(agent_department)
+        message = DRAFT_REQUEST.format(question=question.text)
+        events = self._query_with_retry(engine, agent_department, question, message)
 
         self.remote_calls += 1
         drafted = _parse_events(events, agent_department)
@@ -299,6 +292,70 @@ class RemoteDraftingPipeline(ReviewPipeline):
             queries_run=drafted.queries_run,
         )
 
+    def _query_with_retry(
+        self,
+        engine: Any,
+        department: Department,
+        question: Question,
+        message: str,
+    ) -> list[Any]:
+        """One engine round-trip, retrying the transient refusals.
+
+        Agent Runtime enforces a **per-minute, per-region quota** on
+        `Query Reasoning Engine requests`, and the first full-scale deployed run found it
+        the hard way: three partitions at 24 workers each is 72 concurrent queries, and
+        every partition died with
+
+            429 RESOURCE_EXHAUSTED  Quota exceeded for quota metric
+            'Query Reasoning Engine requests' ... per minute per region
+
+        The failure handling was *correct* — `EngineUnavailable` propagated, the dispatcher
+        returned 500, Pub/Sub redelivered — but retrying at the message level means one
+        rate-limited question costs the redraft of all 123 in its partition, and the
+        retries arrive just as congested. Rate limiting belongs where every other client in
+        this codebase already puts it: at the individual call, with backoff.
+
+        Jittered, because 24 threads that back off in lockstep re-collide on the same
+        second and reproduce the burst that caused the 429.
+
+        Raises:
+            EngineUnavailable: after `ENGINE_RETRY_ATTEMPTS`, or immediately on an error
+                that is not a rate limit. Never returns an empty result to stand in for a
+                failure.
+        """
+        last: Exception | None = None
+        for attempt in range(ENGINE_RETRY_ATTEMPTS):
+            try:
+                return list(
+                    engine.stream_query(
+                        message=message, user_id=f"{self.review_id}:{self.run_id}"
+                    )
+                )
+            except Exception as exc:  # noqa: BLE001 - classified immediately below
+                last = exc
+                text = str(exc)
+                throttled = "429" in text or "RESOURCE_EXHAUSTED" in text
+                if not throttled or attempt == ENGINE_RETRY_ATTEMPTS - 1:
+                    break
+                delay = ENGINE_RETRY_BACKOFF_SECONDS * (2**attempt) + random.uniform(0, 2.0)
+                logger.warning(
+                    "engine %s throttled on %s (attempt %d/%d); retrying in %.1fs",
+                    department.value,
+                    question.question_id,
+                    attempt + 1,
+                    ENGINE_RETRY_ATTEMPTS,
+                    delay,
+                    extra={"review_id": self.review_id, "run_id": self.run_id},
+                )
+                time.sleep(delay)
+
+        raise EngineUnavailable(
+            f"engine for {department.value!r} failed on {question.question_id} after "
+            f"{ENGINE_RETRY_ATTEMPTS} attempt(s): {type(last).__name__}: {last}",
+            review_id=self.review_id,
+            run_id=self.run_id,
+        ) from last
+
     def draft_many(self, questions: list[Question]) -> list[Any]:
         """Fan out wider than the in-process pipeline, because the work is now waiting.
 
@@ -307,17 +364,31 @@ class RemoteDraftingPipeline(ReviewPipeline):
         call is a thread parked on a socket while an Agent Runtime instance does the work,
         so the ceiling is the platform's, not ours.
 
-        The number matters rather than being a knob. Measured against the deployed security
-        engine, one question costs ~45s end to end. At 8 workers the 123-question security
-        partition runs ~690s — **past the 600s Pub/Sub ack deadline**, which means a
-        redelivery mid-partition every time, five of them, and the message dead-lettered
-        while the handler that owns it is still working and about to succeed. At 24 it runs
-        ~230s and the margin `docs/proof/ack-deadline-margin.md` reasons about is real
-        again.
+        The number is not a knob, and it was settled by being wrong twice.
 
-        This is exactly the "different kind of parallelism, measure it on its own terms"
-        that `docs/proof/permission-surfaces-and-composition.md` predicted would be needed
-        once drafting moved off-process.
+        At **8** the arithmetic said the 123-question security partition would run ~690s
+        against a ~45s-per-question cost — past the 600s ack deadline. So the first
+        full-scale attempt used **24**, and every partition died inside a second:
+
+            429 RESOURCE_EXHAUSTED  Quota exceeded for quota metric
+            'Query Reasoning Engine requests' ... per minute per region
+
+        Three partitions at 24 is 72 concurrent queries, and the binding limit turned out
+        to be regional rather than per-engine — so the fan-out that fixed the deadline
+        broke the quota. Back to **8 per partition, 24 in total**, with the rate limit
+        handled where it belongs: `_query_with_retry` backs off on the individual call
+        rather than letting one throttled question cost a redraft of all 123.
+
+        A partition may still run past the ack deadline. That is what the lease is for:
+        the redelivery at 600s finds a live, heartbeated claim and is refused with 409
+        rather than starting a second copy — the 900s-over-600s ordering doing exactly the
+        job `docs/proof/ack-deadline-margin.md` sized it for, on the first run that
+        actually needed it.
+
+        This is the "different kind of parallelism, measure it on its own terms" that
+        `docs/proof/permission-surfaces-and-composition.md` predicted would be needed once
+        drafting moved off-process. The prediction was right; the first two numbers were
+        not.
         """
         if not questions:
             return []

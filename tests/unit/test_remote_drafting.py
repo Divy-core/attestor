@@ -236,3 +236,93 @@ class TestAnswersAreStampedWithTheRound:
             question_id="a" * 16, raw_text="q", text="q", department=Department.SECURITY
         )
         assert pipeline._no_evidence_answer(question).round_id == "rev-1-r1"
+
+
+class TestRateLimitsAreRetriedOnTheCall:
+    """A throttled question must not cost the redraft of all 123 in its partition.
+
+    Found by the first full-scale deployed run. Three partitions at 24 workers is 72
+    concurrent queries against a quota that turns out to be per *region*, and every
+    partition failed inside a second with 429 RESOURCE_EXHAUSTED. The failure handling was
+    correct -- `EngineUnavailable` propagated, the dispatcher returned 500, Pub/Sub
+    redelivered -- but retrying at the message level re-runs the whole partition and
+    arrives back into the same congestion.
+    """
+
+    @staticmethod
+    def _pipeline(engine: Any) -> Any:
+        from dispatcher.remote import RemoteDraftingPipeline
+
+        class _Pool:
+            def get(self, department: Department) -> Any:
+                del department
+                return engine
+
+        return RemoteDraftingPipeline(
+            review_id="rev", run_id="run", pool=_Pool(),
+            screen_ingress=False, screen_tool_output=False,
+        )
+
+    @staticmethod
+    def _question() -> Any:
+        from attestor_core.domain import Question
+
+        return Question(
+            question_id="b" * 16, raw_text="q", text="q", department=Department.SECURITY
+        )
+
+    def test_a_429_is_retried_and_then_succeeds(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        import dispatcher.remote as remote
+
+        monkeypatch.setattr(remote.time, "sleep", lambda _: None)
+        calls = {"n": 0}
+
+        class _Throttled:
+            def stream_query(self, **_: Any) -> Any:
+                calls["n"] += 1
+                if calls["n"] < 3:
+                    raise RuntimeError("429 RESOURCE_EXHAUSTED Quota exceeded")
+                return iter([_text_event("drafted")])
+
+        pipeline = self._pipeline(_Throttled())
+        result = pipeline._guarded_retrieve(Department.SECURITY, self._question())
+
+        assert calls["n"] == 3
+        assert pipeline._local.drafted == "drafted"
+        assert result.evidence == []
+
+    def test_a_non_throttle_error_is_not_retried(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Backing off four times on a permission error wastes four ack deadlines."""
+        import dispatcher.remote as remote
+
+        monkeypatch.setattr(remote.time, "sleep", lambda _: None)
+        calls = {"n": 0}
+
+        class _Broken:
+            def stream_query(self, **_: Any) -> Any:
+                calls["n"] += 1
+                raise RuntimeError("403 PERMISSION_DENIED")
+
+        pipeline = self._pipeline(_Broken())
+        with pytest.raises(EngineUnavailable):
+            pipeline._guarded_retrieve(Department.SECURITY, self._question())
+        assert calls["n"] == 1
+
+    def test_persistent_throttling_still_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Retries are bounded. Exhausted attempts raise -- they never return nothing."""
+        import dispatcher.remote as remote
+
+        monkeypatch.setattr(remote.time, "sleep", lambda _: None)
+        calls = {"n": 0}
+
+        class _AlwaysThrottled:
+            def stream_query(self, **_: Any) -> Any:
+                calls["n"] += 1
+                raise RuntimeError("429 RESOURCE_EXHAUSTED")
+
+        pipeline = self._pipeline(_AlwaysThrottled())
+        with pytest.raises(EngineUnavailable) as raised:
+            pipeline._guarded_retrieve(Department.SECURITY, self._question())
+
+        assert calls["n"] == remote.ENGINE_RETRY_ATTEMPTS
+        assert "429" in str(raised.value)
