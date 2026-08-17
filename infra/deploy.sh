@@ -34,6 +34,7 @@ SERVICES_ONLY=0
 DISPATCHER_ONLY=0
 WEB_ONLY=0
 CONTROL_ONLY=0
+PRINT_TOKEN=0
 
 for arg in "$@"; do
     case "$arg" in
@@ -46,6 +47,9 @@ for arg in "$@"; do
         # The control plane on its own: it owns the SSE framing, which the UI depends on, so
         # a streaming change has to ship here before the UI can observe it.
         --control-only)    CONTROL_ONLY=1 ;;
+        # Read the write token back and stop. `tools/drill_approval.py` and any manual curl
+        # against a write endpoint need it, and it is deliberately not in the repo.
+        --print-token)     PRINT_TOKEN=1 ;;
         *) echo "unknown flag: $arg" >&2; exit 2 ;;
     esac
 done
@@ -130,6 +134,56 @@ for role in roles/datastore.user roles/pubsub.publisher roles/storage.objectAdmi
     grant "$CONTROL_SA" "$role"
 done
 
+# A v4 signed URL is a signature, and on Cloud Run there is no private key to make one with:
+# the credentials come from the metadata server and carry a token, not a key. So
+# `blob.generate_signed_url` falls back to the IAM `signBlob` API and signs AS the service
+# account -- which means the account needs permission to impersonate itself. Without it the
+# upload endpoint fails with
+#
+#     you need a private key to sign credentials
+#
+# and it fails ONLY when deployed, because local ADC is a user credential that has one. The
+# browser upload path is the whole of Phase 6.5's front door, so this is load-bearing.
+#
+# Granted on the account rather than at the project level. That is the narrowest form of the
+# permission: a project-wide roles/iam.serviceAccountTokenCreator would let the control plane
+# impersonate every engine identity the fleet's least-privilege story rests on.
+printf '  signBlob (self-impersonation, for v4 signed upload URLs)\n'
+gcloud iam service-accounts add-iam-policy-binding "$CONTROL_SA" \
+    --project "$PROJECT_ID" \
+    --member="serviceAccount:${CONTROL_SA}" \
+    --role=roles/iam.serviceAccountTokenCreator --quiet >/dev/null
+
+# ---------------------------------------------------------------------------------
+# The write token
+#
+# Phase 6.5 put an entrance on the interface, so the control plane's public URL now accepts
+# "start a 312-question review". `services/control-plane/guard.py` requires a shared token on
+# every write, and both services need the same value: the control plane to check it, the web
+# service to send it from inside its route handler where the browser cannot read it.
+#
+# Generated once and persisted OUTSIDE the repo, because a token regenerated on every deploy
+# would invalidate a running demo, and one committed to git is not a token. If the file is
+# absent a new one is minted; `--print-token` exists so a human can read it back for
+# `tools/drill_approval.py`.
+#
+# It is not authentication and `guard.py` says so in its own docstring. It bounds a
+# credit-burn surface; it does not identify anyone.
+# ---------------------------------------------------------------------------------
+TOKEN_FILE="${ATTESTOR_TOKEN_FILE:-${HOME}/.attestor-write-token}"
+if [[ ! -f "$TOKEN_FILE" ]]; then
+    umask 077
+    head -c 32 /dev/urandom | base64 | tr -d '=+/\n' > "$TOKEN_FILE"
+    printf '  minted a new write token at %s\n' "$TOKEN_FILE"
+fi
+WRITE_TOKEN="$(tr -d '\r\n' < "$TOKEN_FILE")"
+if [[ -z "$WRITE_TOKEN" ]]; then
+    printf 'error: the write token at %s is empty. Delete it and re-run to mint a new one.\n' \
+        "$TOKEN_FILE" >&2
+    exit 1
+fi
+printf '  write token: %s… (%d chars, from %s)\n' "${WRITE_TOKEN:0:4}" "${#WRITE_TOKEN}" "$TOKEN_FILE"
+
 # ---------------------------------------------------------------------------------
 # 2. The two services
 # ---------------------------------------------------------------------------------
@@ -164,7 +218,7 @@ gcloud run deploy attestor-control-plane \
     --memory 1Gi \
     --timeout 3600 \
     --allow-unauthenticated \
-    --set-env-vars "PROJECT_ID=${PROJECT_ID},VERTEX_LOCATION=${REGION}" \
+    --set-env-vars "PROJECT_ID=${PROJECT_ID},REGION=${REGION},VERTEX_LOCATION=${REGION},ATTESTOR_WRITE_TOKEN=${WRITE_TOKEN}" \
     --quiet
 fi
 
@@ -260,7 +314,7 @@ gcloud run deploy attestor-web \
     --memory 512Mi \
     --timeout 3600 \
     --allow-unauthenticated \
-    --set-env-vars "CONTROL_PLANE_URL=${WEB_CONTROL_URL},PROJECT_ID=${PROJECT_ID},REGION=${REGION}" \
+    --set-env-vars "CONTROL_PLANE_URL=${WEB_CONTROL_URL},PROJECT_ID=${PROJECT_ID},REGION=${REGION},ATTESTOR_WRITE_TOKEN=${WRITE_TOKEN}" \
     --quiet
 fi
 

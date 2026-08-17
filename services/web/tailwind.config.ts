@@ -72,7 +72,8 @@ const config: Config = {
         base: ['var(--text-base)', { lineHeight: '1.5' }],
         md: ['var(--text-md)', { lineHeight: '1.5' }],
         lg: ['var(--text-lg)', { lineHeight: '1.35' }],
-        xl: ['var(--text-xl)', { lineHeight: '1.25' }],
+        xl: ['var(--text-xl)', { lineHeight: '1.2' }],
+        '2xl': ['var(--text-2xl)', { lineHeight: '1.15' }],
       },
       fontWeight: {
         // Two weights. A compliance console does not need six.

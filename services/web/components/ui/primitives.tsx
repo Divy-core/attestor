@@ -13,6 +13,19 @@
  *
  * **Colour only carries meaning.** There is no accent hue in this file. Selection and focus
  * use the foreground colour, so nothing about chrome can be mistaken for status.
+ *
+ * ## No `'use client'`, deliberately
+ *
+ * This module is imported by server components (`AppShell`, every page) and by client ones. A
+ * shared module is compiled into both graphs, which is what makes that possible — and it is only
+ * possible while nothing here calls a hook. Adding `'use client'` to get one hook broke every
+ * server component that imports `cx`:
+ *
+ *     Attempted to call cx() from the server but cx is on the client
+ *
+ * found by loading the page rather than by type-checking it, because it is a boundary error and
+ * not a type error. Anything needing `useEffect` or `useRef` goes in its own client module —
+ * `Modal` did, and lives in `components/ui/Modal.tsx`.
  */
 
 import type { ReactNode } from 'react';
@@ -53,7 +66,7 @@ export function CardHeader({
   return (
     <header className="flex items-baseline justify-between gap-4 border-b border-subtle px-4 py-2.5">
       <div className="flex min-w-0 items-baseline gap-3">
-        <h2 className="truncate text-sm font-medium text-primary">{title}</h2>
+        <h2 className="truncate text-md font-medium text-primary">{title}</h2>
         {meta ? <div className="truncate text-xs text-muted">{meta}</div> : null}
       </div>
       {actions ? <div className="flex shrink-0 items-center gap-2">{actions}</div> : null}
@@ -243,6 +256,133 @@ export function Button({
     >
       {children}
     </button>
+  );
+}
+
+/**
+ * A labelled form control. The label is a real `<label>` wired by id, not a `<div>` above the
+ * input, because the whole point of a compliance console is that a keyboard user can drive it.
+ *
+ * `hint` sits under the control at rest. There is no tooltip on any field in this interface: a
+ * recording has no hover, and a form whose constraints are only discoverable by hovering is a
+ * form nobody watching the video can understand.
+ */
+export function Field({
+  id,
+  label,
+  hint,
+  children,
+}: {
+  id: string;
+  label: string;
+  hint?: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <div className="flex flex-col gap-1">
+      <label htmlFor={id} className="text-xs uppercase tracking-wide text-muted">
+        {label}
+      </label>
+      {children}
+      {hint ? <p className="text-xs text-muted">{hint}</p> : null}
+    </div>
+  );
+}
+
+const CONTROL =
+  'w-full rounded-sm border border-line bg-surface px-2.5 py-1.5 text-base text-primary ' +
+  'outline-none transition-colors placeholder:text-muted focus:border-focus ' +
+  'disabled:cursor-not-allowed disabled:opacity-50';
+
+export function TextInput({
+  id,
+  value,
+  onChange,
+  placeholder,
+  disabled = false,
+  autoFocus = false,
+}: {
+  id: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  disabled?: boolean;
+  autoFocus?: boolean;
+}) {
+  return (
+    <input
+      id={id}
+      type="text"
+      value={value}
+      disabled={disabled}
+      // A modal opened by a deliberate click should place the caret in its first field. Not
+      // doing so costs a tab press on camera, and it is what every comparable console does.
+      autoFocus={autoFocus}
+      placeholder={placeholder}
+      onChange={(event) => onChange(event.target.value)}
+      className={CONTROL}
+    />
+  );
+}
+
+export function Select<T extends string>({
+  id,
+  value,
+  options,
+  onChange,
+  disabled = false,
+}: {
+  id: string;
+  value: T;
+  options: ReadonlyArray<{ value: T; label: string }>;
+  onChange: (value: T) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <select
+      id={id}
+      value={value}
+      disabled={disabled}
+      onChange={(event) => onChange(event.target.value as T)}
+      className={CONTROL}
+    >
+      {options.map((option) => (
+        <option key={option.value} value={option.value}>
+          {option.label}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+/**
+ * A determinate bar. Determinate only — there is no indeterminate variant, because an
+ * indeterminate bar is ambient motion and the brief rules that out.
+ *
+ * Used for the upload, which is the one thing in this interface with a genuine fraction.
+ */
+export function Progress({ fraction, label }: { fraction: number; label: string }) {
+  const percent = Math.round(Math.max(0, Math.min(1, fraction)) * 100);
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="text-sm text-secondary">{label}</span>
+        <span className="font-mono text-sm tabular-nums text-secondary">{percent}%</span>
+      </div>
+      <div
+        role="progressbar"
+        aria-valuenow={percent}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-label={label}
+        className="h-1.5 w-full overflow-hidden rounded-sm bg-track"
+      >
+        <div
+          className="h-full bg-scale transition-[width] duration-state"
+          style={{ width: `${percent}%` }}
+        />
+      </div>
+    </div>
   );
 }
 

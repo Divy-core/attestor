@@ -41,6 +41,52 @@ class StorageClient:
     def _bucket(self, suffix: str) -> storage.Bucket:
         return self._client.bucket(bucket_name(self.project, suffix))
 
+    def _signing_credentials(self) -> dict[str, str]:
+        """Extra arguments that make `generate_signed_url` sign through the IAM API.
+
+        ## Why this is needed at all
+
+        A v4 signed URL is an RSA signature over a canonical request, and signing needs a
+        **private key**. Locally that is fine: ADC is a user credential and has one. On Cloud
+        Run there is no key — the credentials come from the metadata server and carry only an
+        access token — so `generate_signed_url` raises:
+
+            AttributeError: you need a private key to sign credentials. the credentials you
+            are currently using <class 'google.auth.compute_engine.credentials.Credentials'>
+            just contains a token.
+
+        The fix has two halves and **both** are required, which is the part worth recording:
+
+        1. `roles/iam.serviceAccountTokenCreator` on the service account, granted on the
+           account itself so it may impersonate itself (`infra/deploy.sh`).
+        2. Passing `service_account_email` and `access_token` here. The library does **not**
+           fall back to IAM signing on its own — given only the grant it still raises the
+           same AttributeError, because it has no reason to believe an IAM signer is wanted.
+           Phase 6.5 granted the permission first, redeployed, and got the identical error;
+           the grant was necessary and not sufficient.
+
+        Returns:
+            The two extra kwargs when running on a metadata-server credential, or an empty
+            dict when the local credential can sign for itself.
+        """
+        from google.auth import compute_engine, default
+        from google.auth.transport.requests import Request
+
+        credentials, _ = default(scopes=["https://www.googleapis.com/auth/cloud-platform"])
+        # Type-checked rather than duck-typed. `hasattr(credentials, "service_account_email")`
+        # is true for several credential classes that CAN sign locally, and routing those
+        # through IAM would add a network call and a permission requirement for nothing.
+        if not isinstance(credentials, compute_engine.Credentials):
+            return {}
+        # The token is what the IAM signBlob call authenticates with, so it has to be fresh.
+        # `refresh` is untyped in google-auth; the cast keeps --strict honest about that rather
+        # than widening the whole module's typing.
+        credentials.refresh(Request())  # type: ignore[no-untyped-call]
+        return {
+            "service_account_email": str(credentials.service_account_email),
+            "access_token": str(credentials.token),
+        }
+
     def signed_upload_url(
         self,
         object_name: str,
@@ -48,7 +94,13 @@ class StorageClient:
         bucket_suffix: str = "uploads",
         ttl: timedelta = SIGNED_URL_TTL,
     ) -> tuple[str, str, datetime]:
-        """Return (upload_url, gs_uri, expires_at) for a direct browser PUT."""
+        """Return (upload_url, gs_uri, expires_at) for a direct browser PUT.
+
+        The signed `content_type` is part of the signature, so the browser's PUT must send
+        exactly the same string. `services/web/lib/api/start.ts` derives it from the file
+        extension for that reason -- `File.type` is reported inconsistently and is empty for
+        .xlsx on some platforms, which would sign for `""` and then PUT something else.
+        """
         blob = self._bucket(bucket_suffix).blob(object_name)
         expires_at = datetime.now(UTC) + ttl
         url = blob.generate_signed_url(
@@ -56,6 +108,7 @@ class StorageClient:
             expiration=ttl,
             method="PUT",
             content_type=content_type,
+            **self._signing_credentials(),
         )
         gs_uri = f"gs://{bucket_name(self.project, bucket_suffix)}/{object_name}"
         return url, gs_uri, expires_at

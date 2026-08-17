@@ -29,6 +29,10 @@ dev = [
     "pytest-cov>=5.0",
     "mypy>=1.11",
     "ruff>=0.6",
+    # `fastapi.testclient` needs it. Present transitively through the google clients, so the
+    # contract tests passed without it being declared -- declared anyway, because a test suite
+    # that depends on someone else's transitive dependency breaks on their next release.
+    "httpx>=0.27",
 ]
 
 [tool.pytest.ini_options]

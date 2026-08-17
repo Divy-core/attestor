@@ -49,6 +49,26 @@ export const env = {
   get serviceUrl(): string {
     return process.env.SERVICE_URL ?? '';
   },
+  /**
+   * The shared token the control plane requires on every write.
+   *
+   * Read here and used only inside `app/api/attestor/[...path]/route.ts`, which runs on the
+   * server. It is **not** `NEXT_PUBLIC_`, so it is not in the client bundle, not in view
+   * source, and not in the network tab of a recorded demo — the browser calls this service's
+   * own origin and this service adds the header.
+   *
+   * That asymmetry is the whole design: someone who finds the control plane's `.run.app` URL
+   * cannot start a 312-question review with it, and someone who finds the *web* URL can,
+   * which is the intended demo behaviour. It is not authentication. `guard.py` says so at
+   * length; the residual exposure is stated in `PROGRESS.md`.
+   *
+   * Empty rather than throwing when unset: the control plane refuses the write with a 503
+   * naming its own variable, and that is a far more useful failure than a web page that will
+   * not render.
+   */
+  get writeToken(): string {
+    return (process.env.ATTESTOR_WRITE_TOKEN ?? '').trim();
+  },
 } as const;
 
 /** How long a read may take before the UI shows an error instead of hanging. */

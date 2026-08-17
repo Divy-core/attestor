@@ -21,23 +21,52 @@ export const dynamic = 'force-dynamic';
  * endpoints the client genuinely needs, keyed by method. Anything else is 404 here and never
  * leaves the process.
  *
- * `POST /uploads`, `POST /reviews` and `POST /reviews/{id}/state` are deliberately NOT on it.
- * Nothing in this UI creates a review or drives a state transition by hand — those are driven
- * by Pub/Sub and by the seeding tools — so exposing them would be surface with no caller.
+ * ## The allowlist grew in Phase 6.5, and that is a posture change rather than a fix
+ *
+ * It used to carry seven reads and one write, with a note saying that `POST /uploads`,
+ * `POST /reviews` and `POST /reviews/{id}/rounds` were deliberately absent because nothing in
+ * the UI started work. That was true and it was the problem: every review on the live site had
+ * been created from a terminal, and the interface was a viewer for work a developer ran.
+ *
+ * So the product now has an entrance, and three write paths are on the list. What has *not*
+ * changed is the shape of the protection:
+ *
+ *   - the web service account still holds only `roles/logging.logWriter`;
+ *   - every write still executes under the control plane's identity, never the browser's;
+ *   - the paths are still an explicit method-and-path allowlist, not a pass-through;
+ *   - and the control plane now requires a shared token on all of them, which this handler
+ *     adds server-side and the browser never sees.
+ *
+ * The blast radius argument is unchanged. What changed is that a person can hand work in.
  */
 const ALLOWED: ReadonlyArray<{ method: 'GET' | 'POST'; pattern: RegExp }> = [
   { method: 'GET', pattern: /^reviews$/ },
   { method: 'GET', pattern: /^reviews\/[^/]+$/ },
   { method: 'GET', pattern: /^reviews\/[^/]+\/audit$/ },
   { method: 'GET', pattern: /^reviews\/[^/]+\/armor$/ },
+  { method: 'GET', pattern: /^reviews\/[^/]+\/export\/manifest$/ },
   { method: 'GET', pattern: /^rounds\/[^/]+\/questions$/ },
   { method: 'GET', pattern: /^rounds\/[^/]+\/answers$/ },
   { method: 'GET', pattern: /^registry$/ },
   { method: 'POST', pattern: /^rounds\/[^/]+\/answers\/[^/]+\/approval$/ },
+  // The entrance. In the order the New review flow calls them.
+  { method: 'POST', pattern: /^uploads$/ },
+  { method: 'POST', pattern: /^reviews$/ },
+  { method: 'POST', pattern: /^reviews\/[^/]+\/rounds$/ },
 ];
 
+/**
+ * `GET /reviews/{id}/export` is deliberately **not** proxied.
+ *
+ * It returns a multi-megabyte binary, and relaying that through this handler would buffer a
+ * spreadsheet through a Node process for no benefit — the same reasoning that keeps uploads
+ * off the control plane. The review page links to the control plane's own URL instead, which
+ * is a read and needs no token. The manifest, which is small JSON the download control reads
+ * before the click, is proxied.
+ */
+
 /** Query parameters worth forwarding. Everything else is dropped rather than relayed. */
-const FORWARDED_PARAMS = new Set(['limit']);
+const FORWARDED_PARAMS = new Set(['limit', 'round_id', 'format']);
 
 const TIMEOUT_MS = 30_000;
 
@@ -56,12 +85,20 @@ async function proxy(request: NextRequest, segments: string[], method: 'GET' | '
     if (FORWARDED_PARAMS.has(key)) target.searchParams.set(key, value);
   }
 
+  // The token is attached here and only here. It comes from the server environment, so it is
+  // never in the client bundle and never in the browser's network tab.
+  const headers: Record<string, string> = {};
+  if (method === 'POST') {
+    headers['Content-Type'] = 'application/json';
+    if (env.writeToken) headers['X-Attestor-Token'] = env.writeToken;
+  }
+
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
     const upstream = await fetch(target, {
       method,
-      headers: method === 'POST' ? { 'Content-Type': 'application/json' } : undefined,
+      headers: Object.keys(headers).length > 0 ? headers : undefined,
       body: method === 'POST' ? await request.text() : undefined,
       signal: controller.signal,
       cache: 'no-store',

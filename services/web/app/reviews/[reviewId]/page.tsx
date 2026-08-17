@@ -1,13 +1,24 @@
 import Link from 'next/link';
 
 import { AppShell } from '@/components/layout/AppShell';
+import { NewReviewButton } from '@/components/review/NewReview';
 import { ReviewWorkspace } from '@/components/review/ReviewWorkspace';
 import { RoundTimeline } from '@/components/review/RoundTimeline';
 import { Button, ErrorState, Mono } from '@/components/ui/primitives';
-import { ApiError, api, type AnswerRow, type QuestionRow, type ReviewDetailRow } from '@/lib/api/client';
+import {
+  ApiError,
+  api,
+  type AnswerRow,
+  type AuditEvent,
+  type QuestionRow,
+  type ReviewDetailRow,
+} from '@/lib/api/client';
 import { absolute, ago } from '@/lib/format';
 
 export const dynamic = 'force-dynamic';
+
+/** The orchestrator's own judgement calls. Kept in step with `FleetActivity`. */
+const JUDGEMENT_KINDS = new Set(['plan_selected', 'retry_decided', 'run_completed']);
 
 /**
  * The workspace. Server component: the first paint carries real data from the deployed control
@@ -29,6 +40,7 @@ export default async function ReviewPage({
   let answers: AnswerRow[] = [];
   let loadError: string | null = null;
   let runId: string | null = null;
+  let judgements: AuditEvent[] = [];
 
   try {
     review = await api.getReview(reviewId);
@@ -45,8 +57,18 @@ export default async function ReviewPage({
       // from the most recent event is how the page knows which stream to open, and if there is
       // no event yet there is no run to watch — which the workspace says rather than opening a
       // stream to nothing.
-      const audit = await api.listAudit(reviewId, 50);
+      // One read, two uses, and both are filtered here rather than in the browser. A 312-
+      // question review has ~949 audit events; serialising all of them into the page payload to
+      // pick four out on the client would put half a megabyte of JSON into the HTML.
+      const audit = await api.listAudit(reviewId, 1000);
       runId = audit.find((event) => event.run_id)?.run_id ?? null;
+      judgements = audit
+        .filter((event) => JUDGEMENT_KINDS.has(event.kind))
+        // `for_review` applies no ordering -- Firestore returns documents in id order, which for
+        // auto-ids is arbitrary -- so the sort is done here rather than assumed. Oldest first, so
+        // the live stream can simply append.
+        .sort((a, b) => String(a.recorded_at ?? '').localeCompare(String(b.recorded_at ?? '')))
+        .slice(-8);
     }
   } catch (cause) {
     loadError = cause instanceof ApiError ? cause.human : String(cause);
@@ -98,11 +120,14 @@ export default async function ReviewPage({
         </>
       }
       actions={
-        runId !== null ? (
-          <Link href={`/traces/${runId}`}>
-            <Button variant="quiet">Audit trail</Button>
-          </Link>
-        ) : null
+        <>
+          {runId !== null ? (
+            <Link href={`/traces/${runId}`}>
+              <Button variant="quiet">Audit trail</Button>
+            </Link>
+          ) : null}
+          <NewReviewButton variant="default" />
+        </>
       }
     >
       <div className="flex flex-col">
@@ -114,6 +139,7 @@ export default async function ReviewPage({
             runId={runId}
             initialQuestions={questions}
             initialAnswers={answers}
+            initialJudgements={judgements}
             loadError={loadError}
           />
         </div>

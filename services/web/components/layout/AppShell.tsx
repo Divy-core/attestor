@@ -87,9 +87,9 @@ export function AppShell({
     <div className="flex h-screen w-full overflow-hidden bg-base">
       <Sidebar pathname={pathname} />
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-12 shrink-0 items-center justify-between gap-4 border-b border-subtle px-5">
+        <header className="flex h-14 shrink-0 items-center justify-between gap-4 border-b border-subtle px-5">
           <div className="flex min-w-0 items-baseline gap-3">
-            <h1 className="truncate text-md font-medium text-primary">{title}</h1>
+            <h1 className="truncate text-lg font-medium text-primary">{title}</h1>
             {meta ? <div className="truncate text-sm text-muted">{meta}</div> : null}
           </div>
           <div className="flex shrink-0 items-center gap-3">

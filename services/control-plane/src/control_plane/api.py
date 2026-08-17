@@ -202,7 +202,14 @@ def create_review(body: CreateReviewRequest, request: Request) -> dict[str, Any]
         customer=body.customer,
         framework=body.framework,
         residency=body.residency,
-        current_round=0,
+        # 1, not 0. `Review.current_round` is `Field(ge=1)` -- "round 1 is the initial
+        # questionnaire" -- so the 0 this used to pass made the endpoint raise a
+        # ValidationError on every call. It had done so since Phase 2 and nobody noticed,
+        # because nothing called it: every review in the project was created by a tool
+        # publishing `intake_document` directly. Found by `tools/verify_journey.py`, whose
+        # entire reason for existing is that the product surface and the pipeline are
+        # different surfaces.
+        current_round=1,
         state=ReviewState.INTAKE,
     )
     reviews().put(review)

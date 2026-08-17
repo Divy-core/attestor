@@ -42,10 +42,22 @@ WAIT_SECONDS = 600
 
 
 def post(url: str, body: dict[str, Any]) -> dict[str, Any]:
+    """POST to the control plane, carrying the write token if one is configured.
+
+    Phase 6.5 put a shared token on every write endpoint (`control_plane/guard.py`), because
+    the browser can now start a 312-question review from a public URL. This tool is the other
+    caller of a write endpoint, so it needs the same header. Read it with:
+
+        PROJECT_ID=attestor-505506 bash infra/deploy.sh --print-token
+    """
+    headers = {"Content-Type": "application/json"}
+    token = os.environ.get("ATTESTOR_WRITE_TOKEN", "").strip()
+    if token:
+        headers["X-Attestor-Token"] = token
     request = urllib.request.Request(
         url,
         data=json.dumps(body).encode("utf-8"),
-        headers={"Content-Type": "application/json"},
+        headers=headers,
         method="POST",
     )
     try:
@@ -67,6 +79,12 @@ def main() -> int:
     if not base or not os.environ.get("PROJECT_ID"):
         sys.exit("error: PROJECT_ID and CONTROL_PLANE_URL must be set")
     base = base.rstrip("/")
+    if not os.environ.get("ATTESTOR_WRITE_TOKEN", "").strip():
+        # Checked up front rather than discovered as a 401 halfway through approving a queue.
+        sys.exit(
+            "error: ATTESTOR_WRITE_TOKEN must be set -- every control-plane write is guarded "
+            "as of Phase 6.5. Read it with: bash infra/deploy.sh --print-token"
+        )
 
     reviews = ReviewRepository()
     answers_repo = AnswerRepository()

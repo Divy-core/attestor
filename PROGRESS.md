@@ -2792,3 +2792,267 @@ substitute.
 
 The dispatcher is restored to `ATTESTOR_REMOTE_CONCURRENCY=8`, the setting the 60-question run
 of record was measured at, so the deployed system is left in its known-good configuration.
+
+---
+
+## Phase 6.5 — The Product Surface (Day 4, 17 Aug 2026)
+
+Phase 6 built a console that reads the deployed system honestly. Its own homepage stated the
+problem with it, in a sentence written as a security property:
+
+> Nothing on any page is computed in the browser, and **nothing is started from it**.
+
+True, and defensible, and also what a judge reads first — and what it tells them is that the
+interface is a viewer for work a developer ran from a terminal. Every review on the live site
+had been created by `uv run python tools/run_review.py`. The rubric's largest category (40%)
+rewards "autonomous, high-value action... with little to no hand-holding", and hand-holding-free
+operation cannot be *observed* if the only way to hand work in is a CLI.
+
+Three things were missing, and the third is the product: upload, start, and **get the finished
+questionnaire back out**. A vendor security review ends when the completed spreadsheet goes to
+the customer. Until this phase Attestor wrote answers into Firestore and stopped there.
+
+### The neutral ramp was wrong, and the correction is one file
+
+Phase 6 argued for cool slate on the grounds that "a few degrees of blue in the neutrals is what
+makes an interface look like an instrument". Read on the deployed site, it does the opposite.
+Blue-tinted grey is the Azure-portal look. Four specific failures, all visible at 1080p and all
+named by Divy before I looked:
+
+| Symptom | Cause in `tokens.css` |
+|---|---|
+| Background, sidebar and cards did not separate | `--bg-base: --n-11` (#12161D) against `--bg-surface: --n-10` (#1C212A) — one ramp step apart |
+| Primary text read grey-blue, not near-white | `--text-primary: --n-1` (#F7F8FA), blue-tinted light on blue-tinted dark |
+| Borders did not read as structure | `--border-subtle: --n-9` (#2B313B), barely above 1.2:1 against the surface it sat on |
+| No hierarchy to scan | 15px section headings against 14px body — a distinction nobody perceives |
+
+**The corrected ramp.** Thirteen steps, hue ~40, chroma low enough that it never reads as a
+colour — only as the difference between a screen and a surface. Stated as the brief asks, with
+the change from the previous version named:
+
+| Token | Was (cool slate) | Now (warm neutral) | Role |
+|---|---|---|---|
+| `--n-12` | *did not exist* | `#0A0A0B` | page ground, near-black |
+| `--n-11` | `#12161D` | `#17171A` | card surface |
+| `--n-10` | `#1C212A` | `#212125` | raised surface |
+| `--border-subtle` (dark) | `#2B313B` | `#2C2C31` | hairline, visible after H.264 |
+| `--text-primary` (dark) | `#F7F8FA` | `#FAFAF9` | ~16:1 on the card surface |
+| `--text-secondary` (dark) | `#CBD0DA` | `#D6D3CD` | genuinely secondary |
+
+Checked against the three AI-default looks the brief warns about: this is not cream-with-a-serif,
+not near-black-with-an-acid-accent (there is no accent hue at all — focus and selection use the
+foreground colour), and not broadsheet-hairlines-everywhere. **What changed from what I would
+otherwise have produced:** the previous pass *was* the default. "Add blue to grey and call it
+Linear" is the reflex, and it is wrong because warmth reads as material where cool grey reads as
+screen.
+
+**The six state hues are unchanged.** They were reasoned about carefully in Phase 6, the
+greyscale-separation argument holds, and this was never a problem with them. Confirmed rather
+than revisited.
+
+**Type has a real scale now.** 20 / 16 / 14 / 13 / 11 — page title, section heading, body and
+rows, dense data, metadata labels. Plus 26px and 32px for live figures only, because a counter
+ticking up is the one thing a viewer should be able to read without looking for it.
+
+This was a change to `services/web/styles/tokens.css` and four class names. That is the return on
+the token architecture, and it is the argument for having built it that way.
+
+### The journey, and the security posture that changed with it
+
+| Step | Before | Now |
+|---|---|---|
+| Upload the questionnaire | missing | `POST /uploads` gives a v4 signed URL; the browser PUTs to GCS |
+| Start the review | missing | `POST /reviews`, `POST /reviews/{id}/rounds` |
+| Watch the fleet work | built | counters, per-engine progress, the orchestrator's decisions |
+| Approve what is flagged | endpoint proven | wired to the queue in the browser |
+| Export the questionnaire | **missing** | `GET /reviews/{id}/export?format=xlsx` or `pdf` |
+
+**The proxy allowlist grew from eight rules to twelve** — `POST /uploads`, `POST /reviews`,
+`POST /reviews/{id}/rounds`, and `GET .../export/manifest`. Restated rather than quietly
+reversed, because the previous version's comment said those were deliberately absent:
+
+- the web service account still holds only `roles/logging.logWriter`;
+- every write still executes under the control plane's identity, never the browser's;
+- the paths are still an explicit method-and-path allowlist, not a pass-through;
+- and every write now additionally requires a shared token the browser never sees.
+
+The blast radius argument is unchanged. What changed is that the product has an entrance.
+
+The export download is proxied through the web service as a **stream** rather than linked
+directly at the control plane, so `CONTROL_PLANE_URL` stays out of the rendered HTML now that it
+accepts writes. `new Response(upstream.body)` accumulates nothing in the Node process, which is
+what makes proxying acceptable here where proxying an *upload* would not be — an upload has no
+upstream to stream from until the whole body has arrived.
+
+### The guard, and what it is not
+
+`services/control-plane/src/control_plane/guard.py`. Three properties:
+
+1. **A shared token** on every write, held in `ATTESTOR_WRITE_TOKEN` on both services and
+   attached by the Next.js route handler server-side. Someone who finds the control plane's
+   `.run.app` URL cannot start a review with it; someone who finds the *web* URL can, which is
+   the intended demo behaviour. Compared with `hmac.compare_digest`.
+2. **A concurrent-review ceiling** of 3, counting everything except `delivered` and `failed` —
+   `awaiting_human` counts, because that is the state a forgotten review sits in and excluding it
+   would make the ceiling bypassable by starting three and walking away. Refused with a 429 that
+   names the reviews in flight.
+3. **A question ceiling** of 400 per round, enforced in the dispatcher's `intake_document` because
+   nothing before the parse knows how many questions a file contains. Truncation is recorded as
+   its own `intake_truncated` audit event and as `dropped_over_ceiling` on the stage, so the
+   omission is stated in the artefact rather than discovered by counting rows.
+
+**It refuses when unconfigured.** A missing `ATTESTOR_WRITE_TOKEN` produces a 503 naming the
+variable, not a pass-through. A guard that disables itself when its configuration is absent
+protects nothing in exactly the situation where protection was wanted.
+
+**The residual exposure, stated.** This is not authentication and `guard.py` says so in its own
+docstring. There are no users, no sessions and no per-tenant isolation, and one shared secret
+cannot provide any of them. Specifically still exposed:
+
+- **All reads are public.** Anyone with the control plane URL can list every review, read every
+  answer, and download any export. The corpus is synthetic and the customers are fictional, so
+  what is exposed is demo data — but it is exposed, and a real deployment would need auth on reads
+  before anything else.
+- **The token is shared, not per-user.** Anyone who obtains it can start reviews until it is
+  rotated. Rotation is deleting `~/.attestor-write-token` and re-running the deploy.
+- **The signed upload URL is a 30-minute write grant** into the uploads bucket for one object
+  name. Minting is guarded; a minted URL is not.
+- **No content-length ceiling on the PUT.** The browser is limited to 40MB by `lib/api/start.ts`;
+  a direct caller holding a signed URL is not. Enforcing it means signing
+  `X-Goog-Content-Length-Range`, which is a real fix rather than a demo guard, and is not done.
+
+Full auth remains out of scope by the Phase 1 decision. This is a demo guard, described as one.
+
+### The export is the deliverable, and a test corrected its design
+
+`packages/attestor-platform/src/attestor_platform/export/` — three modules, one release decision,
+two renderers, no network. It lives in `attestor_platform` rather than the `attestor_fleet`
+location Phase 3 specified, because the control plane serves the download and
+`services/control-plane` depends on core and platform only; adding the fleet to it would pull
+google-adk and vertexai into the one service a browser can reach.
+
+**The workbook is the customer's own file.** `Question.source_ref` has carried the sheet name and
+1-based row since intake, specifically so this is possible: the export re-opens the uploaded
+workbook and writes six columns into the rows the questions came from. Not fuzzy text matching,
+which would misplace a row the moment two questions were worded similarly — and real
+questionnaires repeat themselves constantly. Loaded with `data_only=False` so the customer's own
+formulas survive as formulas rather than being replaced by whatever Excel last cached.
+
+**The evidence pack is the PDF a reviewer actually reads.** Every answer with its passages,
+sections and relevance scores. Greyscale by design — it gets printed and attached to procurement
+tickets that strip colour — so release state is stated in words in every block rather than
+carried by a fill.
+
+**A test found a design defect, and the missing enum member was the smaller half of it.**
+`test_every_status_is_mapped` walks the whole of `AnswerStatus` and refused the first release
+model for not handling `DRAFTED`. Following that up is what mattered: `DRAFTED` is the status
+`ReviewPipeline` assigns to an answer that retrieved supporting passages, scored confidently
+against them, and did not contradict a prior commitment. It is the *normal successful outcome*. A
+two-tier "approved by a human, or not" model would have told a customer that all 189 answers in
+the deployed run were unfit to send — which is not what the system determined about any of them.
+
+Three tiers now, which is a description of what Attestor does rather than a simplification:
+
+| Release state | Sendable | Meaning |
+|---|---|---|
+| approved by a named human | yes | someone signed it |
+| drafted with citations, not individually reviewed | yes | the system stands behind it *because* it cites its sources, which are listed beside it |
+| held / no evidence / quarantined / rejected | no | with the reason named |
+| claims support it does not have | no | a status saying "fine" with zero citations |
+
+The last row is the same discipline as `lib/states.ts`: the status is a claim, the citations are
+the evidence for it, and where they disagree the evidence wins. `Answer`'s validator forbids that
+shape, so reaching it means the validator was bypassed — and the export refuses to call it
+sendable on the strength of a field.
+
+### E — incremental persistence, and what mypy caught
+
+ADR-0008. The deployed 312-question run has never completed, and the cause was not quota.
+
+A3 measured **1.98 of 2** achieved concurrency — 99% efficient, the same efficiency as 7.84 of 8.
+The fan-out is fine at every setting tried. What fails is the unit of work: nothing is persisted
+until a whole partition returns, so five delivery attempts of the same ~1,550s of work are five
+failures rather than five chances. Answers now persist as they complete, and a redelivered
+partition skips what is already written.
+
+**mypy caught the part that mattered.** `RemoteDraftingPipeline` overrides `draft_many` to fan out
+at a different width. Adding the callback to `ReviewPipeline` and stopping there would have wired
+the resume into the in-process runner and left the **deployed** path — the one with the deadline
+problem — silently unchanged: the dispatcher passing a callback, the override dropping it, every
+partition still restarting from zero, and the audit trail reporting a resume that never happened.
+It surfaced as an incompatible-override error. Worth recording because the code would have run,
+the base-class tests would have passed, and the artefact would have looked like a fix.
+
+### D — the 429 in the recording, diagnosed
+
+The screen recording showed:
+
+> The last refresh failed. The control plane returned 429 on refresh. What is on screen is the
+> last good read, not an empty result.
+
+The copy was right. The behaviour was not, and neither of the two hypotheses in the brief was the
+cause.
+
+**Not the poller.** `createPoller` is stopped whenever health is `live` and only starts on
+`stale`. During a healthy run it never fires.
+
+**Not `--max-instances 4` on its own.** Four instances handle the read volume of a console
+comfortably.
+
+**The cause: `refetch()` on every single event.** A 312-question review emits ~949 audit events,
+every one of them means the round moved, and `ReviewWorkspace.onEvent` called `refetch`
+unconditionally — two reads apiece, so roughly **1,900 requests in twelve minutes**, arriving in
+bursts as three partitions drafted in parallel. That is what tripped the limit.
+
+**The fix is coalescing, not backing off.** `scheduleRefetch` collapses a burst into one read on a
+trailing edge with a 1,200ms floor between reads. Sub-second freshness on a process that takes
+~45 seconds per question is precision nobody can perceive, bought with requests that trip a rate
+limit. The ratio is rendered in the stream indicator — `N events → M reads` — so the coalescing is
+visible rather than asserted, and a regression would be on screen.
+
+A 429 is now also distinguished from other refresh failures in the error copy, because "the
+control plane rate-limited a refresh" and "the control plane is unreachable" want different
+reactions from the person reading it.
+
+### What compiling and rendering found this time
+
+Two defects, one in each half, and both were found by running the thing rather than reading it.
+
+**`'use client'` on the shared primitives module broke every server component.** `Modal` needs
+`useEffect`, so the directive went on `components/ui/primitives.tsx` — which `AppShell` and every
+page import for `cx`, `Card` and `Mono`. The page returned a 500:
+
+```
+Error: Attempted to call cx() from the server but cx is on the client.
+```
+
+`tsc --noEmit` was clean, because it is a boundary error rather than a type error. Fixed by
+splitting `Modal` into `components/ui/Modal.tsx` with its own directive and returning
+`primitives.tsx` to being a shared module with no hooks in it. Recorded because the class of bug
+is invisible to the type checker and to every test that does not render a page.
+
+**The control-plane service account could not sign a URL.** A v4 signed URL is a signature, and on
+Cloud Run there is no private key — the credentials come from the metadata server and carry a
+token. `generate_signed_url` falls back to the IAM `signBlob` API and signs *as* the service
+account, which requires permission to impersonate itself. Without it:
+
+```
+you need a private key to sign credentials
+```
+
+and it fails **only when deployed**, because local ADC is a user credential that has one. Granted
+in `deploy.sh` as `roles/iam.serviceAccountTokenCreator` **on the account itself** rather than
+project-wide: the project-level grant would let the control plane impersonate every engine
+identity the fleet's least-privilege story rests on.
+
+### `tools/verify_journey.py` — the product surface, over HTTP
+
+Every other harness in this repo starts a review by publishing to Pub/Sub directly, which is the
+right way to test the pipeline and the wrong way to test the product. This one does what a person
+does and only what a person can do: sign, PUT, create, start, watch by reading the same endpoints
+the browser reads, then export both formats and check the magic bytes. It imports no repository
+and touches no Firestore, so a permission the deployed service lacks fails here the way it fails
+for a user — which is precisely how the `/registry` 403 survived until it was called from Cloud
+Run rather than from a developer's own credentials.
+
+It also asserts the guard refuses: no token, wrong token, and reads still open.

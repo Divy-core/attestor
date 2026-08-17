@@ -28,12 +28,18 @@ export function StreamIndicator({
   polling,
   lastSeq,
   gaps,
+  observed,
+  reads,
 }: {
   health: StreamHealth;
   detail: string;
   polling: boolean;
   lastSeq: number;
   gaps: number;
+  /** Events seen on the stream this session. */
+  observed: number;
+  /** Reads those events caused. Fewer, because bursts are coalesced. */
+  reads: number;
 }) {
   const label = polling && health !== 'live' ? 'polling' : health;
   const solid = health === 'live';
@@ -60,6 +66,17 @@ export function StreamIndicator({
           title="Sequence gaps detected and backfilled from the read endpoint. A gap is normal after a reconnect; a gap that was not backfilled would be a hole in the record."
         >
           {gaps} backfilled
+        </Mono>
+      ) : null}
+      {observed > 0 ? (
+        // The coalescing, visible rather than asserted. A 949-event run refetching per event is
+        // ~1,900 reads against a control plane capped at four instances, which is what produced
+        // the 429 in the screen recording. This ratio is the fix, on screen.
+        <Mono
+          dim
+          title="Events observed on the stream, and the reads they caused. Bursts are collapsed into one read on a trailing edge, so the second number stays far below the first."
+        >
+          {observed} events → {reads} reads
         </Mono>
       ) : null}
     </div>

@@ -1,6 +1,7 @@
 import Link from 'next/link';
 
 import { AppShell } from '@/components/layout/AppShell';
+import { NewReviewButton } from '@/components/review/NewReview';
 import { Card, CardHeader, EmptyState, ErrorState, Mono } from '@/components/ui/primitives';
 import { ApiError, api, type ReviewRow } from '@/lib/api/client';
 import { ago } from '@/lib/format';
@@ -33,7 +34,7 @@ export default async function OverviewPage() {
   );
 
   return (
-    <AppShell pathname="/" title="Fleet">
+    <AppShell pathname="/" title="Fleet" actions={<NewReviewButton />}>
       <div className="flex flex-col gap-3 p-5">
         {error !== null ? (
           <ErrorState title="The control plane could not be reached." detail={error} />
@@ -61,9 +62,11 @@ export default async function OverviewPage() {
                 }
               />
               {reviews.length === 0 ? (
-                <EmptyState title="Nothing on file">
-                  A review appears once <Mono dim>intake_document</Mono> is published to{' '}
-                  <Mono dim>attestor.work</Mono>. This interface reads; it does not start work.
+                <EmptyState title="Nothing on file" action={<NewReviewButton />}>
+                  Hand Attestor a customer questionnaire and it works through it on its own.
+                  Starting a review publishes <Mono dim>intake_document</Mono> to{' '}
+                  <Mono dim>attestor.work</Mono>; nothing after that waits on a person except an
+                  answer the system will not stand behind alone.
                 </EmptyState>
               ) : (
                 <ul className="flex flex-col">
@@ -97,12 +100,26 @@ export default async function OverviewPage() {
 
             <Card>
               <div className="flex flex-col gap-1.5 px-4 py-3">
-                <h2 className="text-sm font-medium text-primary">What this console reads</h2>
+                <h2 className="text-sm font-medium text-primary">
+                  What this console does, and what it does not
+                </h2>
+                {/* This paragraph used to end "and nothing is started from it". That was written
+                    as a security property and it was a true one, but what it told a reader was
+                    that the interface was a viewer for work a developer ran from a terminal.
+                    Phase 6.5 gave the product an entrance, so the sentence had to change rather
+                    than survive as a claim the New review button contradicts. */}
                 <p className="max-w-prose text-sm text-secondary">
-                  Every figure here is read from the deployed control plane, which reads Firestore.
-                  Nothing on any page is computed in the browser, and nothing is started from it —
-                  reviews advance by Pub/Sub message into Cloud Run, with drafting on the deployed
-                  department engines under their own Agent Identities.
+                  Uploading a questionnaire here publishes one message and returns. From that
+                  point the review advances because messages are delivered — triage, then three
+                  department engines drafting in parallel on Agent Runtime under their own Agent
+                  Identities, then assembly — and the only thing that waits on a person is an
+                  answer the system has decided it will not stand behind alone.
+                </p>
+                <p className="max-w-prose text-sm text-secondary">
+                  Nothing on any page is computed in the browser. Every figure is read from the
+                  deployed control plane, which reads Firestore, and every write executes under
+                  the control plane's identity through an explicit method-and-path allowlist — the
+                  web service account holds nothing but permission to write its own logs.
                 </p>
               </div>
             </Card>

@@ -1,6 +1,7 @@
 import Link from 'next/link';
 
 import { AppShell } from '@/components/layout/AppShell';
+import { NewReviewButton } from '@/components/review/NewReview';
 import { Card, EmptyState, ErrorState, Mono } from '@/components/ui/primitives';
 import { ApiError, api, type ReviewRow } from '@/lib/api/client';
 import { absolute, ago } from '@/lib/format';
@@ -22,16 +23,21 @@ export default async function ReviewsPage() {
       pathname="/reviews"
       title="Reviews"
       meta={error === null ? `${reviews.length} on file` : undefined}
+      actions={<NewReviewButton />}
     >
       <div className="p-5">
         <Card className="overflow-hidden">
           {error !== null ? (
             <ErrorState title="Reviews could not be listed." detail={error} />
           ) : reviews.length === 0 ? (
-            <EmptyState title="No reviews yet">
-              A review appears once a questionnaire is uploaded and <Mono dim>intake_document</Mono>{' '}
-              is published to <Mono dim>attestor.work</Mono>. Nothing here is created by this
-              interface; run <Mono dim>make seed</Mono> or publish an envelope.
+            <EmptyState
+              title="No reviews yet"
+              action={<NewReviewButton />}
+            >
+              Upload a customer questionnaire and Attestor triages it, drafts against the corpus
+              on the deployed department engines, and holds back whatever it will not stand behind
+              alone. Starting one publishes <Mono dim>intake_document</Mono> to{' '}
+              <Mono dim>attestor.work</Mono>; everything after that is message-driven.
             </EmptyState>
           ) : (
             <ul className="flex flex-col">
