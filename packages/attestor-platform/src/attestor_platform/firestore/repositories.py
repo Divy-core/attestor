@@ -272,3 +272,49 @@ class ArmorEventRepository(_AppendOnlyEventRepository):
     """
 
     _collection = ARMOR_EVENTS
+
+
+class RoundSourceRepository(_Repository):
+    """Where a round's questionnaire came from, so the export can hand it back.
+
+    ## Why this is not a field on `Round`
+
+    `Round` is a strict pydantic model with `extra="forbid"`, and it is one of the shapes
+    the type generator emits into `services/web/lib/types/generated.ts`. Adding a field to
+    it is an edit to the frozen protocol and would put an infrastructure detail — a GCS URI
+    — into the domain vocabulary and into the browser's type contract.
+
+    The dispatcher already learned this the hard way in the opposite direction: writing
+    `drafted_partitions` onto the round document made every read fail with
+    `extra_forbidden`, which is why the drafting join lives in its own `round_progress`
+    collection. This is the same shape of fact — bookkeeping the services need and the
+    domain does not — so it gets the same treatment.
+
+    ## Why the export needs it at all
+
+    Returning the customer's own workbook means re-opening the file they uploaded. The
+    control plane knows that URI at the moment it starts a round and validates the object
+    exists; nothing else in the system remembers it in a queryable place. Reviews started
+    before this collection existed are covered by an audit-trail fallback in the export
+    handler, labelled as such.
+    """
+
+    _collection = "round_sources"
+
+    def put(self, round_id: str, gcs_uri: str, *, original_filename: str = "") -> None:
+        self._db.collection(self._collection).document(round_id).set(
+            {
+                "round_id": round_id,
+                "gcs_uri": gcs_uri,
+                "original_filename": original_filename or gcs_uri.rsplit("/", 1)[-1],
+                "recorded_at": datetime.now(UTC).isoformat(),
+            },
+            timeout=self._timeout,
+        )
+
+    def get(self, round_id: str) -> str | None:
+        snap = self._db.collection(self._collection).document(round_id).get(timeout=self._timeout)
+        if not snap.exists:
+            return None
+        uri = (snap.to_dict() or {}).get("gcs_uri")
+        return str(uri) if uri else None

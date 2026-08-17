@@ -33,7 +33,7 @@ from typing import Any
 
 from google.cloud import firestore
 
-from attestor_core.domain import Department, Review, Round
+from attestor_core.domain import Department, Question, Review, Round
 from attestor_core.domain.enums import ReviewState
 from attestor_core.errors import ContractViolation
 from attestor_core.protocol import (
@@ -45,6 +45,7 @@ from attestor_core.protocol import (
     parse_payload,
 )
 from attestor_core.state import transition
+from attestor_platform.config import max_questions_per_round
 from attestor_platform.firestore import (
     AnswerRepository,
     AuditEventRepository,
@@ -79,6 +80,24 @@ ROUND_PROGRESS = "round_progress"
 #: path, which the security partition owns -- arbitrary but fixed, so the same question
 #: never lands in two partitions.
 UNASSIGNED_OWNER = Department.SECURITY
+
+
+def _apply_ceiling(questions: list[Question]) -> tuple[list[Question], int]:
+    """Cap a round at this deployment's question ceiling.
+
+    The browser can start a review now, and the control plane cannot know how many questions
+    a spreadsheet contains until it has been parsed -- which happens here. So the ceiling is
+    enforced at the only point that knows the number.
+
+    Truncation rather than refusal, and the questions kept are the first ones in the file, so
+    the result is the front of the customer's questionnaire rather than an arbitrary sample.
+    An `intake_truncated` audit event and a `dropped_over_ceiling` figure on the stage make
+    the omission explicit everywhere it could matter; nothing about this is silent.
+    """
+    ceiling = max_questions_per_round()
+    if len(questions) <= ceiling:
+        return questions, 0
+    return questions[:ceiling], len(questions) - ceiling
 
 
 @dataclass
@@ -261,8 +280,41 @@ class HandlerRegistry:
         review = self._require_review(envelope.review_id)
         round_ = self._require_round(envelope)
 
-        questions = self.fleet.parse(payload.gcs_uri)
+        parsed = self.fleet.parse(payload.gcs_uri)
+        questions, dropped = _apply_ceiling(parsed)
         written = self.questions.put_many(round_.round_id, questions)
+
+        if dropped:
+            # Recorded as its own event, not folded into the stage detail, because a
+            # truncated questionnaire is a fact about the deliverable rather than about the
+            # stage: the customer asked 4,000 questions and will get answers to 400. The
+            # export and the UI both read this, so the omission is stated in the artefact
+            # rather than discovered by counting rows.
+            self.audit.append_safe(
+                {
+                    "kind": "intake_truncated",
+                    "review_id": envelope.review_id,
+                    "run_id": envelope.run_id,
+                    "actor": "Dispatcher",
+                    "detail": {
+                        "round_id": round_.round_id,
+                        "parsed": len(parsed),
+                        "accepted": len(questions),
+                        "dropped": dropped,
+                        "ceiling": max_questions_per_round(),
+                        "reason": (
+                            "This deployment caps questions per round to bound demo spend. "
+                            "It is a limit on this deployment, not on the architecture."
+                        ),
+                    },
+                }
+            )
+            logger.warning(
+                "intake truncated: %d parsed, %d accepted, ceiling %d",
+                len(parsed),
+                len(questions),
+                max_questions_per_round(),
+            )
 
         state = self._move(review, ReviewState.TRIAGING)
         published = [
@@ -276,7 +328,15 @@ class HandlerRegistry:
                 )
             )
         ]
-        detail = {"questions": written, "gcs_uri": payload.gcs_uri}
+        detail = {
+            "questions": written,
+            "gcs_uri": payload.gcs_uri,
+            # The round this file belongs to. Recorded because the export reconstructs the
+            # source questionnaire from this event for reviews started by the tools, which
+            # never touch the control plane and so never wrote a `round_sources` record.
+            "round_id": round_.round_id,
+            "dropped_over_ceiling": dropped,
+        }
         self._audit_stage(envelope, detail)
         return HandlerResult(state=state, published=published, detail=detail)
 
@@ -347,18 +407,49 @@ class HandlerRegistry:
             or (q.department is Department.UNASSIGNED and department is UNASSIGNED_OWNER)
         ]
 
+        # ADR-0008. A redelivered partition skips what a previous attempt already finished,
+        # and each answer is persisted the moment it is drafted rather than after the whole
+        # slice returns.
+        #
+        # Why this is the difference between a partition that completes and one that never
+        # can: the 312-question deployed run put 123 questions in one partition, which takes
+        # ~1,550s, and the Pub/Sub ack deadline is 600s. Five delivery attempts of the same
+        # 1,550s of work is five failures, not five chances -- the attempt count was never
+        # the binding constraint. With progress persisted, attempt two starts at question 62
+        # and finishes inside its own deadline.
+        already = {a.question_id for a in self.answers.for_round(round_.round_id)}
+        resumed = [q for q in mine if q.question_id in already]
+        outstanding = [q for q in mine if q.question_id not in already]
+        if resumed:
+            logger.info(
+                "partition %s resuming: %d of %d questions already answered",
+                envelope.partition,
+                len(resumed),
+                len(mine),
+            )
+
         answers = self.fleet.draft(
-            envelope.review_id, envelope.run_id, round_.round_id, department, mine
+            envelope.review_id,
+            envelope.run_id,
+            round_.round_id,
+            department,
+            outstanding,
+            self.answers.put,
         )
-        for answer in answers:
-            self.answers.put(answer)
 
         remaining = self._close_partition(round_.round_id, envelope.partition)
         cited = sum(1 for a in answers if a.citations)
         detail = {
             "department": department.value,
             "questions": len(mine),
+            # Named for what they now measure. Since the resume skip landed, `answers` is
+            # what THIS attempt drafted, not what the partition holds -- on a redelivery the
+            # two differ, and an audit event that said "answers: 61" for a partition of 123
+            # would read as a partition that lost half its work.
             "answers": len(answers),
+            "resumed_from_previous_attempt": len(resumed),
+            "drafted_this_attempt": len(outstanding),
+            "partition_total": len(resumed) + len(answers),
             "cited": cited,
             "needs_human": sum(1 for a in answers if a.status.value == "needs_human"),
             "flagged_no_evidence": sum(

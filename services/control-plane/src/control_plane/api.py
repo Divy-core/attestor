@@ -19,6 +19,21 @@ afterwards. The service handles kilobytes of JSON, never megabytes of spreadshee
 not wait, does not poll, and does not call the fleet. That is the Phase 4 property: the
 review advances because messages are delivered, and the only synchronous thing in the
 system is the human clicking approve.
+
+## Every write is guarded, as of Phase 6.5
+
+The browser can now start work, which turned a read-only public endpoint into a public
+endpoint that spends money. `guard.require_write_token` and `guard.require_capacity` run
+before anything that publishes. See `guard.py` for what that is and, more importantly, what
+it is not — it is a demo guard, not an auth system, and the residual exposure is stated in
+`PROGRESS.md` rather than glossed.
+
+## The export is the deliverable
+
+`GET /reviews/{id}/export` returns the customer's own workbook with the answers written into
+it, or a PDF evidence pack. Everything upstream of it produces answers in Firestore, which is
+where the work is done and not where it is delivered. A vendor security review ends when the
+completed spreadsheet goes back.
 """
 
 from __future__ import annotations
@@ -30,7 +45,7 @@ import uuid
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request, status
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel, Field
 
 from attestor_core.domain import Review, Round
@@ -38,6 +53,12 @@ from attestor_core.domain.enums import Framework, Residency, ReviewState
 from attestor_core.errors import AttestorError, IllegalTransition
 from attestor_core.protocol import WorkEnvelope, WorkKind
 from attestor_core.state import transition
+from attestor_platform.export import (
+    RELEASE_RULE,
+    build_bundle,
+    build_evidence_pack,
+    fill_workbook,
+)
 from attestor_platform.firestore import (
     AnswerRepository,
     ArmorEventRepository,
@@ -45,9 +66,11 @@ from attestor_platform.firestore import (
     QuestionRepository,
     ReviewRepository,
     RoundRepository,
+    RoundSourceRepository,
 )
 from attestor_platform.pubsub import WorkPublisher
 from attestor_platform.storage import StorageClient
+from control_plane.guard import require_capacity, require_write_token
 from control_plane.streaming import RunEventStream
 
 logger = logging.getLogger(__name__)
@@ -132,14 +155,23 @@ def storage() -> StorageClient:
     return _get("storage", StorageClient)  # type: ignore[no-any-return]
 
 
+def round_sources() -> RoundSourceRepository:
+    return _get("round_sources", RoundSourceRepository)  # type: ignore[no-any-return]
+
+
 # ---------------------------------------------------------------------------------
 # Uploads
 # ---------------------------------------------------------------------------------
 
 
 @router.post("/uploads", status_code=status.HTTP_201_CREATED)
-def create_upload(body: UploadRequest) -> dict[str, Any]:
-    """Mint a signed URL so the browser PUTs the questionnaire straight to GCS."""
+def create_upload(body: UploadRequest, request: Request) -> dict[str, Any]:
+    """Mint a signed URL so the browser PUTs the questionnaire straight to GCS.
+
+    Guarded even though it writes nothing itself: an unguarded signed-URL minter is a
+    30-minute write grant into our own bucket, handed to anyone who asks.
+    """
+    require_write_token(request)
     object_name = f"questionnaires/{uuid.uuid4().hex}/{body.filename}"
     url, gcs_uri, expires_at = storage().signed_upload_url(object_name, body.content_type)
     return {
@@ -157,7 +189,14 @@ def create_upload(body: UploadRequest) -> dict[str, Any]:
 
 
 @router.post("/reviews", status_code=status.HTTP_201_CREATED)
-def create_review(body: CreateReviewRequest) -> dict[str, Any]:
+def create_review(body: CreateReviewRequest, request: Request) -> dict[str, Any]:
+    """Create the review record. Costs nothing; starts nothing.
+
+    Capacity is checked here as well as on `rounds`, so a person filling in the New review
+    form is refused *before* they have uploaded a 40MB spreadsheet rather than after.
+    """
+    require_write_token(request)
+    require_capacity(reviews())
     review = Review(
         review_id=f"rev-{uuid.uuid4().hex[:12]}",
         customer=body.customer,
@@ -171,16 +210,21 @@ def create_review(body: CreateReviewRequest) -> dict[str, Any]:
 
 
 @router.post("/reviews/{review_id}/rounds", status_code=status.HTTP_202_ACCEPTED)
-def create_round(review_id: str, body: CreateRoundRequest) -> dict[str, Any]:
+def create_round(review_id: str, body: CreateRoundRequest, request: Request) -> dict[str, Any]:
     """Register a round and publish the work that starts it.
 
     **202, not 201.** The round exists; the answers do not, and will not for twelve
     minutes. A 201 would imply the caller can read the result, and this endpoint returns
     long before any agent has run.
+
+    This is the expensive call — everything after it runs on the deployed engines — so it is
+    the one the capacity ceiling exists for.
     """
+    require_write_token(request)
     review = reviews().get(review_id)
     if review is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, f"no review {review_id!r}")
+    require_capacity(reviews(), starting=review_id)
     if not storage().exists(body.gcs_uri):
         # Checked here rather than in the handler: a missing object is the caller's
         # mistake and should fail at the call site, not as a dead letter minutes later.
@@ -196,6 +240,10 @@ def create_round(review_id: str, body: CreateRoundRequest) -> dict[str, Any]:
             state=ReviewState.INTAKE,
         )
     )
+    # Recorded now, because this is the only moment the system knows which file this round
+    # came from, and the export has to hand that same file back. See
+    # `RoundSourceRepository` for why it is not a field on `Round`.
+    round_sources().put(round_id, body.gcs_uri)
 
     follow_up = body.ordinal > 1
     envelope = WorkEnvelope.for_work(
@@ -223,13 +271,14 @@ def create_round(review_id: str, body: CreateRoundRequest) -> dict[str, Any]:
 
 
 @router.post("/reviews/{review_id}/state", status_code=status.HTTP_200_OK)
-def move_state(review_id: str, target: ReviewState) -> dict[str, Any]:
+def move_state(review_id: str, target: ReviewState, request: Request) -> dict[str, Any]:
     """Move a review by hand. Every path goes through `core.state.transition`.
 
     Exists for operations, not for the happy path -- the dispatcher moves reviews. An
     illegal move is a 409 rather than a 400: the request was well-formed, the review is
     simply not in a state where it makes sense.
     """
+    require_write_token(request)
     review = reviews().get(review_id)
     if review is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, f"no review {review_id!r}")
@@ -247,12 +296,19 @@ def move_state(review_id: str, target: ReviewState) -> dict[str, Any]:
 
 
 @router.post("/rounds/{round_id}/answers/{question_id}/approval")
-def approve(round_id: str, question_id: str, body: ApprovalRequest) -> dict[str, Any]:
+def approve(
+    round_id: str, question_id: str, body: ApprovalRequest, request: Request
+) -> dict[str, Any]:
     """Record a human decision and publish the resume.
 
     The decision is applied by the dispatcher, not here, so that a resume behaves
     identically whether it came from this endpoint or from a redelivered message.
+
+    No capacity check: approving is how a review *leaves* the in-flight set, and refusing it
+    because too many reviews are in flight would deadlock the very thing the ceiling exists
+    to keep bounded.
     """
+    require_write_token(request)
     answer = answers().get(round_id, question_id)
     if answer is None:
         raise HTTPException(
@@ -333,6 +389,218 @@ def list_audit(review_id: str, limit: int = 500) -> list[dict[str, Any]]:
 def list_armor(review_id: str, limit: int = 200) -> list[dict[str, Any]]:
     """Guardrail events. Their own endpoint because they are their own video beat."""
     return armor_events().for_review(review_id, limit=min(limit, MAX_ROWS))
+
+
+# ---------------------------------------------------------------------------------
+# Export -- the actual deliverable
+# ---------------------------------------------------------------------------------
+
+#: Content types, and the extension each download lands with.
+_EXPORT_FORMATS: dict[str, tuple[str, str]] = {
+    "xlsx": (
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "xlsx",
+    ),
+    "pdf": ("application/pdf", "pdf"),
+}
+
+
+def _origin() -> str:
+    """Which deployment produced this file, for the cover page and the PDF footer.
+
+    Built from Cloud Run's own injected variables rather than a configured URL, so it cannot
+    claim to be a revision it is not. Locally it says so.
+    """
+    service = os.environ.get("K_SERVICE")
+    if not service:
+        return "attestor (local)"
+    revision = os.environ.get("K_REVISION", "unknown-revision")
+    project = os.environ.get("PROJECT_ID", "unknown-project")
+    region = os.environ.get("REGION", "unknown-region")
+    return f"{service} {revision} · {project} · {region}"
+
+
+def _source_uri(review_id: str, round_id: str) -> tuple[str, str]:
+    """Find the questionnaire this round was started from.
+
+    Returns:
+        `(gcs_uri, provenance)` — the URI and where the URI itself came from, which is
+        surfaced on the response so a reader can tell a recorded fact from a reconstructed
+        one.
+
+    Two sources, in order of trust:
+
+    1. `round_sources`, written by `create_round` at the moment it validated the object
+       exists. Exact.
+    2. The audit trail. Reviews started by `tools/run_review.py` publish `intake_document`
+       directly and never touch this service, so nothing wrote a source record for them —
+       and those are the reviews the demo artefacts were measured on. The intake stage event
+       records the `gcs_uri` it parsed, which is the same fact arrived at from the other
+       end. Labelled as reconstructed because for a multi-round review the match is by
+       round id in the stage detail, and the very first runs did not record it.
+    """
+    recorded = round_sources().get(round_id)
+    if recorded:
+        return recorded, "round_sources"
+
+    candidates: list[str] = []
+    for event in audit().for_review(review_id, limit=MAX_ROWS):
+        detail = event.get("detail") or {}
+        if not isinstance(detail, dict):
+            continue
+        if detail.get("stage") not in {"intake_document", "open_follow_up"}:
+            continue
+        uri = detail.get("gcs_uri")
+        if not isinstance(uri, str) or not uri:
+            continue
+        if detail.get("round_id") in (None, round_id):
+            candidates.append(uri)
+    if candidates:
+        # The most recent matching intake wins: a re-run of intake on the same round parsed
+        # a later file, and that is the one whose rows the answers correspond to.
+        return candidates[-1], "audit trail (reconstructed)"
+
+    raise HTTPException(
+        status.HTTP_409_CONFLICT,
+        f"no questionnaire is recorded for round {round_id!r}, so the customer's own "
+        "workbook cannot be filled in. The evidence pack does not need it.",
+    )
+
+
+@router.get("/reviews/{review_id}/export")
+def export_review(review_id: str, format: str = "xlsx", round_id: str | None = None) -> Response:
+    """Return the completed questionnaire.
+
+    A read, so it is not behind the write token: it exposes exactly what
+    `/rounds/{id}/answers` already does, in a format a person can use.
+
+    `format=xlsx` re-opens the customer's uploaded workbook and writes the answers into it.
+    `format=pdf` renders the evidence pack, which needs no source file — so a review whose
+    upload has expired can still produce its provenance record.
+    """
+    if format not in _EXPORT_FORMATS:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            f"format must be one of {sorted(_EXPORT_FORMATS)}, not {format!r}",
+        )
+
+    review = reviews().get(review_id)
+    if review is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"no review {review_id!r}")
+
+    available = rounds().for_review(review_id)
+    if not available:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"review {review_id!r} has no rounds")
+    target = next((r for r in available if r.round_id == round_id), None) if round_id else None
+    if target is None:
+        if round_id:
+            raise HTTPException(
+                status.HTTP_404_NOT_FOUND, f"no round {round_id!r} on review {review_id!r}"
+            )
+        target = available[-1]
+
+    bundle = build_bundle(
+        review,
+        target,
+        questions().for_round(target.round_id),
+        answers().for_round(target.round_id),
+        origin=_origin(),
+    )
+    if not bundle.rows:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"round {target.round_id!r} has no questions yet; intake has not finished.",
+        )
+
+    media_type, extension = _EXPORT_FORMATS[format]
+    if format == "pdf":
+        payload = build_evidence_pack(bundle)
+        provenance = "not required"
+    else:
+        gcs_uri, provenance = _source_uri(review_id, target.round_id)
+        from attestor_platform.storage.gcs import download_to_temp
+
+        local = download_to_temp(gcs_uri, storage())
+        payload = fill_workbook(local, bundle)
+
+    audit().append_safe(
+        {
+            "kind": "export_produced",
+            "review_id": review_id,
+            "actor": "ControlPlane",
+            "detail": {
+                "format": format,
+                "round_id": target.round_id,
+                "rows": len(bundle.rows),
+                "answered": bundle.answered,
+                "cited": bundle.cited,
+                "sendable": bundle.sendable,
+                "human_approved": bundle.human_approved,
+                "bytes": len(payload),
+                "source": provenance,
+            },
+        }
+    )
+    return Response(
+        content=payload,
+        media_type=media_type,
+        headers={
+            "Content-Disposition": f'attachment; filename="{bundle.filename(extension)}"',
+            "Cache-Control": "no-store",
+            # Read by the UI so the download control can state what a person is about to
+            # get before they click, and so the count in the button cannot disagree with
+            # the count in the file.
+            "X-Attestor-Rows": str(len(bundle.rows)),
+            "X-Attestor-Sendable": str(bundle.sendable),
+            "X-Attestor-Source": provenance,
+        },
+    )
+
+
+@router.get("/reviews/{review_id}/export/manifest")
+def export_manifest(review_id: str, round_id: str | None = None) -> dict[str, Any]:
+    """What an export would contain, without producing it.
+
+    The download control needs to say what is in the file *before* the click, and a button
+    that promises a file the system cannot produce is worse than a disabled one that says why.
+    """
+    review = reviews().get(review_id)
+    if review is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"no review {review_id!r}")
+    available = rounds().for_review(review_id)
+    if not available:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"review {review_id!r} has no rounds")
+    target = next((r for r in available if r.round_id == round_id), available[-1])
+
+    bundle = build_bundle(
+        review,
+        target,
+        questions().for_round(target.round_id),
+        answers().for_round(target.round_id),
+        origin=_origin(),
+    )
+    try:
+        _, provenance = _source_uri(review_id, target.round_id)
+        workbook_available = True
+    except HTTPException:
+        # The PDF still works without the original file, so this is a partial capability
+        # rather than a failure -- and the UI must be able to show that difference.
+        provenance = "not recorded"
+        workbook_available = False
+
+    return {
+        "review_id": review_id,
+        "round_id": target.round_id,
+        "questions": len(bundle.rows),
+        "answered": bundle.answered,
+        "cited": bundle.cited,
+        "sendable": bundle.sendable,
+        "human_approved": bundle.human_approved,
+        "by_release_state": {str(k): v for k, v in bundle.counts.items()},
+        "workbook_available": workbook_available,
+        "source": provenance,
+        "release_rule": RELEASE_RULE,
+    }
 
 
 @router.get("/registry")

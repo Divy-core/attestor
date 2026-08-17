@@ -19,7 +19,7 @@ from __future__ import annotations
 import logging
 import re
 import time
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from typing import Any
@@ -816,7 +816,11 @@ class ReviewPipeline:
 
     # -- stage 3: run -----------------------------------------------------------------
 
-    def draft_many(self, questions: list[Question]) -> list[QuestionOutcome]:
+    def draft_many(
+        self,
+        questions: list[Question],
+        on_outcome: Callable[[QuestionOutcome], None] | None = None,
+    ) -> list[QuestionOutcome]:
         """Draft a set of questions with the fan-out intact.
 
         Extracted from `run` in Phase 4 so the dispatcher can draft **one department's
@@ -824,11 +828,33 @@ class ReviewPipeline:
         That is the whole reason drafting is partitioned by department rather than by
         question: move the fan-out into Pub/Sub and the measured 7.84-of-8 in-process
         concurrency becomes a subscription setting instead.
+
+        Args:
+            questions: The slice to draft.
+            on_outcome: Called with each outcome **as it completes**, on the worker thread
+                that produced it. The dispatcher persists answers through this so a
+                partition that is redelivered resumes rather than restarting — see
+                ADR-0008. `list(pool.map(...))` blocks until every question is finished,
+                so without this hook there is no moment at which a caller can observe
+                partial progress, and 123 questions of completed work are invisible until
+                the 123rd returns.
+
+                Exceptions raised by the callback propagate and fail the partition. That is
+                deliberate: the callback's job is to persist, and a persist that silently
+                failed would produce exactly the resume that reports progress it does not
+                have.
         """
         if not questions:
             return []
+
+        def one(question: Question) -> QuestionOutcome:
+            outcome = self.draft(question)
+            if on_outcome is not None:
+                on_outcome(outcome)
+            return outcome
+
         with ThreadPoolExecutor(max_workers=DRAFT_CONCURRENCY) as pool:
-            return list(pool.map(self.draft, questions))
+            return list(pool.map(one, questions))
 
     def run(self, questions: list[Question]) -> RunReport:
         """Triage, then draft in parallel, then assemble the report."""

@@ -23,6 +23,7 @@ from __future__ import annotations
 import logging
 import os
 import time
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -60,6 +61,7 @@ class FleetRunner(Protocol):
         round_id: str,
         department: Department,
         questions: list[Question],
+        on_answer: Callable[[Answer], None] | None = None,
     ) -> list[Answer]: ...
 
     def load_commitments(self, review_id: str) -> list[tuple[str, str]]: ...
@@ -166,12 +168,25 @@ class PipelineFleetRunner:
         round_id: str,
         department: Department,
         questions: list[Question],
+        on_answer: Callable[[Answer], None] | None = None,
     ) -> list[Answer]:
-        """Draft one department's slice with the fan-out intact."""
+        """Draft one department's slice with the fan-out intact.
+
+        `on_answer` is called with each answer as it completes, on the worker thread that
+        drafted it, so the dispatcher can persist incrementally (ADR-0008). Outcomes with no
+        answer -- a blocked question, an error -- are not passed on: there is nothing to
+        persist, and writing a placeholder would make a resume skip a question that was
+        never actually drafted.
+        """
         del department  # the questions are already scoped; kept for the log line
         pipeline = self._pipeline(review_id, run_id, round_id)
         started = time.perf_counter()
-        outcomes = pipeline.draft_many(questions)
+
+        def forward(outcome: Any) -> None:
+            if on_answer is not None and outcome.answer is not None:
+                on_answer(outcome.answer)
+
+        outcomes = pipeline.draft_many(questions, forward if on_answer else None)
         wall = time.perf_counter() - started
 
         # Measured here rather than inferred later. `achieved_concurrency` lives on

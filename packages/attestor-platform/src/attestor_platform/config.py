@@ -108,6 +108,37 @@ def memory_bank_engine_id() -> str:
 
 
 # ---------------------------------------------------------------------------------
+# Demo capacity limits
+#
+# These exist because the control plane is `--allow-unauthenticated` with a public URL and
+# the browser can now start a 312-question review from it. That is a credit-burn surface,
+# not a theoretical one: one visitor with a large spreadsheet and a loop is the whole
+# hackathon budget. They are limits on *this deployment*, not architectural properties, and
+# `PROGRESS.md` says so — a real deployment gets per-tenant quota, not two integers.
+#
+# Both services read them, which is why they are here: the control plane refuses to start a
+# fourth concurrent review, and the dispatcher enforces the question ceiling at intake
+# because nothing before the parse knows how many questions a file contains.
+# ---------------------------------------------------------------------------------
+
+#: How many reviews may be in flight at once. Three is enough to demonstrate the fan-out and
+#: cheap enough to survive being clicked repeatedly.
+MAX_ACTIVE_REVIEWS: Final = 3
+
+#: Questions per round. 312 is the authoritative questionnaire; the ceiling sits above it so
+#: the demo runs, and far below what an adversarial upload would contain.
+MAX_QUESTIONS_PER_ROUND: Final = 400
+
+
+def max_active_reviews() -> int:
+    return int(os.environ.get("ATTESTOR_MAX_ACTIVE_REVIEWS") or MAX_ACTIVE_REVIEWS)
+
+
+def max_questions_per_round() -> int:
+    return int(os.environ.get("ATTESTOR_MAX_QUESTIONS") or MAX_QUESTIONS_PER_ROUND)
+
+
+# ---------------------------------------------------------------------------------
 # The one factory
 # ---------------------------------------------------------------------------------
 

@@ -14,6 +14,7 @@ from attestor_platform.firestore.repositories import (
     QuestionRepository,
     ReviewRepository,
     RoundRepository,
+    RoundSourceRepository,
 )
 
 __all__ = [
@@ -27,5 +28,6 @@ __all__ = [
     "QuestionRepository",
     "ReviewRepository",
     "RoundRepository",
+    "RoundSourceRepository",
     "WorkClaimRepository",
 ]

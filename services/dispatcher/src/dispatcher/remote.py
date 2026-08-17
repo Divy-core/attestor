@@ -75,6 +75,7 @@ import os
 import random
 import threading
 import time
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
@@ -396,7 +397,11 @@ class RemoteDraftingPipeline(ReviewPipeline):
             run_id=self.run_id,
         ) from last
 
-    def draft_many(self, questions: list[Question]) -> list[Any]:
+    def draft_many(
+        self,
+        questions: list[Question],
+        on_outcome: Callable[[Any], None] | None = None,
+    ) -> list[Any]:
         """Fan out wider than the in-process pipeline, because the work is now waiting.
 
         `DRAFT_CONCURRENCY = 8` was sized for in-process drafting, where each worker holds
@@ -429,12 +434,32 @@ class RemoteDraftingPipeline(ReviewPipeline):
         `docs/proof/permission-surfaces-and-composition.md` predicted would be needed once
         drafting moved off-process. The prediction was right; the first two numbers were
         not.
+
+        ## `on_outcome` has to be honoured here, not only on the base class
+
+        This override existed before incremental persistence did, and it originally took only
+        `questions`. Adding the callback to `ReviewPipeline.draft_many` and stopping there
+        would have wired the resume into the in-process runner and left the **deployed** path
+        -- the one that has the 600s deadline problem -- silently unchanged: the dispatcher
+        would pass a callback, this method would drop it, and every partition would still
+        restart from zero while the audit trail reported a resume that never happened.
+
+        `mypy --strict` caught it as an incompatible override. Recorded because the failure
+        mode is the interesting part: the code would have run, the tests over the base class
+        would have passed, and the artefact would have looked like a fix.
         """
         if not questions:
             return []
         workers = min(REMOTE_DRAFT_CONCURRENCY, len(questions))
+
+        def one(question: Question) -> Any:
+            outcome = self.draft(question)
+            if on_outcome is not None:
+                on_outcome(outcome)
+            return outcome
+
         with ThreadPoolExecutor(max_workers=workers) as pool:
-            return list(pool.map(self.draft, questions))
+            return list(pool.map(one, questions))
 
     def _no_evidence_answer(self, question: Question) -> Answer:
         """Distinguish "the corpus has nothing" from "the engine returned nothing".
