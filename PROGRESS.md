@@ -2749,8 +2749,9 @@ Every stage before drafting completed on the deployed stack, at full scale, firs
 parsed all 312 questions, triage classified all 312 and published three partitions, and all
 three were claimed within a second of each other. Ninety-one answers were drafted on a deployed
 department engine under its own Agent Identity and persisted, 54 of them cited. And the lease
-did its job under sustained pressure — **every one of the eleven redeliveries across this run was
-refused while a claim was live, and no partition was ever drafted twice.**
+did its job under sustained pressure — **all nine redeliveries across this run were refused while
+a claim was live, and no partition was ever drafted twice.** Counted from the claims rather than
+estimated: attempts of 2, 5 and 5 on the three drafting partitions, one each on intake and triage.
 
 **Fallback J2 stands.** The deployed run of record remains the 60-question one
 (`docs/proof/deployed-review-60-clean.json`, 73.3% cited, six of six reachable stages), and
