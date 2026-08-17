@@ -104,12 +104,49 @@ class TestFraming:
         rather than replayed from the beginning."""
         frame = format_sse({"kind": "answer_drafted"}, 41)
         assert frame.startswith("id: 41\n")
-        assert "event: answer_drafted\n" in frame
         assert '"seq": 41' in frame
 
-    def test_a_heartbeat_is_a_comment_not_an_event(self) -> None:
-        """A client parsing frames must not mistake heartbeats for data."""
+    def test_a_data_frame_is_not_named_after_its_kind(self) -> None:
+        """`event: answer_drafted` reads well and silently drops events.
+
+        `EventSource` delivers a named frame only to a listener registered for that exact name;
+        it never reaches `onmessage`. Naming frames by audit kind therefore requires every client
+        to enumerate every kind in advance, and the first kind added after a client ships is
+        dropped without a trace. On an audit stream that is the worst available failure: the
+        record looks complete and is not.
+
+        Phase 6 found it by writing the client -- `onmessage` received nothing whatsoever.
+        """
+        frame = format_sse({"kind": "answer_drafted"}, 41)
+        assert "event: " not in frame
+        # The discriminator is in the payload, where an open-ended stream's belongs.
+        assert '"kind": "answer_drafted"' in frame
+
+    def test_a_heartbeat_opens_with_the_comment_that_flushes_proxies(self) -> None:
         assert heartbeat_frame().startswith(": heartbeat")
+
+    def test_a_heartbeat_is_also_an_observable_event(self) -> None:
+        """The comment keeps the socket warm; only the event reaches JavaScript.
+
+        `EventSource` does not deliver comment lines to `onmessage`, so a client watchdog fed
+        only by comments never sees a beat -- and the failure this stream exists to survive is
+        precisely a listener going quiet while the socket stays open. Phase 6's watchdog found
+        this: with comments alone, an idle review trips its staleness timer every 40 seconds and
+        pins itself to the polling fallback while the stream is in fact healthy.
+        """
+        frame = heartbeat_frame()
+        assert "event: heartbeat\n" in frame
+        assert '"kind": "heartbeat"' in frame
+
+    def test_a_heartbeat_carries_no_sequence_number(self) -> None:
+        """`seq` is a position in the run's event log; a heartbeat is not an entry in it.
+
+        Numbering heartbeats would make the client's gap detection count them as events it
+        had missed, and it would report backfills for a run where nothing was ever dropped.
+        """
+        frame = heartbeat_frame()
+        assert "id: " not in frame
+        assert '"seq"' not in frame
 
 
 class TestBackfill:

@@ -1,0 +1,49 @@
+# Attestor web -- Next.js 15 on Cloud Run.
+#
+# Build context is `services/web`, unlike the two Python images which build from the repo root
+# (they are uv workspace members and need the root lockfile). This one is self-contained.
+#
+# Three stages so the runtime image carries no build tooling and no dev dependencies. The
+# `standalone` output is what makes that possible: Next traces the modules each route actually
+# imports and emits a minimal `node_modules`, which is the same reasoning as `--package` on the
+# Python images.
+
+FROM node:22-alpine AS deps
+WORKDIR /app
+RUN corepack enable && corepack prepare pnpm@9.15.9 --activate
+# Lockfile first, so a source-only change reuses the cached install layer.
+COPY package.json pnpm-lock.yaml ./
+RUN pnpm install --frozen-lockfile
+
+FROM node:22-alpine AS build
+WORKDIR /app
+RUN corepack enable && corepack prepare pnpm@9.15.9 --activate
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+# `next build` runs the route modules to collect metadata, and `lib/env.ts` fails fast on a
+# missing CONTROL_PLANE_URL. NEXT_PHASE tells it this is the build rather than a request, so it
+# does not fail the image for a variable that is set on the service. The check that matters --
+# the one at request time -- is unaffected.
+ENV NEXT_PHASE=phase-production-build
+ENV NEXT_TELEMETRY_DISABLED=1
+RUN pnpm exec next build
+
+FROM node:22-alpine AS runtime
+WORKDIR /app
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+# Cloud Run sets PORT; Next reads it. Bind to every interface or the container answers nothing.
+ENV HOSTNAME=0.0.0.0
+ENV PORT=8080
+
+# Non-root, same as the Python images. Nothing in this container needs to write anywhere.
+RUN addgroup -g 1001 -S attestor && adduser -u 1001 -S attestor -G attestor
+
+COPY --from=build --chown=attestor:attestor /app/.next/standalone ./
+COPY --from=build --chown=attestor:attestor /app/.next/static ./.next/static
+COPY --from=build --chown=attestor:attestor /app/public ./public
+
+USER attestor
+EXPOSE 8080
+# `server.js` is what standalone emits. No pnpm, no next CLI in this image.
+CMD ["node", "server.js"]

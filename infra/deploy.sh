@@ -32,6 +32,7 @@ REGION="${REGION:-us-central1}"
 SERVICES_ONLY=0
 
 DISPATCHER_ONLY=0
+WEB_ONLY=0
 
 for arg in "$@"; do
     case "$arg" in
@@ -39,6 +40,8 @@ for arg in "$@"; do
         # The dispatcher changes far more often than the control plane, and rebuilding
         # both doubles a five-minute cycle for nothing.
         --dispatcher-only) DISPATCHER_ONLY=1 ;;
+        # The UI changes more often than either, and it shares no build context with them.
+        --web-only)        WEB_ONLY=1 ;;
         *) echo "unknown flag: $arg" >&2; exit 2 ;;
     esac
 done
@@ -47,6 +50,7 @@ if [[ -t 1 ]]; then B=$'\033[1m'; Y=$'\033[33m'; R=$'\033[0m'; else B=""; Y=""; 
 section() { printf '\n%s==> %s%s\n' "$B" "$1" "$R"; }
 
 PROJECT_NUMBER="$(gcloud projects describe "$PROJECT_ID" --format='value(projectNumber)')"
+WEB_SA="attestor-web@${PROJECT_ID}.iam.gserviceaccount.com"
 WORK_TOPIC="attestor.work"
 DEADLETTER_TOPIC="attestor.deadletter"
 PUSH_SUBSCRIPTION="attestor.work.push"
@@ -74,6 +78,7 @@ ensure_sa() {
 ensure_sa "$DISPATCHER_SA" "Attestor dispatcher"
 ensure_sa "$CONTROL_SA"    "Attestor control plane"
 ensure_sa "$INVOKER_SA"    "Attestor Pub/Sub push invoker"
+ensure_sa "$WEB_SA"        "Attestor web"
 
 # The dispatcher reads and writes review state, publishes the next stage, screens through
 # Model Armor, and calls the deployed engines. It does NOT get corpus access: retrieval
@@ -95,9 +100,9 @@ for role in roles/datastore.user roles/pubsub.publisher roles/aiplatform.user \
             roles/modelarmor.user roles/discoveryengine.viewer; do
     grant "$DISPATCHER_SA" "$role"
 done
-# `aiplatform.user` on the control plane is for ONE endpoint: `GET /registry`, which reads
-# the live Agent Registry. Found by calling the deployed endpoint rather than by reading
-# this file -- it returned
+# `agentregistry.viewer` on the control plane is for ONE endpoint: `GET /registry`, which
+# reads the live Agent Registry. Found by calling the deployed endpoint rather than by
+# reading this file -- it returned
 #
 #     503  agent registry unreachable at https://agentregistry.googleapis.com:
 #          HTTPError: HTTP Error 403: Forbidden
@@ -106,11 +111,18 @@ done
 # which runs under a developer's own credentials. `/registry` is on the never-cut list and
 # is the video's second beat.
 #
+# The first fix attempted was `aiplatform.user`, on the assumption that Agent Registry sits
+# behind the Vertex surface like everything else in this platform does. It does not:
+# `agentregistry.googleapis.com` is its own service with its own role family
+# (`agentregistry.{admin,editor,user,viewer}`), and a project-level `aiplatform.user` grants
+# nothing on it. Worth recording because the same assumption would be made again -- most of
+# GEAP does hang off aiplatform, and the Registry being separate is the exception.
+#
 # Worth noting what the endpoint did NOT do: it did not return `[]`. "No agents are
-# registered" would have been a lie told in a demo, and the 503 is why this was a
-# five-minute fix instead of a mystery.
+# registered" would have been a lie told in a demo, and the 503 -- carrying the host and the
+# HTTP status verbatim -- is why this was two lookups instead of a mystery.
 for role in roles/datastore.user roles/pubsub.publisher roles/storage.objectAdmin \
-            roles/cloudtrace.agent roles/logging.logWriter roles/aiplatform.user; do
+            roles/cloudtrace.agent roles/logging.logWriter roles/agentregistry.viewer; do
     grant "$CONTROL_SA" "$role"
 done
 
@@ -130,7 +142,7 @@ else
     printf '  created: %s\n' "$REGISTRY"
 fi
 
-if (( ! DISPATCHER_ONLY )); then
+if (( ! DISPATCHER_ONLY && ! WEB_ONLY )); then
 section "Cloud Run: control plane"
 gcloud builds submit . \
     --project "$PROJECT_ID" --region "$REGION" \
@@ -152,6 +164,7 @@ gcloud run deploy attestor-control-plane \
     --quiet
 fi
 
+if (( ! WEB_ONLY )); then
 section "Cloud Run: dispatcher"
 
 # Which engine owns which partition, resolved BEFORE the deploy so it can go in the same
@@ -213,13 +226,49 @@ gcloud run deploy attestor-dispatcher \
     --no-allow-unauthenticated \
     --set-env-vars "PROJECT_ID=${PROJECT_ID},VERTEX_LOCATION=${REGION},ATTESTOR_FLEET_RUNNER=agent_runtime${ENGINE_VARS:+,${ENGINE_VARS}}" \
     --quiet
+fi
+
+if (( ! DISPATCHER_ONLY )); then
+section "Cloud Run: web"
+# Build context is `services/web`, not the repo root: the UI is not a uv workspace member and
+# carries its own lockfile.
+gcloud builds submit . \
+    --project "$PROJECT_ID" --region "$REGION" \
+    --config infra/cloudrun/cloudbuild.web.yaml \
+    --substitutions "_IMAGE=${REGISTRY}/web:latest" \
+    --quiet
+
+# CONTROL_PLANE_URL is resolved BEFORE the deploy and folded into --set-env-vars, for the same
+# reason the engine variables are: --set-env-vars REPLACES rather than merges, so setting it in
+# a second call would wipe PROJECT_ID and REGION, and the sidebar would show
+# `unknown-project` on a recording.
+WEB_CONTROL_URL="$(gcloud run services describe attestor-control-plane \
+    --project "$PROJECT_ID" --region "$REGION" --format='value(status.url)')"
+printf '  CONTROL_PLANE_URL=%s\n' "$WEB_CONTROL_URL"
+
+gcloud run deploy attestor-web \
+    --image "${REGISTRY}/web:latest" \
+    --project "$PROJECT_ID" \
+    --region "$REGION" \
+    --service-account "$WEB_SA" \
+    --min-instances 0 \
+    --max-instances 4 \
+    --memory 512Mi \
+    --timeout 3600 \
+    --allow-unauthenticated \
+    --set-env-vars "CONTROL_PLANE_URL=${WEB_CONTROL_URL},PROJECT_ID=${PROJECT_ID},REGION=${REGION}" \
+    --quiet
+fi
 
 DISPATCHER_URL="$(gcloud run services describe attestor-dispatcher \
     --project "$PROJECT_ID" --region "$REGION" --format='value(status.url)')"
 CONTROL_URL="$(gcloud run services describe attestor-control-plane \
     --project "$PROJECT_ID" --region "$REGION" --format='value(status.url)')"
+WEB_URL="$(gcloud run services describe attestor-web \
+    --project "$PROJECT_ID" --region "$REGION" --format='value(status.url)' 2>/dev/null || true)"
 printf '\n  dispatcher    : %s\n' "$DISPATCHER_URL"
 printf '  control plane : %s\n' "$CONTROL_URL"
+printf '  web           : %s\n' "${WEB_URL:-not deployed}"
 
 if (( SERVICES_ONLY )); then
     printf '\n%sservices deployed; skipping subscription wiring%s\n' "$B" "$R"
@@ -303,4 +352,5 @@ fi
 printf '\n%sdeploy complete%s\n' "$B" "$R"
 printf '  control plane : %s\n' "$CONTROL_URL"
 printf '  dispatcher    : %s\n' "$DISPATCHER_URL"
+printf '  web           : %s\n' "${WEB_URL:-not deployed}"
 printf '  subscription  : %s -> %s/pubsub/push\n' "$PUSH_SUBSCRIPTION" "$DISPATCHER_URL"

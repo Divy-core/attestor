@@ -23,6 +23,11 @@
  * fallback wired to `onerror` would sit idle through precisely this failure, which is why the
  * exit criterion asks for the disabled case and the silent case separately.
  *
+ * Writing this watchdog is what revealed that the heartbeat was an SSE *comment*, which
+ * `EventSource` never delivers to JavaScript — so the beat existed on the wire and could not be
+ * observed. It is now a named `heartbeat` event as well, and the comment is kept because it is
+ * what flushes a buffering proxy.
+ *
  * ## 3. It reconnects and skips events
  *
  * Every event in the protocol carries a monotonic `seq` for one run. On reconnect the browser
@@ -36,7 +41,40 @@
  * precisely so this check is possible.
  */
 
-import type { AttestorEvent } from '@/lib/types/generated';
+/**
+ * ## The frame shape, and why it is declared here rather than imported
+ *
+ * `lib/types/generated.ts` exports `AttestorEvent`, generated from `attestor_core.protocol`.
+ * It describes `{ event: RunStarted | QuestionTriaged | ... }` — an envelope wrapping a
+ * discriminated union keyed on `type`.
+ *
+ * That is not what goes on the wire. `control_plane.streaming.format_sse` serialises the audit
+ * event itself with a `seq` merged in, so the frame is flat and its discriminator is `kind`,
+ * not `type`. Compiling this file for the first time in Phase 6 is what surfaced it: the
+ * generated union has no `seq` at the top level and no `type` on the envelope, so every access
+ * was a type error against a contract nothing sends.
+ *
+ * Same finding as the DTO drift recorded in `lib/api/client.ts`, and the same conclusion: the
+ * endpoint is deployed, tested and driving the demo, so the endpoint wins. `gen_types.py` maps
+ * `AttestorEvent` to `events.EventEnvelope`, which is a Phase 1 design sketch the streaming
+ * implementation moved away from and which no code ever referenced. Reconciling the two is a
+ * change to the frozen protocol and belongs in Phase 7 with a logged decision, not in a UI
+ * commit that quietly rewrites the wire format.
+ */
+export type RunEventFrame = {
+  /** The discriminator, as sent. `heartbeat` for the keep-alive, otherwise an audit kind. */
+  kind: string;
+  /** Monotonic position in this run's event log. Absent on heartbeats, by design. */
+  seq?: number;
+  review_id?: string;
+  run_id?: string;
+  round_id?: string | null;
+  question_id?: string | null;
+  actor?: string | null;
+  recorded_at?: string;
+  emitted_at?: string;
+  detail?: Record<string, unknown> | null;
+};
 
 /** No heartbeat for this long and the stream is treated as dead, open socket or not.
  *  15s heartbeat interval, so this is two missed beats plus slack. */
@@ -51,7 +89,7 @@ export type StreamHealth = 'connecting' | 'live' | 'stale' | 'closed';
 
 export type StreamHandlers = {
   /** One protocol event, in order, with gaps already reported. */
-  onEvent: (event: AttestorEvent) => void;
+  onEvent: (event: RunEventFrame) => void;
   /** Health changed. Drives the indicator and arms the polling fallback. */
   onHealth: (health: StreamHealth, detail: string) => void;
   /**
@@ -125,8 +163,17 @@ export function openRunStream(
       armWatchdog();
     };
 
+    // The heartbeat is the one NAMED frame the control plane sends, precisely so it can be
+    // told apart from the log without polluting the data path. A named frame never reaches
+    // `onmessage`, so it needs its own listener -- and that is the whole point: a beat cannot
+    // be mistaken for an event, and an event cannot be mistaken for a beat.
+    es.addEventListener('heartbeat', () => {
+      armWatchdog();
+      if (source === es) handlers.onHealth('live', 'Streaming.');
+    });
+
     es.onmessage = (message: MessageEvent<string>) => {
-      // Any frame at all proves the pipe is moving, heartbeat or not.
+      // Any frame at all proves the pipe is moving.
       armWatchdog();
       if (source === es) handlers.onHealth('live', 'Streaming.');
 
@@ -139,7 +186,7 @@ export function openRunStream(
         return;
       }
       if (!parsed || typeof parsed !== 'object') return;
-      const event = parsed as AttestorEvent;
+      const event = parsed as RunEventFrame;
 
       const seq = typeof event.seq === 'number' ? event.seq : 0;
       if (seq > 0) {
@@ -151,8 +198,9 @@ export function openRunStream(
         lastSeq = seq;
       }
 
-      // Heartbeats keep the watchdog fed and are not application events.
-      if (event.type === 'heartbeat') return;
+      // Belt and braces: heartbeats arrive on their own listener above, but a beat that
+      // somehow reached the data path must still not be applied as an event.
+      if (event.kind === 'heartbeat') return;
       handlers.onEvent(event);
     };
 

@@ -1,0 +1,174 @@
+'use client';
+
+import { useState } from 'react';
+
+import { Button, Mono, cx } from '@/components/ui/primitives';
+import type { AnswerRow, QuestionRow } from '@/lib/api/client';
+
+/**
+ * The human gate.
+ *
+ * ## What "Approve" actually does, and why the receipt is shown
+ *
+ * The control plane does not apply the decision. It publishes `resume_after_human` to Pub/Sub
+ * and the dispatcher applies it — which is what makes a redelivered approval idempotent rather
+ * than usually-fine. That is a real architectural property and it is invisible unless the UI
+ * says so, so the response's `dedup_key` is rendered on success. It is the value that makes
+ * the second delivery a no-op, and showing it turns a claim into something on screen.
+ *
+ * ## Copy
+ *
+ * A button that says "Approve" produces "Approved." Sentence case, active voice, past tense on
+ * completion. No "Successfully approved!", no exclamation, no toast that says "Great!".
+ */
+
+type Outcome = { dedupKey: string; runId: string } | { error: string } | null;
+
+export function ApprovalQueue({
+  pending,
+  onResolved,
+}: {
+  pending: Array<{ question: QuestionRow; answer: AnswerRow }>;
+  onResolved: () => void;
+}) {
+  if (pending.length === 0) {
+    return (
+      <div className="flex flex-col items-start gap-2 px-4 py-8">
+        <div className="w-full border-t border-dashed border-line" />
+        <h3 className="pt-3 text-sm font-medium text-primary">Nothing waiting on a human</h3>
+        <p className="max-w-prose text-sm text-secondary">
+          Answers arrive here when the system will not stand behind them on its own — a missing
+          citation, a low computed confidence, or a contradiction with something committed to in
+          an earlier round. Approving one publishes a resume message; the dispatcher applies it.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <ul className="flex flex-col">
+      {pending.map(({ question, answer }) => (
+        <ApprovalRow
+          key={question.question_id}
+          question={question}
+          answer={answer}
+          onResolved={onResolved}
+        />
+      ))}
+    </ul>
+  );
+}
+
+function ApprovalRow({
+  question,
+  answer,
+  onResolved,
+}: {
+  question: QuestionRow;
+  answer: AnswerRow;
+  onResolved: () => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [text, setText] = useState(answer.text);
+  const [busy, setBusy] = useState(false);
+  const [outcome, setOutcome] = useState<Outcome>(null);
+
+  async function submit(approved: boolean) {
+    setBusy(true);
+    setOutcome(null);
+    try {
+      const response = await fetch(
+        `/api/attestor/rounds/${encodeURIComponent(answer.round_id)}/answers/${encodeURIComponent(
+          question.question_id,
+        )}/approval`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            question_id: question.question_id,
+            approved,
+            edited_text: editing && text !== answer.text ? text : null,
+            // A real name, not "system". An audit trail whose actor field says `ui` cannot
+            // answer "who approved this" in six months, which is the question it exists for.
+            resolved_by: 'console-operator',
+          }),
+        },
+      );
+      const payload: unknown = await response.json();
+      if (!response.ok) {
+        const detail =
+          payload && typeof payload === 'object' && 'detail' in payload
+            ? String((payload as { detail: unknown }).detail)
+            : `${response.status}`;
+        setOutcome({ error: detail });
+        return;
+      }
+      const body = payload as { dedup_key?: string; run_id?: string };
+      setOutcome({ dedupKey: body.dedup_key ?? '', runId: body.run_id ?? '' });
+      onResolved();
+    } catch (cause) {
+      setOutcome({ error: cause instanceof Error ? cause.message : String(cause) });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const resolved = outcome !== null && 'dedupKey' in outcome;
+
+  return (
+    <li className="flex flex-col gap-2 border-b border-subtle px-4 py-3">
+      <p className="text-sm text-primary">{question.text}</p>
+      <Mono dim>{question.question_id}</Mono>
+
+      {editing ? (
+        <textarea
+          value={text}
+          onChange={(event) => setText(event.target.value)}
+          rows={5}
+          aria-label="Edited answer"
+          className={cx(
+            'w-full rounded-sm border border-line bg-sunken px-2 py-1.5 text-sm text-primary',
+          )}
+        />
+      ) : (
+        <p className="whitespace-pre-wrap text-sm text-secondary">{answer.text}</p>
+      )}
+
+      {resolved ? (
+        // Past tense, and the mechanism named. Not a toast that disappears -- the receipt is
+        // the evidence that this went through Pub/Sub rather than being written directly.
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-l-2 border-cited pl-3">
+          <span className="text-sm text-primary">
+            {editing ? 'Edited and approved.' : 'Approved.'}
+          </span>
+          <span className="text-xs text-secondary">
+            Published to Pub/Sub. The dispatcher applies it.
+          </span>
+          <Mono dim title="Idempotency key. A redelivery of this approval is refused on this value rather than applied twice.">
+            {(outcome as { dedupKey: string }).dedupKey}
+          </Mono>
+        </div>
+      ) : outcome !== null && 'error' in outcome ? (
+        <div className="flex flex-col gap-1 border-l-2 border-denied pl-3">
+          <span className="text-sm text-primary">The decision was not published.</span>
+          <Mono className="text-xs">{outcome.error}</Mono>
+          <span className="text-xs text-secondary">
+            Nothing was applied. Try again, or check the control plane.
+          </span>
+        </div>
+      ) : (
+        <div className="flex items-center gap-2">
+          <Button variant="primary" onClick={() => submit(true)} disabled={busy}>
+            {busy ? 'Publishing' : editing ? 'Save and approve' : 'Approve'}
+          </Button>
+          <Button onClick={() => setEditing(!editing)} disabled={busy}>
+            {editing ? 'Cancel edit' : 'Edit'}
+          </Button>
+          <Button variant="quiet" onClick={() => submit(false)} disabled={busy}>
+            Reject
+          </Button>
+        </div>
+      )}
+    </li>
+  );
+}

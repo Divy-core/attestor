@@ -1,0 +1,143 @@
+{
+  "answers": {
+    "citation_rate": 0.7333,
+    "flagged_no_evidence": 16,
+    "needs_human": 18,
+    "total": 60,
+    "with_citation": 44
+  },
+  "case": "deployed_pubsub_review",
+  "concurrency": {
+    "in_process_reference": 7.84,
+    "measured": {
+      "engineering": {
+        "achieved_concurrency": 3.26,
+        "latency_sum_seconds": 269.22,
+        "questions": 17,
+        "remote_calls": 50,
+        "wall_seconds": 82.63
+      },
+      "legal": {
+        "achieved_concurrency": 6.98,
+        "latency_sum_seconds": 581.82,
+        "questions": 23,
+        "remote_calls": 58,
+        "wall_seconds": 83.3
+      },
+      "security": {
+        "achieved_concurrency": 7.04,
+        "latency_sum_seconds": 229.7,
+        "questions": 20,
+        "remote_calls": 61,
+        "wall_seconds": 32.63
+      }
+    }
+  },
+  "execution": {
+    "dispatcher": "Cloud Run (attestor-dispatcher), Eventarc push subscription",
+    "drafting": "Agent Runtime department engines",
+    "harness_role": "published one envelope, then observed"
+  },
+  "final_state": "awaiting_human",
+  "gcs_uri": "gs://attestor-505506-uploads/questionnaires/deployed-e8791c38/attestor-slice-60.xlsx",
+  "partitions": {
+    "ack_deadline_seconds": 600,
+    "distinct_workers": [
+      "attestor-dispatcher-00009-9xp"
+    ],
+    "in_process_estimate_seconds": 269.0,
+    "lease_seconds": 900,
+    "longest_seconds": 84.5,
+    "margin_seconds": 515.5,
+    "overlap_seconds": {
+      "engineering|legal": 37.2,
+      "engineering|security": 0.0,
+      "legal|security": 33.7
+    }
+  },
+  "pass": false,
+  "questions_requested": 60,
+  "redelivered_claims": [
+    {
+      "attempts": 3,
+      "dedup_key": "874419bdad445d6b",
+      "state": "completed"
+    },
+    {
+      "attempts": 3,
+      "dedup_key": "6558c6e30d8cb570",
+      "state": "completed"
+    },
+    {
+      "attempts": 4,
+      "dedup_key": "33bb8452c19734bc",
+      "state": "completed"
+    }
+  ],
+  "review_id": "rev-deployed-fde0d052",
+  "round_id": "rev-deployed-fde0d052-r1",
+  "run_id": "run-1786974407",
+  "trace": [
+    {
+      "attempts": 1,
+      "dedup_key": "8c0d6a6364944a72",
+      "kind": "intake_document",
+      "n": 1,
+      "partition": null,
+      "seconds": 2.0,
+      "state": "completed",
+      "worker": "attestor-dispatcher-00009-9xp"
+    },
+    {
+      "attempts": 1,
+      "dedup_key": "c5abd2521a3e42c4",
+      "kind": "triage_questions",
+      "n": 2,
+      "partition": null,
+      "seconds": 23.6,
+      "state": "completed",
+      "worker": "attestor-dispatcher-00009-9xp"
+    },
+    {
+      "attempts": 3,
+      "dedup_key": "874419bdad445d6b",
+      "kind": "draft_answer",
+      "n": 3,
+      "partition": "engineering",
+      "seconds": 83.6,
+      "state": "completed",
+      "worker": "attestor-dispatcher-00009-9xp"
+    },
+    {
+      "attempts": 3,
+      "dedup_key": "6558c6e30d8cb570",
+      "kind": "draft_answer",
+      "n": 4,
+      "partition": "legal",
+      "seconds": 84.5,
+      "state": "completed",
+      "worker": "attestor-dispatcher-00009-9xp"
+    },
+    {
+      "attempts": 4,
+      "dedup_key": "33bb8452c19734bc",
+      "kind": "draft_answer",
+      "n": 5,
+      "partition": "security",
+      "seconds": 33.7,
+      "state": "completed",
+      "worker": "attestor-dispatcher-00009-9xp"
+    },
+    {
+      "attempts": 1,
+      "dedup_key": "7569fa60ff93af2b",
+      "kind": "assemble_round",
+      "n": 6,
+      "partition": null,
+      "seconds": 0.2,
+      "state": "completed",
+      "worker": "attestor-dispatcher-00009-9xp"
+    }
+  ],
+  "wall_seconds": 313.1
+}

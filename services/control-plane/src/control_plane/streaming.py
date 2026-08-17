@@ -71,10 +71,27 @@ def format_sse(event: dict[str, Any], seq: int) -> str:
 
     `id:` carries the sequence so a reconnecting browser can send `Last-Event-ID` and be
     resumed rather than replayed from the beginning.
+
+    ## Data frames are deliberately UNNAMED
+
+    An earlier version emitted `event: {kind}`, which reads well and does not work. `EventSource`
+    delivers a *named* frame only to `addEventListener('that-exact-name', ...)`; it never reaches
+    `onmessage`. So naming frames by audit kind means every client must enumerate, in advance,
+    every kind it will ever accept — and the first time a new kind is added, a client that has not
+    been updated drops it silently. On an audit stream, a category of event that is emitted and
+    never received is the worst available failure: the record looks complete and is not.
+
+    The kind is in the payload, which is where an open-ended stream's discriminator belongs. One
+    catch-all handler, and a kind nobody has seen before still arrives.
+
+    Phase 6 found this by writing the client: with named frames, `onmessage` received nothing at
+    all and the page sat on its server-rendered first paint looking perfectly healthy.
+
+    The heartbeat is the one exception and stays named — see `heartbeat_frame`. It is not an entry
+    in the log, and keeping it off the data path is precisely why it can be told apart.
     """
-    kind = event.get("kind", "message")
     data = json.dumps({**event, "seq": seq}, default=str)
-    return f"id: {seq}\nevent: {kind}\ndata: {data}\n\n"
+    return f"id: {seq}\ndata: {data}\n\n"
 
 
 def open_frame() -> str:
@@ -83,7 +100,31 @@ def open_frame() -> str:
 
 
 def heartbeat_frame() -> str:
-    return f": heartbeat {datetime.now(UTC).isoformat()}\n\n"
+    """A heartbeat the browser can actually observe, plus the comment that flushes proxies.
+
+    Both halves are needed and they do different jobs.
+
+    The **comment** (`: heartbeat`) keeps the connection warm through a buffering proxy. It is
+    bytes on the wire and nothing else — and that is the problem, because `EventSource` does
+    not deliver comment lines to `onmessage`. A client watchdog fed only by comments never
+    sees a beat.
+
+    That matters more here than it sounds. The failure this whole stream is designed against is
+    a listener that stops delivering while the socket stays open and `onerror` never fires. The
+    only way a browser can detect that is to notice heartbeats stopping — so a heartbeat it
+    cannot see is a heartbeat that cannot do its job. Phase 6 found this by writing the
+    watchdog: with comments alone, an idle review trips the staleness timer every 40 seconds and
+    pins itself to the polling fallback for as long as it is open, which looks like a broken
+    stream and is in fact a working one nobody can hear.
+
+    So a real `event: heartbeat` frame goes out alongside. It carries no `seq` of its own,
+    deliberately: `seq` is the monotonic position in the run's event log and a heartbeat is not
+    an entry in it. Giving heartbeats sequence numbers would make the client's gap detection
+    count them as missed events.
+    """
+    now = datetime.now(UTC).isoformat()
+    payload = json.dumps({"kind": "heartbeat", "emitted_at": now})
+    return f": heartbeat {now}\n\nevent: heartbeat\ndata: {payload}\n\n"
 
 
 class RunEventStream:

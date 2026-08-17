@@ -2260,3 +2260,279 @@ What is here instead is a twelve-step cool-slate ramp built in the same *archite
 step directly. Swapping in Mynd's actual values is then a single-file change to
 `styles/tokens.css` with nothing else to touch, which is the property the architecture was
 worth having for. Flagged for Divy rather than silently absorbed.
+
+### A1 — the citation gap, diagnosed
+
+**The hypothesis was wrong, and being wrong was the useful part.**
+
+Phase 3 established that raw question text retrieves badly against Discovery Engine —
+`"Recovery Time Objective"` returned zero results from a document containing that exact
+phrase — and fixed it with query expansion plus section-level reranking, 95% recall@5
+against a 90% raw baseline (ADR-0003). The obvious explanation for 48.3% cited on the
+deployed path was that this layer was missing from the engine, retrieval had regressed to
+the pre-fix baseline, and the engine's `INSUFFICIENT_EVIDENCE` replies were *correct*. That
+would be a different problem with identical symptoms: not a stricter fleet, a
+worse-retrieving one.
+
+`tools/compare_retrieval.py` put 30 questions through both paths with the question text and
+the triaged department read from Firestore, so both answered the same question with the same
+binding, under the same guard and the same audit sink that `runner.py` builds in production.
+`docs/proof/citation-gap-side-by-side.json`.
+
+| Figure | Local, in-process | Deployed engines |
+|---|---|---|
+| Cited | 26 of 30 | **26 of 30** |
+| Citation rate | 86.7% | **86.7%** |
+| Questions with zero passages | 2 | **0** |
+| Mean passages retrieved | 4.67 | **5.97** |
+| Mean top relevance | 0.6783 | **0.6853** |
+| Flagged no evidence | 4 | 4 |
+
+Document overlap between the two, Jaccard: **0.827**.
+
+**There is no retrieval regression.** The deployed path retrieves *more* passages at a
+marginally *higher* top relevance and never came back empty where the local path did twice.
+The engine's search tool calls the same `ExpandingCorpusSearch`, and it adds a layer the local
+path does not have: the engine's model reformulates its own query and decides how many
+searches to run, which is why 12- and 15-passage results appear on the deployed side and
+never on the local one.
+
+So the 48.3% was **not a property of executing on the engines**. It belonged to the throttled
+run it was measured in.
+
+#### What the measurement did find: the seventh failure-impersonating-empty
+
+`engine replied INSUFFICIENT_EVIDENCE: 0 of 30` — and yet four deployed questions came back
+`flagged_no_evidence`. One of them had retrieved **fifteen passages at 0.744 top relevance**,
+better than the local path managed on the same question, and the answer on file read:
+
+```
+No supporting evidence was found in the corpus for this question.
+```
+
+The engine had returned its evidence and **no prose at all**. `_parse_events` produced empty
+text, `draft` checked `if not text` and took its honest branch, and the system made a false
+statement about its own corpus — at `confidence: low`, with a human flag, and no error
+anywhere. That is the signature of this family exactly, and it is the first instance found by
+a measurement harness rather than by a stack trace, because nothing failed.
+
+Corrected in `RemoteDraftingPipeline._no_evidence_answer`: a question whose engine went quiet
+is held for a human **with its citations attached**, and says so. `NEEDS_HUMAN`, not
+`FLAGGED_NO_EVIDENCE` — a person can answer it from the passages on screen, and telling them
+the corpus is empty would send them hunting for a document already in front of them.
+
+That is a third override on a class whose docstring promised two. The two-method discipline
+exists to keep the deployed figures comparable with Phase 3's, and it is worth breaking for
+one reason: the alternative is the system lying about its own evidence. Nothing about the
+comparison moves — those questions were miscounted before and are counted correctly now.
+
+#### The clean 60-question deployed run
+
+`docs/proof/deployed-review-60-clean.json`, on dispatcher revision `00009-9xp` with the fix:
+
+| Figure | First run (throttled) | Clean run |
+|---|---|---|
+| Citation rate | 48.3% | **73.3%** (44 of 60) |
+| Held for a human | 0 | **18** |
+| Refused for no evidence | 31 | **16** |
+| Stages completed | 6 of 7 | **6 of 6 reachable** |
+| Final state | `assembling` (close_round failed) | `awaiting_human` |
+| Longest partition | 99.1s | 84.5s — 7.1x margin to the ack deadline |
+| Achieved concurrency | 3.97 / 3.72 / 3.53 of 4 | 7.04 / 6.98 of 8, engineering 3.26 of 8 |
+
+**Why this is 6 of 6 and not 7 of 7, and why that is correct.** A round with answers the
+system will not stand behind *cannot* close: `close_round` writes commitments, and committing
+to an answer no human has approved is precisely what the human gate exists to prevent. So 18
+flagged answers means `awaiting_human`, by design, and `close_round` follows the approvals.
+
+The harness disagreed and called it FAIL, because its pass condition was `final_state ==
+delivered`. That condition demands the escalation rule never fire — it would only pass a run
+where the system was confident about all sixty answers. Corrected to require every reachable
+stage completed, a terminal state, and every question answered; `delivered` and
+`awaiting_human` are both successes and neither is the only shape one takes.
+
+**Engineering and security did not overlap on this run** (0.0s; legal|security 33.7s,
+engineering|legal 37.2s). Three-way overlap was observed on the earlier run and not on this
+one — the partitions are claimed within a second of each other but engineering finished before
+security started. Recorded rather than smoothed over.
+
+#### Still open
+
+The 48.3%-to-73.3% recovery is consistent with the throttling explanation and does not prove
+it. What would prove it is the same 60 questions at the original concurrency against the
+fixed code, which is a measurement not yet made. **The video quotes Phase 3's local figures
+and says they are local** — unchanged from session three, and now for a better reason: the
+deployed and local citation rates agree at 86.7% on identical questions, so the local figures
+are no longer a fallback but a converging second measurement.
+
+### A2 — the three fixes
+
+**`MemoryBankCommitments` now retries, and the whitelist moved down a layer.** Four modules
+had independently grown a transient-failure classifier by the end of Phase 5 — the Armor
+client on HTTP status codes, the Discovery Engine client, the embedding scorer, and the
+engine drafting path. They agreed on 429 and 503 and disagreed on everything else, which is
+the failure mode of a duplicated list: the copy that learns something new does not teach the
+others. The dropped-stream family proved it — found and fixed on the engine path, absent from
+Memory Bank writes that go over the same transport to the same service.
+
+`attestor_platform.retry` now holds one list and one `retrying()` helper; `remote.py` and
+`relevance.py` alias it rather than keeping copies. Shared code goes *down* into a leaf, never
+sideways between services, so the classifier could not live in `dispatcher/`.
+
+The helper deliberately never converts a failure into a value. Every caller wraps the raised
+error in its own typed error, and a shared helper that returned a default would install the
+failure-impersonating-empty bug in the one place every client inherits from.
+
+**Consistency fault injection against the deployed path** is wired as
+`tools/verify_consistency.py --deployed`, which swaps `ReviewPipeline` for
+`RemoteDraftingPipeline` and changes nothing else. Worth running as its own case rather than
+assuming the local result carries: the engine drafts under a *different instruction*, pickled
+into its artifact, so a contradiction the local drafter walks into is not guaranteed to be one
+the engine walks into. **Not yet run** — the tool is in place and the run is outstanding.
+
+**A latent defect found while doing it.** Five callers still defaulted Memory Bank to the
+Phase 0 probe engine `8598754324522205184`, which G2 migrated *off* — `seed.py` among them.
+Seeding without `AGENT_ENGINE_ID` set would have written round 1's commitments to the
+abandoned engine while the dispatcher read the live one, and the 22-day resume would have woken
+with no history at all. The resume harness checks the commitment *count* for exactly this
+reason so it would have been caught, but it should not have needed catching. One constant in
+`attestor_platform.config` now, and the copies are gone.
+
+### The two toolchain claims that were not true
+
+`make check` was recorded green at `79eaa5e`. It was not.
+
+`ruff check .` reported **19 findings** and `mypy --strict` **4 errors**, most of them
+pre-existing in `tools/` and none of them introduced by that commit. Both are clean now. The
+status line was carried forward from a run that predated several tools being added, which is
+how a green badge becomes decoration — it was asserted rather than measured, in a repo whose
+first standing rule is the opposite.
+
+### A4 — teardown stays deferred, deliberately
+
+The destructive `teardown.sh` → `deploy.sh` round trip is **still not run**, and skipping it
+remains correct rather than an oversight. It would destroy the deployed engines, the Firestore
+state, and the seeded 22-day review that every remaining piece of evidence depends on — the
+403 proof, the resume artefact, the audit trails behind `/traces`. The dry run enumerating all
+six engines, both services, three subscriptions, the registry and the Armor template is what
+exists, and it is what should exist until after footage. It belongs in Phase 8, after the
+video is recorded, which is also where the hackathon's own cost guidance puts it.
+
+### Phase 6 — what compiling the frontend found in the backend
+
+`services/web/lib/types/generated.ts` was generated in Phase 1, 326 lines, and had **never
+been compiled** — Phase 1 recorded `tsc --noEmit` as PARTIAL because there was no
+`package.json` to run it with. Every error it surfaced in Phase 6 is real, and three of them
+are in the backend rather than in the types.
+
+**1. The SSE frames were named after their event kind, and named frames never arrive.**
+
+`format_sse` emitted `event: {kind}`. `EventSource` delivers a *named* frame only to
+`addEventListener('that-exact-name', …)`; it never reaches `onmessage`. So the client received
+**nothing at all** — the page sat on its server-rendered first paint looking perfectly healthy
+while a live review ran behind it.
+
+Worse than the immediate breakage is what the design forced: naming frames by audit kind means
+every client must enumerate, in advance, every kind it will ever accept, and the first kind
+added after a client ships is dropped silently. On an audit stream that is the worst available
+failure — the record looks complete and is not. Data frames are now unnamed and the
+discriminator is in the payload, where an open-ended stream's belongs.
+
+**2. The heartbeat was an SSE comment, so no browser could ever observe it.**
+
+`: heartbeat` is bytes on the wire. It keeps a buffering proxy from holding the response, which
+is a real job and why it is still sent. But `EventSource` does not deliver comment lines to
+JavaScript, so a client watchdog fed on heartbeats never sees a beat.
+
+That defeats the one failure this stream is built to survive. A listener that stops delivering
+while the socket stays open fires no `onerror`; the *only* way a browser can detect it is by
+noticing heartbeats stop. With comments alone, an idle review trips the staleness timer every
+40 seconds and pins itself to the polling fallback for as long as it is open — a working stream
+that reports itself broken. A real `event: heartbeat` frame now goes out alongside the comment,
+carrying no `seq`, because `seq` is a position in the event log and a heartbeat is not an entry
+in it. Numbering them would make the client's gap detection count beats as dropped events.
+
+**3. A block of DTOs describes an API the control plane does not implement.**
+
+`ReviewDetail`, `ReviewSummary`, `QuestionDto`, `ApprovalResponse` and `AttestorEvent` are
+Phase 1 design sketches that the implementation moved away from and that no code ever
+referenced:
+
+```
+generated ReviewDetail      { review, questions }
+GET /reviews/{id} returns   { ...review fields, rounds: [...] }
+
+generated ApprovalResponse  { question_id, status, resumed }
+POST .../approval returns   { accepted, dedup_key, run_id }
+
+generated AttestorEvent     { event: RunStarted | ... }   discriminated on `type`
+the wire sends              flat audit event + seq        discriminated on `kind`
+```
+
+These are **not stale copies of a live contract** — they were never wired to anything, so
+nothing drifted; they simply were never built. The endpoints are deployed, tested and driving
+the demo, so the endpoints win: the UI types against what is actually sent, with `Row` and
+`Frame` names kept visibly distinct from the generated `Dto` names, and the reasoning written
+at both sites.
+
+The enums and the event union's *members* are single-sourced from Python as intended and used
+throughout — `AnswerStatus`, `Confidence`, `Department`, `Framework`, `Residency`,
+`ApprovalRequest`, `ArmorEventDto`. It is the envelope and the read-side DTOs that are fiction.
+
+**Reconciling them is a change to the frozen protocol and belongs in Phase 7 with a logged
+decision**, not in a UI commit that quietly rewrites the wire format. Recorded here so it is a
+decision rather than a thing someone finds.
+
+### The registry role, and an assumption worth recording
+
+`GET /registry` returned 503 from the deployed control plane:
+
+```
+agent registry unreachable at https://agentregistry.googleapis.com:
+HTTPError: HTTP Error 403: Forbidden
+```
+
+The registry read had only ever been exercised by `tools/verify_registry.py`, which runs under
+a developer's own credentials, so the service account had never needed the permission.
+`/registry` is on the never-cut list and is the video's second beat.
+
+The first fix attempted was `roles/aiplatform.user`, on the assumption that Agent Registry sits
+behind the Vertex surface like the rest of GEAP. It does not.
+`agentregistry.googleapis.com` is its own service with its own role family, and
+`roles/agentregistry.viewer` is what it wanted. Worth recording because the assumption is a
+reasonable one — most of this platform *does* hang off aiplatform, and the Registry being
+separate is the exception.
+
+**What the endpoint did not do is the reason this was two lookups instead of a mystery.** It
+did not return `[]`. "No agents are registered" would have been a lie told in a demo, and the
+503 carrying the host and the HTTP status verbatim is what made it a five-minute diagnosis.
+The UI renders that 503 the same way, with the service's own words, and says so on screen.
+
+### Three overclaims caught on the registry page itself
+
+The page whose subject is checkable provenance shipped, in its first draft, with three
+statements it could not support. All three were caught by rendering the live payload rather
+than by reading the code.
+
+**It called a bookkeeping id an engine.** The listing's `resource_name` looks exactly like an
+engine path and is not:
+
+```
+resource_name  projects/attestor-505506/locations/us-central1/agents/
+               agentregistry-00000000-0000-0000-c03a-e2a2f50e3400
+agent_id       urn:agent:...:reasoningEngines:4340794390889889792
+```
+
+The `reasoningEngine` id — the value the IAM bindings are written against, the one
+`fleet-deployment.json` records, the only one a reader can check anything with — is inside the
+URN. Now extracted from there.
+
+**It fabricated an identity.** With `effective_identity` null on every entry, the first draft
+filled the gap with a plausible `principal://agents.global…/{id}` string built from the *wrong*
+identifier and displayed it in the same typeface as a fact. That is invented evidence on the
+provenance page. It now renders "not returned" and names where the proof actually lives.
+
+**It said "five engines" over a seven-row table.** The listing includes Google's own
+`Workspace Agent` and `attestor-probe`, the Phase 0 engine kept alive deliberately. The fix is
+to partition the list and count each part — six Attestor engines, three with a corpus binding,
+one other agent — rather than to hide the rows that spoil the number.

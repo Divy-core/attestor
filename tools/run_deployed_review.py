@@ -314,8 +314,33 @@ def main() -> int:
         )
     print(f"  redelivered claims    : {len(redelivered)}")
 
-    passed = final_state == ReviewState.DELIVERED.value
+    # What counts as a pass, and why it is not simply `delivered`.
+    #
+    # The first version of this check required `delivered`, and it called a correct run a
+    # failure. A round with answers the system will not stand behind cannot close: `close_round`
+    # writes commitments, and committing to an answer no human has approved is precisely what
+    # the human gate exists to prevent. So a run that flags anything ends in `awaiting_human`
+    # BY DESIGN, and demanding `delivered` demands that the escalation rule never fire.
+    #
+    # `delivered` is reachable and is the right assertion for a review where nothing was
+    # flagged. Both are successes; neither is the only shape a success takes.
+    #
+    # What must be true either way: every stage that was reachable completed, and 60 answers
+    # were persisted under the round. A run that reaches `awaiting_human` with no answers is a
+    # failure wearing the same state name, which is the case this must not pass.
+    stages_ok = all(str(c.get("state")) == "completed" for c in claims)
+    reached_terminal = final_state in {
+        ReviewState.DELIVERED.value,
+        ReviewState.AWAITING_HUMAN.value,
+    }
+    requested = args.limit or 312
+    passed = stages_ok and reached_terminal and len(answers) == requested
     print(f"\n  RESULT : {'PASS' if passed else 'FAIL'}")
+    if final_state == ReviewState.AWAITING_HUMAN.value:
+        print(
+            f"  ({len(needs_human)} answers are held for a human, so the round cannot close. "
+            "close_round follows the approvals.)"
+        )
 
     report = {
         "case": "deployed_pubsub_review",

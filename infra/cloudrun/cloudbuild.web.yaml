@@ -1,0 +1,15 @@
+# Cloud Build for the web service. Build context is `services/web`, unlike the two Python
+# images which build from the repo root -- this one is self-contained and does not need the
+# uv workspace lockfile.
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - --file=infra/cloudrun/Dockerfile.web
+      - --tag=${_IMAGE}
+      - services/web
+images:
+  - ${_IMAGE}
+options:
+  logging: CLOUD_LOGGING_ONLY
+  machineType: E2_HIGHCPU_8
