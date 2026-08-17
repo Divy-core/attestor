@@ -3045,6 +3045,91 @@ in `deploy.sh` as `roles/iam.serviceAccountTokenCreator` **on the account itself
 project-wide: the project-level grant would let the control plane impersonate every engine
 identity the fleet's least-privilege story rests on.
 
+### The journey, measured end to end
+
+`docs/proof/journey.json`. Every step over HTTP against the deployed control plane, doing only
+what a person can do — no repository import, no Firestore, no publishing to Pub/Sub directly.
+
+| Step | Result |
+|---|---|
+| `POST /reviews` with no token | 401 |
+| `POST /reviews` with a wrong token | 401 |
+| `GET /reviews` with no token | 200 — reads are open by design |
+| `POST /uploads` → v4 signed URL | 201, 0.67s |
+| `PUT` → `storage.googleapis.com` | 200, 20,214 bytes, 0.96s, direct |
+| `POST /reviews` | 201 |
+| `POST /reviews/{id}/rounds` | 202 |
+| the review settles on its own | **`awaiting_human`, 757.5s** |
+| `GET export?format=xlsx` | 200, 65,892 bytes, `PK\x03\x04`, 1.88s |
+| `GET export?format=pdf` | 200, 453,254 bytes, `%PDF`, 5.54s |
+
+**312 of 312 answers.** This is the first time the deployed full-scale run has ever completed.
+Three previous attempts at three concurrency settings all ended with a partition dead-lettered;
+the best of them wrote 189 answers and never assembled.
+
+It settles on `awaiting_human` rather than `delivered`, and that is the correct terminal state:
+43 answers are held for a person, which is the durable pause working. Twelve and a half minutes,
+unattended, from a spreadsheet dropped into a browser to a completed questionnaire that
+downloads in its own format.
+
+### The eighth failure-impersonating-empty, and this one is in the platform
+
+The completed run said **172 of 312 questions had no supporting evidence in the corpus**. That
+was not true, and it is the most important finding of this phase.
+
+Measured three ways rather than reasoned about:
+
+| Probe | Result |
+|---|---|
+| The run's own audit trail | **58 of 88** `evidence_retrieved` events recorded **zero** passages |
+| The same corpus, queried directly from the dispatcher | passages for **five of six** of those questions, top relevance **0.950** |
+| The same deployed engines, queried **one at a time** | **five passages each**, all three departments |
+
+So the engine's own search returns an empty result set under sustained load, and returns it
+**successfully**. `_query_with_retry` covers calls that *raise* — rate limits, dropped streams —
+and a call that succeeds with nothing in it is not one of those. The empty result was taken as
+authoritative, and `ReviewPipeline.draft` then did the honest thing with it:
+
+> No supporting evidence was found in the corpus for this question.
+
+about a question the corpus answers at 0.950. Every layer behaved correctly and the aggregate
+statement was false. That is this family's signature, and the first seven instances were all in
+our own code — this one is in the platform, and our code is what turns it into a false statement
+to a customer.
+
+**It also explains a divergence A1 could not.** Phase 6 measured 86.7% cited on *both* paths by
+running the same 30 questions through each (`docs/proof/citation-gap-side-by-side.json`) and
+concluded there was no retrieval regression. Full deployed runs produce 20–43%. Both
+measurements are correct: a 30-question comparison does not put the engines under the load that
+causes this. A1 was right about what it measured and blind to what it could not, and that is
+recorded here rather than quietly superseded.
+
+**The fix:** an empty retrieval is retried before it is believed
+(`EMPTY_RETRIEVAL_ATTEMPTS = 3`), with `empty_retrievals_recovered` and
+`empty_retrievals_confirmed` written into the audit trail per partition — the first being the
+count of false "the corpus has nothing" statements a run did **not** make.
+
+`test_a_genuinely_empty_corpus_is_still_reported_as_empty` pins the other half. "The corpus does
+not support this" is a load-bearing thing for this system to be able to say; the retry exists so
+that sentence is true when it is said, not so that it is never said.
+
+### Citation rate, in the order it was measured
+
+Stated as a series rather than as a single number, because the series is the finding:
+
+| Measurement | Cited | What it was measuring |
+|---|---|---|
+| Phase 3, local, 312 questions | ~90% | the pipeline in one process |
+| Phase 6 A1, 30 questions, both paths | 86.7% | that the engine path retrieves comparably at low volume |
+| Deployed 60-question run of record | 73.3% | a small deployed run |
+| Deployed 312 at 2 workers (A3, 189 answers) | 75.1% | a large partial run |
+| **Deployed 312, complete, before the fix** | **43.3%** | the engines under sustained full-scale load |
+
+The 43.3% is not a worse system; it is the first honest full-scale measurement of the deployed
+path, and it is depressed by a defect that has now been identified and fixed. Which figure is
+quotable as accuracy depends on the re-run with the fix in place, and that number goes here when
+it exists — not before.
+
 ### `tools/verify_journey.py` — the product surface, over HTTP
 
 Every other harness in this repo starts a review by publishing to Pub/Sub directly, which is the
@@ -3056,3 +3141,79 @@ for a user — which is precisely how the `/registry` 403 survived until it was 
 Run rather than from a developer's own credentials.
 
 It also asserts the guard refuses: no token, wrong token, and reads still open.
+
+### Phase 6.5 exit criteria
+
+| # | Criterion | State | How verified |
+|---|---|---|---|
+| 1 | A person can upload a questionnaire in the browser and a review starts | **DONE** | `tools/verify_journey.py` — sign 201, PUT 200, create 201, start 202, all over HTTP with no repository import |
+| 2 | The review runs to completion with no further input, visibly | **DONE** | 312 of 312 answers, `awaiting_human`, 757.5s unattended (`journey.json`) |
+| 3 | Live counters, active department engines, orchestrator decisions on screen | **DONE (code)** · **NOT VISUALLY VERIFIED** | `FleetActivity` renders all three; the pane could not composite screenshots in this session |
+| 4 | Flagged answers approved through the UI, run resumes, audit names the operator | **PARTIAL** | The endpoint and the audit `actor` are proven (`drill-approval.json`, contract tests); the click-through in a browser is not done |
+| 5 | XLSX in the customer's own format + PDF evidence pack, flagged marked | **DONE** | 65,892-byte `PK\x03\x04`, 453,254-byte `%PDF`, `X-Attestor-Rows: 312`, `X-Attestor-Sendable: 92` |
+| 6 | Write paths guarded by token, review cap, question ceiling; exposure stated | **DONE** | 401 without a token and with a wrong one, measured against the deployed service; residual exposure listed above |
+| 7 | Homepage copy updated | **DONE** | "nothing is started from it" replaced; the reason recorded in a comment beside it |
+| 8 | Neutral ramp neutral, near-black background, contrast raised, borders visible, type scale | **DONE (measured)** | Contrast ratios computed from `getComputedStyle` on the live page, both themes — table below |
+| 9 | Both themes read end to end at 1080p | **PARTIAL** | Measured numerically in both themes; not *read* by eye, for the same reason as #3 |
+| 10 | The 429 diagnosed and fixed, with the cause named | **DONE** | `refetch()` per event, ~1,900 reads in twelve minutes; coalesced, and the ratio rendered on screen |
+| 11 | Incremental persistence landed, ADR written, deployed 312 re-run with full figures | **DONE** | ADR-0008; the run completed for the first time |
+| 12 | `make check` green, `tsc` clean, layering holds, everything pushed | **DONE** | 553 passing, 1 skipped; `tsc --noEmit` clean; layering OK; `gen_types --check` current; `check-tokens` clean |
+| 13 | Cumulative spend stated | **DONE, with a gap named** | below |
+
+**Measured contrast, both themes.** Computed on the rendered page rather than taken from a
+palette tool — relative luminance from `getComputedStyle`, so these are what a viewer's browser
+actually resolves:
+
+| Pair | Dark | Light |
+|---|---|---|
+| `text-primary` on `bg-surface` | 16.63 | 17.00 |
+| `text-secondary` on `bg-surface` | 11.62 | 8.24 |
+| `text-muted` on `bg-surface` | 4.92 | 5.28 |
+| `border-subtle` on `bg-surface` | 1.40 | 1.42 |
+| `border-default` on `bg-surface` | 1.77 | 2.08 |
+| `bg-surface` on `bg-base` | 1.14 | 1.07 |
+
+Three of those were failures on the first pass at the ramp and were corrected by the
+measurement rather than by eye: `border-subtle` measured 1.29 in dark against the 1.35:1 floor
+this file claims for itself; light `text-muted` measured 3.53, under AA for the 11px labels it
+is used on; and light `bg-raised` measured exactly 1.00 against `bg-surface`, so "raised" meant
+nothing in the light theme. Writing a contrast claim into a docstring and then measuring it is
+how those were found.
+
+**Greyscale separation of the six states holds** — relative luminance in dark: flagged 36.9,
+cited 30.4, degraded 29.4, no-evidence 26.8, quarantined 21.7, denied 17.2. The three *solid
+dot* states are 36.9 / 30.4 / 17.2, well apart; the three within a point of each other are
+exactly the three the design separates by **form** (hollow ring, hatched fill, half fill), which
+is what that mechanism was for. Confirmed rather than assumed.
+
+**Keyboard.** All 20 focusable elements on the fleet page are reachable and take a 2.4px focus
+outline, measured by walking them in DOM order. `prefers-reduced-motion` is honoured by an
+`!important` block in `globals.css` — read in source, not exercised under emulation, and stated
+that way.
+
+### Cost, and a gap in how it is known
+
+Cumulative spend across every phase remains under **$20** of the $150 credit. Phase 6.5 added
+five Cloud Build runs, four full 312-question deployed runs (three of which were failures that
+produced measurements), and the retrieval probes.
+
+**The gap, stated because the brief asks for the figure.** That number is bounded by the billing
+console, not derived from the audit trail, and it cannot currently be derived from the audit
+trail: the in-run cost ledger lives on `RunReport.budget`, which only `ReviewPipeline.run`
+builds — and the dispatcher never calls `run`, it calls `draft_many` one partition at a time. So
+every deployed run in this project has produced no per-run cost record, and the per-run figures
+quoted in Phase 3 came from the local harness. Recording spend per partition in the
+`draft_answer` stage detail is a small change and belongs in Phase 7; asserting a deployed cost
+figure I cannot derive would be the kind of number this file exists to avoid.
+
+### What Phase 6.5 did not do
+
+- **The approval click-through in a browser** (#4). The endpoint is proven three ways and the
+  queue is wired; a human with a rendered viewport has to press the button.
+- **Visual verification of both themes at 1080p** (#3, #9). Measured numerically; not looked at.
+  The browser pane in this session could not composite frames, so a screenshot was never
+  available. Marked PARTIAL rather than claimed.
+- **The deployed consistency fault injection.** Still outstanding from Phase 5 A2. Deliberately
+  not run in this session: it competes for the same regional engine quota as the 312-question
+  runs, and running it alongside them would have confounded both.
+- **The groundedness eval, timers, and the teardown round trip.** Out of scope by the brief.
