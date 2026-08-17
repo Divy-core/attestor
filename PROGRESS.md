@@ -2606,3 +2606,77 @@ are deliberately absent — nothing in this interface starts work.
 The control plane stays `--allow-unauthenticated`, which is the stated scope decision from
 Phase 1 (multi-tenant auth is explicitly out of scope) rather than an oversight. When that
 changes it changes in one file.
+
+### The approval beat, end to end against the deployed stack
+
+Criterion 7 measured rather than asserted. The same endpoint the UI's approval queue calls,
+called directly:
+
+```
+POST /rounds/rev-deployed-fde0d052-r1/answers/07955dd533b0cde3/approval
+  -> 200 {"accepted":true,"dedup_key":"4dc7651db0eba13b","run_id":"resume-1786976575-a2a30e"}
+
+answer status  needs_human -> approved     (citations preserved: 5)
+audit          human_decision   | console-operator | approved=True, edited=False
+               stage_completed  | Dispatcher       | stage=resume_after_human
+```
+
+The control plane published; the **dispatcher** applied it. Two audit events, the actor recorded
+as a named operator rather than as `system` — an audit trail whose actor field says `ui` cannot
+answer "who approved this" in six months, which is the question it exists for.
+
+**And this is the no-prose fix visible in production data.** The answer approved above is one of
+the four the side-by-side caught. Its text on file now reads:
+
+> Held for a human. The department engine retrieved supporting passages for this question but
+> returned no drafted answer, so there is evidence to work from and no draft to review. The
+> passages are cited below.
+
+with its five citations attached. Before the fix, the same answer said *"No supporting evidence
+was found in the corpus for this question"* and carried none — and a human picking it up would
+have gone looking for a document that was already on their screen.
+
+### The stream, measured against the deployed control plane
+
+`tools/verify_stream.mjs`, `docs/proof/sse-behaviour.json`. Criteria 3 and 4 are now results
+rather than reasoning.
+
+The harness parses the SSE wire format directly rather than using an `EventSource` shim, because
+the two properties that mattered most live *below* any client library and are invisible from
+inside one: whether the heartbeat is a frame a browser could observe at all, and whether data
+frames are named. Both were wrong until this phase.
+
+```
+1. LIVE -- open, sit idle past two heartbeat intervals
+   immediate ": open" flush                true
+   time to first byte                      708ms
+   heartbeat comments (proxy flush)         2
+   heartbeat EVENTS (browser-observable)    2      <- was 0
+   data frames                            514
+   named data frames                        0      <- was every one of them
+   PASS a browser watchdog can see the heartbeat
+   PASS data frames reach onmessage
+
+2. SILENT -- use_listener=false: socket open, nothing delivered
+   status 200, no transport error
+   PASS the stream stays open and reports no error
+
+3. RESUME -- reconnect with Last-Event-ID: 258
+   lowest seq after resume                259
+   PASS resumes after the sent sequence rather than replaying it
+```
+
+Case 2 is the one the whole design turns on. **Nothing errored.** A fallback wired to `onerror`
+would have sat idle through it, which is why the staleness watchdog exists and why the exit
+criterion asks for the disabled case separately from the raising case.
+
+Case 3 matters for a reason easy to miss: the resume is **exclusive**. An inclusive resume would
+re-deliver an event the client had already applied, and on a `citation_added` that means counting
+a citation twice — an inflated confidence figure produced by a reconnect.
+
+**One correction on this harness itself.** Its first run reported FAIL on "named data frames: 2".
+That was the harness's fault, not the control plane's: it counted the heartbeat's own `event:`
+line as a named data frame before checking whether the payload was a heartbeat. The heartbeat is
+named *deliberately*, so it can be kept off the data path. Fixed, re-run, and worth recording —
+a verification harness that reports a false failure is one debugging session away from someone
+"fixing" a correct system.

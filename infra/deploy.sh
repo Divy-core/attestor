@@ -33,6 +33,7 @@ SERVICES_ONLY=0
 
 DISPATCHER_ONLY=0
 WEB_ONLY=0
+CONTROL_ONLY=0
 
 for arg in "$@"; do
     case "$arg" in
@@ -42,6 +43,9 @@ for arg in "$@"; do
         --dispatcher-only) DISPATCHER_ONLY=1 ;;
         # The UI changes more often than either, and it shares no build context with them.
         --web-only)        WEB_ONLY=1 ;;
+        # The control plane on its own: it owns the SSE framing, which the UI depends on, so
+        # a streaming change has to ship here before the UI can observe it.
+        --control-only)    CONTROL_ONLY=1 ;;
         *) echo "unknown flag: $arg" >&2; exit 2 ;;
     esac
 done
@@ -164,7 +168,7 @@ gcloud run deploy attestor-control-plane \
     --quiet
 fi
 
-if (( ! WEB_ONLY )); then
+if (( ! WEB_ONLY && ! CONTROL_ONLY )); then
 section "Cloud Run: dispatcher"
 
 # Which engine owns which partition, resolved BEFORE the deploy so it can go in the same
@@ -228,7 +232,7 @@ gcloud run deploy attestor-dispatcher \
     --quiet
 fi
 
-if (( ! DISPATCHER_ONLY )); then
+if (( ! DISPATCHER_ONLY && ! CONTROL_ONLY )); then
 section "Cloud Run: web"
 # Build context is `services/web`, not the repo root: the UI is not a uv workspace member and
 # carries its own lockfile.
