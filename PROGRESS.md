@@ -1636,6 +1636,46 @@ Trace span, the full-scale deployed Pub/Sub run, and the 22-day resume artefact 
 protected items — then Memory Bank migration off the probe engine, the Cloud Run deploys
 with Eventarc, the crash and DLQ drills, the approval beat, and the teardown round trip.
 
+#### The 22-day resume, and the approval beat that fell out of it
+
+`docs/proof/resume-22-day.json`. The seeded review is **24.2 days old** and had been sitting
+in `delivered` since. `open_follow_up` woke it and **loaded 5 prior commitments from Memory
+Bank** — from the fleet orchestrator engine they were migrated to earlier in this session —
+before any round-2 question was drafted. That ordering is the point: the handler reads
+commitments on the round that will use them and raises `ContextUnavailable` if Memory Bank
+is unreachable, because an empty list is indistinguishable from "this customer was promised
+nothing" and would silently disable the consistency check for the entire round.
+
+Round 2 then drafted 40 answers on the deployed engines and **paused at `awaiting_human`**
+with 2 flagged — a durable pause, not a held connection. Nothing was waiting: no process, no
+open request, no timer.
+
+That stuck state is what made the approval drill possible, live
+(`docs/proof/drill-approval.json`):
+
+```
+  awaiting a human : 2 answer(s)
+  approved 0c64c45e619aa91d  -> run resume-1786965875-81662f
+  approved 2a9740d4b2e8a685  -> run resume-1786965876-f31feb
+  final state          : delivered
+  still awaiting human : 0
+  resume wall clock    : 14.5s
+```
+
+Two POSTs to the deployed control plane, which **publishes** rather than applying the
+decision itself, so the dispatcher applies it and a redelivered approval is idempotent
+rather than usually-fine.
+
+**One caveat, stated rather than buried.** The first version of the resume harness exited on
+its first poll and reported a 4.6-second resume — because the review *begins* in a terminal
+state, so "wait until delivered" was already true. It would have been a very convincing
+artefact for something that had not happened. Fixed in `tools/verify_resume.py`, which now
+requires the review to leave the terminal state before it may re-enter it, and the figures
+above are read back from Firestore rather than from that run. Separately, the seeded
+round-1 *answers* were never persisted by the seed — the round-1 **commitments** are what
+survived and what round 2 reads — so "round 1 untouched" is not a meaningful check here and
+is not claimed.
+
 **Carried, unchanged:** timers are still not built and remain additive
 (`WorkKind.TIMER_FIRED` is already in the frozen protocol).
 
@@ -2053,10 +2093,10 @@ One honest caveat: the registry's **list** endpoint returns `effective_identity`
 | 2 | Control plane + dispatcher on Cloud Run with Eventarc push | **PASS** — both live, `attestor.work.push` at 600s ack, OIDC-authenticated |
 | 3 | The undiagnosed missing-partition cause confirmed or refuted | **PASS** — hypothesis refuted by experiment, actual cause found and written up |
 | 4 | Full 312 review by Pub/Sub with every figure | **PARTIAL (J2)** — 60 questions completed 6 of 7 stages; 312 blocked by an Agent Runtime quota |
-| 5 | 22-day resume artefact | **NOT DONE** — tool written (`tools/verify_resume.py`), not run |
+| 5 | 22-day resume artefact | **PASS** — a 24.2-day-dormant review woke, loaded 5 commitments from Memory Bank, drafted 40 round-2 answers and paused for a human |
 | 6 | Memory Bank migrated, byte-identical | **PASS** — 5 commitments, identical readback |
 | 6b | Consistency fault injection against the deployed path | **NOT DONE** |
-| 7 | Live approval / crash / DLQ drills | **PARTIAL** — DLQ live PASS, crash PASS against real Firestore, approval not run |
+| 7 | Live approval / crash / DLQ drills | **PASS** — approval live through the deployed control plane (2 answers, resumed in 14.5s); DLQ live PASS; crash PASS against real Firestore with the simulated half named |
 | 8 | All five agents via the Registry API | **PASS** — with the identity-field caveat stated |
 | 9 | Span tree captured; 403 as an `audit_event`; both planes | **PASS** — with "no custom OTel spans of our own" stated |
 | 10 | `teardown.sh` → `deploy.sh` round trip | **PARTIAL** — teardown verified by dry run enumerating all six engines, both services, three subscriptions, the registry and the Armor template; the destructive round trip was **not** run, because it would have destroyed the deployment the remaining evidence depends on |
@@ -2089,9 +2129,48 @@ Runtime quota increase — a request with a multi-day turnaround, not a code cha
 3's local numbers carry the demo until it lands. The citation-rate gap between the deployed
 and local paths (48.3% against ~90%) needs a side-by-side on identical questions before
 either number is quoted as accuracy. `MemoryBankCommitments` needs the retry the other
-clients already have, or `close_round` will keep failing at scale. Then the 22-day resume,
-the approval beat, and the teardown round trip — all of which have their tools written and
-none of which have been run.
+clients already have, or `close_round` will keep failing at scale. Then the consistency
+fault injection against the deployed path, and the teardown round trip.
+
+#### The 22-day resume, and the approval beat that fell out of it
+
+`docs/proof/resume-22-day.json`. The seeded review is **24.2 days old** and had been sitting
+in `delivered` since. `open_follow_up` woke it and **loaded 5 prior commitments from Memory
+Bank** — from the fleet orchestrator engine they were migrated to earlier in this session —
+before any round-2 question was drafted. That ordering is the point: the handler reads
+commitments on the round that will use them and raises `ContextUnavailable` if Memory Bank
+is unreachable, because an empty list is indistinguishable from "this customer was promised
+nothing" and would silently disable the consistency check for the entire round.
+
+Round 2 then drafted 40 answers on the deployed engines and **paused at `awaiting_human`**
+with 2 flagged — a durable pause, not a held connection. Nothing was waiting: no process, no
+open request, no timer.
+
+That stuck state is what made the approval drill possible, live
+(`docs/proof/drill-approval.json`):
+
+```
+  awaiting a human : 2 answer(s)
+  approved 0c64c45e619aa91d  -> run resume-1786965875-81662f
+  approved 2a9740d4b2e8a685  -> run resume-1786965876-f31feb
+  final state          : delivered
+  still awaiting human : 0
+  resume wall clock    : 14.5s
+```
+
+Two POSTs to the deployed control plane, which **publishes** rather than applying the
+decision itself, so the dispatcher applies it and a redelivered approval is idempotent
+rather than usually-fine.
+
+**One caveat, stated rather than buried.** The first version of the resume harness exited on
+its first poll and reported a 4.6-second resume — because the review *begins* in a terminal
+state, so "wait until delivered" was already true. It would have been a very convincing
+artefact for something that had not happened. Fixed in `tools/verify_resume.py`, which now
+requires the review to leave the terminal state before it may re-enter it, and the figures
+above are read back from Firestore rather than from that run. Separately, the seeded
+round-1 *answers* were never persisted by the seed — the round-1 **commitments** are what
+survived and what round 2 reads — so "round 1 untouched" is not a meaningful check here and
+is not claimed.
 
 **Carried, unchanged:** timers are still not built and remain additive
 (`WorkKind.TIMER_FIRED` is already in the frozen protocol).

@@ -1,0 +1,27 @@
+{
+  "approvals_posted": [
+    {
+      "accepted": true,
+      "dedup_key": "8b5b63749f8d24ba",
+      "question_id": "0c64c45e619aa91d",
+      "run_id": "resume-1786965875-81662f"
+    },
+    {
+      "accepted": true,
+      "dedup_key": "60bea32243da5720",
+      "question_id": "2a9740d4b2e8a685",
+      "run_id": "resume-1786965876-f31feb"
+    }
+  ],
+  "approved_answers": 2,
+  "case": "human_approval_resume",
+  "control_plane": "https://attestor-control-plane-elrhl52mkq-uc.a.run.app",
+  "final_state": "delivered",
+  "human_decision_events": 2,
+  "pass": true,
+  "paused_answers": 2,
+  "resume_seconds": 14.5,
+  "review_id": "rev-acme-2026-q3",
+  "round_id": "rev-acme-2026-q3-r2",
+  "still_awaiting_human": 0
+}

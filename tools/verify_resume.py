@@ -134,6 +134,14 @@ def main() -> int:
     signature: tuple[Any, ...] = ()
     state = review.state.value
 
+    # The review starts in `delivered` -- that is what "dormant" means here. So the exit
+    # condition cannot simply be "state is delivered", or the loop returns on its first
+    # poll having watched nothing. It has to see the review *leave* the terminal state
+    # first, which is what `open_follow_up` does, and only then wait for it to arrive back.
+    # The first version of this harness did not, reported a 4.6-second resume, and would
+    # have been a very convincing artefact for something that had not happened.
+    left_terminal = False
+
     while True:
         elapsed = time.perf_counter() - started
         current_review = reviews.get(REVIEW_ID)
@@ -146,7 +154,9 @@ def main() -> int:
             last_change = time.perf_counter()
             print(f"  {elapsed:7.0f}s  {state:<16} {len(produced)}")
 
-        if state in {"delivered", "awaiting_human"}:
+        if state not in {"delivered", "awaiting_human"}:
+            left_terminal = True
+        if left_terminal and state in {"delivered", "awaiting_human"}:
             break
         if time.perf_counter() - last_change > STALL_SECONDS:
             print(f"\n  no progress for {STALL_SECONDS}s -- stopping")
