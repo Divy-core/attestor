@@ -377,7 +377,9 @@ class RemoteDraftingPipeline(ReviewPipeline):
                     )
                 break
             if attempt + 1 < EMPTY_RETRIEVAL_ATTEMPTS:
-                delay = EMPTY_RETRIEVAL_BACKOFF_SECONDS * (2**attempt) + random.uniform(0, 1.5)
+                delay = EMPTY_RETRIEVAL_BACKOFF_SECONDS * (2**attempt) + random.uniform(  # noqa: S311
+                    0, 1.5
+                )
                 logger.warning(
                     "engine %s retrieved nothing for %s (attempt %d/%d); retrying in %.1fs",
                     agent_department.value,
