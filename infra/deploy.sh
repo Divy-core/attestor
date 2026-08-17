@@ -95,8 +95,22 @@ for role in roles/datastore.user roles/pubsub.publisher roles/aiplatform.user \
             roles/modelarmor.user roles/discoveryengine.viewer; do
     grant "$DISPATCHER_SA" "$role"
 done
+# `aiplatform.user` on the control plane is for ONE endpoint: `GET /registry`, which reads
+# the live Agent Registry. Found by calling the deployed endpoint rather than by reading
+# this file -- it returned
+#
+#     503  agent registry unreachable at https://agentregistry.googleapis.com:
+#          HTTPError: HTTP Error 403: Forbidden
+#
+# because the registry read had only ever been exercised by `tools/verify_registry.py`,
+# which runs under a developer's own credentials. `/registry` is on the never-cut list and
+# is the video's second beat.
+#
+# Worth noting what the endpoint did NOT do: it did not return `[]`. "No agents are
+# registered" would have been a lie told in a demo, and the 503 is why this was a
+# five-minute fix instead of a mystery.
 for role in roles/datastore.user roles/pubsub.publisher roles/storage.objectAdmin \
-            roles/cloudtrace.agent roles/logging.logWriter; do
+            roles/cloudtrace.agent roles/logging.logWriter roles/aiplatform.user; do
     grant "$CONTROL_SA" "$role"
 done
 

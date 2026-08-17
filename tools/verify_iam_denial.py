@@ -181,8 +181,9 @@ def main() -> int:
     print(f"  legal prefix refused  : {denied_ok}")
     print(f"\n  RESULT : {'PASS' if passed else 'FAIL'}")
 
-    audit_event_id = _record_audit_event(resource, bucket, results, allowed=allowed_ok,
-                                         denied=denied_ok)
+    audit_event_id = _record_audit_event(
+        resource, bucket, results, allowed=allowed_ok, denied=denied_ok
+    )
     print(f"  audit_event           : {audit_event_id or 'NOT WRITTEN'}")
 
     report = {

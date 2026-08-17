@@ -2183,3 +2183,80 @@ is not claimed.
 
 **Carried, unchanged:** timers are still not built and remain additive
 (`WorkKind.TIMER_FIRED` is already in the frozen protocol).
+
+---
+
+## Phase 6 — The Interface
+
+Started 17 Aug 2026 (Day 4), roughly five days ahead of plan. Built against the deployed
+backend from the first line; no local mocks. Phase 5's remnants are handled in this phase
+and recorded above their Phase 6 sections.
+
+### The palette, stated before anything was built
+
+The exit criteria require this to be written down first and checked against what I would
+otherwise have reached for, so here is both.
+
+**What a generic dashboard palette would have been** — Tailwind's stock 500s, which is
+what any of this gets by default: `#22C55E` success green, `#EF4444` error red, `#F59E0B`
+warning amber, `#3B82F6` info blue, `#A855F7` purple, `#6B7280` grey. Six values that would
+be legible, conventional, and wrong for this subject in three specific ways.
+
+**The six states, and the values chosen.** Lightness was assigned *before* hue, so the set
+separates in greyscale rather than only in colour. Values are the dark-theme inks; each has
+a light-theme counterpart derived by the same rule (chroma held, lightness inverted about
+the ramp midpoint), and neither is ever written as a literal in a component.
+
+| Token | Hex | State | Form | Greyscale L\* |
+|---|---|---|---|---|
+| `--state-flagged` | `#D19A2E` | flagged for human | solid dot | 68 — lightest |
+| `--state-cited` | `#4FA3A0` | cited / high confidence | solid dot | 60 |
+| `--state-degraded` | `#9A9384` | degraded (fallback taken) | half-filled dot | 60, warm |
+| `--state-no-evidence` | `#7C8FA8` | no evidence (deliberate) | hollow ring | 57, cool |
+| `--state-quarantined` | `#8A72C9` | quarantined | hatched fill | 52 |
+| `--state-denied` | `#C4485F` | denied / blocked | solid dot | 44 — darkest |
+
+**What changed from the default, and why each change is a claim about the domain.**
+
+*Green became teal.* Green means "pass". A citation is not a pass — it is the baseline
+condition for an answer existing at all, and 90% of rows have one. Painting the ordinary
+case in celebration green means the eye has nowhere to go. Teal reads as an instrument
+marking rather than a verdict.
+
+*Alarm red became crimson-rose.* The IAM denial is the strongest single piece of evidence in
+this project. An engine's Agent Identity being refused a corpus it does not own is the
+system working exactly as designed, and `#EF4444` would file it next to a stack trace.
+Crimson carries severity without claiming malfunction.
+
+*The two states with no natural hue kept none.* "No evidence, deliberately" and "degraded,
+fallback taken" are the two most interesting states in the system and the two that no stock
+palette has a colour for. Rather than borrow blue and purple, they are a **cool** grey and a
+**warm** grey — near-neutral by design, because that is what they mean — and they carry
+their identity in form: a hollow ring for the honest blank, a half-filled dot for partial
+capability. Two near-greys separated by temperature is the one deliberately subtle move in
+the set.
+
+*Every value lost 25–40% chroma.* At full saturation six states read as six alerts. The
+subject is a document review, not an incident.
+
+**Form is load-bearing, not decoration.** Three states are solid dots separated by lightness
+(gold / teal / crimson); three are separated by fill treatment. That is what makes the set
+survive greyscale, and it is also what makes it survive video compression, which flattens
+chroma before it flattens luminance.
+
+**No accent hue for interaction.** Focus and selection use the foreground colour at full
+contrast rather than a seventh value, so that nothing about *chrome* can be mistaken for
+*status*. Six values, not seven.
+
+### The neutral ramp is derived, not ported — and that is a deviation
+
+The brief asks for Mynd's neutral ramp on the grounds that it is proven. I do not have the
+Mynd codebase in this repo or in this session — `grep -rin mynd` over the tree returns
+nothing — so I could not port it, and I am not going to describe a ramp I invented as one
+that was carried over.
+
+What is here instead is a twelve-step cool-slate ramp built in the same *architecture*: one
+`--n-0`…`--n-11` scale, every semantic token defined against it, no component ever naming a
+step directly. Swapping in Mynd's actual values is then a single-file change to
+`styles/tokens.css` with nothing else to touch, which is the property the architecture was
+worth having for. Flagged for Divy rather than silently absorbed.

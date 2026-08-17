@@ -173,9 +173,7 @@ def main() -> int:
                         "delivery_attempt": message.delivery_attempt,
                     }
                 )
-                subscriber.acknowledge(
-                    request={"subscription": sub, "ack_ids": [message.ack_id]}
-                )
+                subscriber.acknowledge(request={"subscription": sub, "ack_ids": [message.ack_id]})
 
         dead_lettered: list[str] = []
         response = _pull(subscriber, dlq_sub, 10)
@@ -233,7 +231,7 @@ def main() -> int:
                     subscriber.delete_subscription(request={"subscription": name})
                 else:
                     publisher.delete_topic(request={"topic": name})
-            except Exception as exc:  # noqa: BLE001 - cleanup must not mask the result
+            except Exception as exc:
                 print(f"    could not delete {name}: {exc}")
 
 
@@ -244,8 +242,7 @@ def _grant_dlq(project: str, publisher: Any, subscriber: Any, dlq: str, sub: str
     stays empty -- a failure mode that looks exactly like nothing happening.
     """
     agent = (
-        f"serviceAccount:service-{_project_number(project)}"
-        "@gcp-sa-pubsub.iam.gserviceaccount.com"
+        f"serviceAccount:service-{_project_number(project)}@gcp-sa-pubsub.iam.gserviceaccount.com"
     )
     policy = publisher.get_iam_policy(request={"resource": dlq})
     policy.bindings.add(role="roles/pubsub.publisher", members=[agent])

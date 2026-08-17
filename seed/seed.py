@@ -41,6 +41,7 @@ from attestor_core.domain import (
 )
 from attestor_core.domain.ids import make_question_id
 from attestor_core.state import ReviewState
+from attestor_platform.config import MEMORY_BANK_ENGINE_ID
 
 SEED_DIR = Path(__file__).parent
 CORPUS_DIR = SEED_DIR / "corpus"
@@ -50,10 +51,14 @@ BACKDATE_DAYS = 22
 
 REVIEW_ID = "rev-acme-2026-q3"
 
-#: The Agent Engine that scopes Memory Bank. Phase 0 created it; Phase 5 replaces it with
-#: the deployed fleet, and because Memory Bank scopes memories per engine, that swap is a
-#: migration rather than a redeploy. Recorded here so it is not discovered then.
-DEFAULT_AGENT_ENGINE_ID = "8598754324522205184"
+#: The Agent Engine that scopes Memory Bank. Phase 0 created a probe engine; Phase 5
+#: migrated the memories onto the deployed orchestrator, and because Memory Bank scopes
+#: memories per engine, that swap was a migration rather than a redeploy.
+#:
+#: Read from `attestor_platform.config` rather than restated. This file held its own copy
+#: through the migration and kept pointing at the abandoned probe engine, which would have
+#: seeded the round-1 commitments somewhere the dispatcher never reads.
+DEFAULT_AGENT_ENGINE_ID = MEMORY_BANK_ENGINE_ID
 ROUND_1_ID = "rnd-acme-r1"
 CUSTOMER = "Acme Financial Services, Inc."
 

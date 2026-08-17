@@ -60,7 +60,8 @@ def main() -> int:
         listed.append(record)
         name = str(record.get("display_name") or record.get("name") or "")
         identity = str(record.get("identity") or record.get("effective_identity") or "")
-        print(f"  {name:<26} {record.get('department', '-'):<12} {identity[-58:] or '(no identity)'}")
+        shown = identity[-58:] or "(no identity)"
+        print(f"  {name:<26} {record.get('department', '-'):<12} {shown}")
 
     # Matching on the engine id rather than on the display name: the registry is free to
     # present a name however it likes, and the resource id is the thing that is actually
@@ -79,9 +80,7 @@ def main() -> int:
     # IAM binding (`docs/proof/iam-denial.txt`). So distinctness is counted here on the
     # engine the entry points at, and the gap is recorded rather than papered over --
     # "distinct identities, per the registry" would not be a true sentence.
-    populated = [
-        r for r in listed if r.get("effective_identity") or r.get("identity_type")
-    ]
+    populated = [r for r in listed if r.get("effective_identity") or r.get("identity_type")]
     engine_urns = {str(r.get("agent_id") or "") for r in listed if r.get("agent_id")}
 
     print(f"\n  deployed engines      : {len(expected)}")

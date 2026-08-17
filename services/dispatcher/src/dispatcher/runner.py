@@ -28,6 +28,7 @@ from typing import Any, Protocol
 
 from attestor_core.domain import Answer, AnswerStatus, Commitment, Department, Question
 from attestor_core.domain.ids import make_dedup_key
+from attestor_platform.config import memory_bank_engine_id
 from attestor_platform.firestore import AnswerRepository, CommitmentRepository
 from attestor_platform.memory import MemoryBankCommitments
 
@@ -42,7 +43,7 @@ logger = logging.getLogger(__name__)
 #: review: putting them on a department engine would mean the legal drafter could not see
 #: a promise the security drafter made, which is the cross-department contradiction the
 #: consistency check exists to catch.
-AGENT_ENGINE_ID = os.environ.get("AGENT_ENGINE_ID", "511608807718125568")
+AGENT_ENGINE_ID = memory_bank_engine_id()
 
 
 class FleetRunner(Protocol):

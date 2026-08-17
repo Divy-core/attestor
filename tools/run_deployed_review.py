@@ -247,8 +247,8 @@ def main() -> int:
         }
         trace.append(record)
         print(
-            f"  {index:>3}  {str(record['kind']):<18} {str(record['partition'] or '-'):<12} "
-            f"{str(record['state']):<10} {duration if duration is not None else '-':>7}  "
+            f"  {index:>3}  {record['kind']!s:<18} {record['partition'] or '-'!s:<12} "
+            f"{record['state']!s:<10} {duration if duration is not None else '-':>7}  "
             f"{str(record['worker'])[-18:]}"
         )
 
@@ -294,10 +294,16 @@ def main() -> int:
     )
     print(f"  flagged for a human   : {len(needs_human)}")
     print(f"  refused for no evidence: {len(no_evidence)}")
-    print(f"\n  longest partition     : {longest_partition:.1f}s "
-          f"(in-process estimate was {IN_PROCESS_LONGEST_PARTITION}s)")
-    print(f"  margin to ack deadline: {ACK_DEADLINE - longest_partition:.1f}s "
-          f"({ACK_DEADLINE / longest_partition:.1f}x)" if longest_partition else "")
+    print(
+        f"\n  longest partition     : {longest_partition:.1f}s "
+        f"(in-process estimate was {IN_PROCESS_LONGEST_PARTITION}s)"
+    )
+    print(
+        f"  margin to ack deadline: {ACK_DEADLINE - longest_partition:.1f}s "
+        f"({ACK_DEADLINE / longest_partition:.1f}x)"
+        if longest_partition
+        else ""
+    )
     print(f"  distinct workers      : {len(distinct_workers)}")
     for pair, seconds in overlaps.items():
         print(f"  overlap {pair:<28}: {seconds:.1f}s")
@@ -347,8 +353,11 @@ def main() -> int:
             "measured": concurrency,
         },
         "redelivered_claims": [
-            {"dedup_key": c.get("dedup_key"), "attempts": c.get("attempts"),
-             "state": c.get("state")}
+            {
+                "dedup_key": c.get("dedup_key"),
+                "attempts": c.get("attempts"),
+                "state": c.get("state"),
+            }
             for c in redelivered
         ],
         "trace": trace,

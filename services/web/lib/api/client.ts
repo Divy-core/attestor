@@ -1,0 +1,293 @@
+/**
+ * The one place that talks to the deployed control plane. Server-side only.
+ *
+ * Two rules, both learned in the Python half of this build and both worth restating in
+ * TypeScript because the failure modes are identical:
+ *
+ * **Every call has a timeout.** A `fetch` with no `AbortSignal` inherits whatever the
+ * platform decides, which on Cloud Run is long enough that a slow dependency looks like a
+ * hung page. Production Bar item 1.
+ *
+ * **A failure is never an empty result.** `ApiError` is thrown, never swallowed into `[]`.
+ * "This review has no answers" and "the read failed" render as completely different things,
+ * and conflating them is the mistake this codebase has now made five times in Python and
+ * intends not to make once in the UI. An empty grid during a recorded demo, caused by a
+ * 503 nobody surfaced, is the worst version of it.
+ */
+
+import { env, READ_TIMEOUT_MS, WRITE_TIMEOUT_MS } from '@/lib/env';
+import type { ApprovalRequest } from '@/lib/types/generated';
+
+export class ApiError extends Error {
+  readonly status: number;
+  readonly path: string;
+  readonly detail: string;
+
+  constructor(path: string, status: number, detail: string) {
+    super(`${path} -> ${status}: ${detail}`);
+    this.name = 'ApiError';
+    this.status = status;
+    this.path = path;
+    this.detail = detail;
+  }
+
+  /**
+   * What to show a person. No apology, no vagueness: what happened, and what to do.
+   */
+  get human(): string {
+    if (this.status === 404) return 'Not found. It may have been torn down, or never existed.';
+    if (this.status === 503) {
+      // The registry endpoint is the one that does this, and it does it on purpose.
+      return `A backing service is unreachable. ${this.detail}`;
+    }
+    if (this.status === 0) return `The control plane did not respond. ${this.detail}`;
+    return this.detail || `The control plane returned ${this.status}.`;
+  }
+}
+
+type Method = 'GET' | 'POST';
+
+async function call<T>(
+  path: string,
+  { method = 'GET', body }: { method?: Method; body?: unknown } = {},
+): Promise<T> {
+  const controller = new AbortController();
+  const timeoutMs = method === 'GET' ? READ_TIMEOUT_MS : WRITE_TIMEOUT_MS;
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  let response: Response;
+  try {
+    response = await fetch(`${env.controlPlaneUrl}${path}`, {
+      method,
+      signal: controller.signal,
+      headers: body ? { 'Content-Type': 'application/json' } : undefined,
+      body: body ? JSON.stringify(body) : undefined,
+      // Firestore is the source of truth and it changes while a review runs. Anything
+      // cached here would be a stale grid that looks like a stalled system.
+      cache: 'no-store',
+    });
+  } catch (cause) {
+    const reason =
+      cause instanceof Error && cause.name === 'AbortError'
+        ? `No response within ${Math.round(timeoutMs / 1000)}s.`
+        : cause instanceof Error
+          ? cause.message
+          : String(cause);
+    throw new ApiError(path, 0, reason);
+  } finally {
+    clearTimeout(timer);
+  }
+
+  if (!response.ok) {
+    // FastAPI puts the message in `detail`. Keep the service's own words: on the registry
+    // 503 the detail names the host and the HTTP status, which is the whole diagnostic.
+    let detail = `${response.status} ${response.statusText}`;
+    try {
+      const payload: unknown = await response.json();
+      if (payload && typeof payload === 'object' && 'detail' in payload) {
+        detail = String((payload as { detail: unknown }).detail);
+      }
+    } catch {
+      // A non-JSON error body (a proxy's HTML 404 page, for instance) is not itself an
+      // error worth reporting over the status it came with.
+    }
+    throw new ApiError(path, response.status, detail);
+  }
+
+  if (response.status === 204) return undefined as T;
+  return (await response.json()) as T;
+}
+
+// ---------------------------------------------------------------------------------
+// Reads
+// ---------------------------------------------------------------------------------
+
+export const api = {
+  listReviews: (limit = 50) => call<ReviewRow[]>(`/reviews?limit=${limit}`),
+  getReview: (reviewId: string) =>
+    call<ReviewDetailRow>(`/reviews/${encodeURIComponent(reviewId)}`),
+  listQuestions: (roundId: string) =>
+    call<QuestionRow[]>(`/rounds/${encodeURIComponent(roundId)}/questions`),
+  listAnswers: (roundId: string) =>
+    call<AnswerRow[]>(`/rounds/${encodeURIComponent(roundId)}/answers`),
+  listAudit: (reviewId: string, limit = 1000) =>
+    call<AuditEvent[]>(`/reviews/${encodeURIComponent(reviewId)}/audit?limit=${limit}`),
+  listArmor: (reviewId: string, limit = 200) =>
+    call<AuditEvent[]>(`/reviews/${encodeURIComponent(reviewId)}/armor?limit=${limit}`),
+  listRegistry: () => call<RegistryAgent[]>('/registry'),
+
+  /**
+   * Approve or edit one answer.
+   *
+   * The control plane **publishes** this rather than applying it, so the dispatcher applies
+   * it and a redelivered approval is idempotent rather than usually-fine. The 202 carries
+   * the dedup key, which is worth surfacing: it is the thing that makes the second delivery
+   * a no-op, and showing it is showing the mechanism.
+   */
+  approve: (roundId: string, questionId: string, body: ApprovalRequest) =>
+    call<{ accepted: boolean; dedup_key: string; run_id: string }>(
+      `/rounds/${encodeURIComponent(roundId)}/answers/${encodeURIComponent(questionId)}/approval`,
+      { method: 'POST', body },
+    ),
+} as const;
+
+// ---------------------------------------------------------------------------------
+// Row shapes
+//
+// ## What comes from the generated contract, and what does not
+//
+// The enums and the SSE event union below are imported from `lib/types/generated.ts`, which
+// is generated from `attestor_core.protocol` and fails CI if stale. That is the drift-prone
+// surface the generator exists for and it is used here as intended: `AnswerStatus`,
+// `Confidence`, `Department`, `Framework`, `Residency`, the `AttestorEvent` union and
+// `ArmorEventDto` are all single-sourced from Python.
+//
+// The *response shapes* of the read endpoints are declared here instead, and that is a
+// deviation worth naming rather than hiding.
+//
+// `generated.ts` also contains a block of DTOs -- `ReviewDetail`, `ReviewSummary`,
+// `QuestionDto`, `ApprovalResponse` -- which describe an API surface that
+// `control_plane/api.py` does not implement. Compiling this file for the first time in Phase
+// 6 is what surfaced it. Two examples:
+//
+//   generated ReviewDetail      { review, questions }
+//   GET /reviews/{id} returns   { ...review fields, rounds: [...] }
+//
+//   generated ApprovalResponse  { question_id, status, resumed }
+//   POST .../approval returns   { accepted, dedup_key, run_id }
+//
+// Those DTOs were written in Phase 1 as the intended shape, never referenced by any code,
+// and never compiled -- Phase 1 recorded `tsc --noEmit` as PARTIAL because there was no
+// `package.json` to run it with. So they are not stale copies of a live contract; they are a
+// design sketch that the implementation moved away from. Typing this client against them
+// would make the UI wrong about a working backend.
+//
+// The endpoints are what is deployed, tested and driving the demo, so the endpoints win, and
+// the shapes they actually return are declared below with `Row` names to keep them visibly
+// distinct from the generated `Dto` names. Reconciling the two -- deleting the unused DTOs or
+// implementing them -- is a change to the frozen protocol and belongs in Phase 7 with a
+// decision logged, not in a UI commit.
+// ---------------------------------------------------------------------------------
+
+import type {
+  AnswerStatus,
+  Confidence,
+  Department,
+  Framework,
+  Residency,
+} from '@/lib/types/generated';
+
+export type { AnswerStatus, Confidence, Department, Framework, Residency };
+
+/** Mirrors `attestor_core.state.ReviewState`, which the generator does not emit as a union.
+ *  Kept narrow so an unexpected value is a type error at the boundary rather than a silently
+ *  unstyled badge. */
+export type ReviewState =
+  | 'intake'
+  | 'triaging'
+  | 'drafting'
+  | 'awaiting_evidence'
+  | 'awaiting_human'
+  | 'assembling'
+  | 'delivered'
+  | 'follow_up'
+  | 'failed';
+
+export type ReviewRow = {
+  review_id: string;
+  customer: string;
+  framework: Framework;
+  residency: Residency;
+  created_at: string;
+  current_round: number;
+  state: ReviewState;
+  blocked_from: ReviewState | null;
+};
+
+export type RoundRow = {
+  round_id: string;
+  review_id: string;
+  ordinal: number;
+  received_at: string;
+  closed_at: string | null;
+  state: ReviewState;
+};
+
+export type ReviewDetailRow = ReviewRow & { rounds: RoundRow[] };
+
+export type SourceRef = {
+  sheet?: string | null;
+  row?: number | null;
+  page?: number | null;
+  cell?: string | null;
+};
+
+export type QuestionRow = {
+  question_id: string;
+  text: string;
+  raw_text: string;
+  department: Department;
+  source_ref: SourceRef | null;
+  framework_hint: string | null;
+};
+
+export type Citation = {
+  document_uri: string;
+  document_title: string;
+  section: string | null;
+  snippet: string;
+  retrieval_score: number;
+  retrieved_at: string;
+};
+
+export type AnswerRow = {
+  question_id: string;
+  round_id: string;
+  text: string;
+  citations: Citation[];
+  confidence: Confidence;
+  status: AnswerStatus;
+  authored_by: string;
+  created_at: string;
+};
+
+/**
+ * One row of the compliance plane. `detail` is deliberately `unknown`-valued: the shape
+ * varies by `kind` and the trace viewer renders it structurally rather than assuming fields
+ * that only some kinds carry.
+ */
+export type AuditEvent = {
+  event_id?: string;
+  seq?: number;
+  kind: string;
+  actor?: string | null;
+  review_id?: string;
+  run_id?: string | null;
+  round_id?: string | null;
+  question_id?: string | null;
+  recorded_at?: string;
+  detail?: Record<string, unknown> | null;
+};
+
+/**
+ * As the Agent Registry list endpoint returns it.
+ *
+ * `effective_identity` and `identity_type` are `null` on **every** entry from the list call
+ * -- measured, not assumed (`docs/proof/registry-listing.json`). The registry page must not
+ * render "distinct identities, per the registry" on the strength of this payload; identity
+ * comes from the engine resource and is labelled with that source. See `components/registry`.
+ */
+export type RegistryAgent = {
+  agent_id: string;
+  display_name?: string | null;
+  name?: string | null;
+  resource_name?: string | null;
+  engine_id?: string | null;
+  department?: string | null;
+  version?: string | null;
+  effective_identity?: string | null;
+  identity_type?: string | null;
+  agent_framework?: string | null;
+  scopes?: string[] | null;
+  tools?: string[] | null;
+};

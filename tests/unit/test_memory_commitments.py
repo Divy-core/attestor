@@ -16,9 +16,23 @@ import pytest
 from attestor_core.domain import Commitment
 from attestor_core.errors import ContextUnavailable
 from attestor_platform.memory import MemoryBankCommitments, decode_fact, encode_fact
+from attestor_platform.memory import commitments as commitments_module
 
 STATEMENT = "Kestrel Data does not offer on-premises or self-hosted deployment."
 QUESTION_ID = "928a74e05ba09dff"
+
+
+@pytest.fixture(autouse=True)
+def _no_waiting(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Retry without the backoff.
+
+    The failing fakes below raise `503`, which is transient and therefore now retried --
+    so without this the unavailability tests would each sit through ~14 seconds of real
+    sleeping to assert something about their final state. The attempt *count* is what
+    those tests are about, and it is preserved.
+    """
+    monkeypatch.setattr(commitments_module, "COMMITMENT_RETRY_BACKOFF_SECONDS", 0.0)
+    monkeypatch.setattr(commitments_module, "COMMITMENT_RETRY_JITTER_SECONDS", 0.0)
 
 
 class _Memory:
@@ -34,22 +48,36 @@ class _Retrieved:
 
 
 class _Memories:
-    def __init__(self, stored: list[str] | None = None, fail: bool = False) -> None:
+    def __init__(
+        self,
+        stored: list[str] | None = None,
+        fail: bool = False,
+        fail_times: int = 0,
+        error: str = "503 Service Unavailable",
+    ) -> None:
         self.stored = list(stored or [])
         self.fail = fail
+        #: Fail this many times, then succeed. How a transient blip is modelled, as
+        #: distinct from `fail=True`, which is an outage.
+        self.fail_times = fail_times
+        self.error = error
         self.created: list[dict[str, Any]] = []
         self.scopes: list[dict[str, str]] = []
+        self.attempts = 0
+
+    def _maybe_fail(self) -> None:
+        self.attempts += 1
+        if self.fail or self.attempts <= self.fail_times:
+            raise RuntimeError(self.error)
 
     def create(self, *, name: str, fact: str, scope: dict[str, str]) -> Any:
-        if self.fail:
-            raise RuntimeError("503 Service Unavailable")
+        self._maybe_fail()
         self.created.append({"name": name, "fact": fact, "scope": scope})
         self.stored.append(fact)
         return type("Op", (), {"name": "operations/1"})()
 
     def retrieve(self, *, name: str, scope: dict[str, str], **_: Any) -> list[Any]:
-        if self.fail:
-            raise RuntimeError("503 Service Unavailable")
+        self._maybe_fail()
         self.scopes.append(scope)
         return [_Retrieved(f) for f in self.stored]
 
@@ -142,3 +170,46 @@ class TestUnavailableIsNotEmpty:
         round 2 would have no record of what round 1 promised."""
         with pytest.raises(ContextUnavailable):
             _store(_Memories(fail=True)).record(_commitment())
+
+
+class TestTransientFailuresAreWaitedOut:
+    """`close_round` writes one memory per commitment against a per-minute regional quota.
+
+    Sixty of those in a loop with no retry is how the 60-question deployed run came to
+    leave its review at `assembling`: the first refusal failed the stage, and every one of
+    the five Pub/Sub redeliveries re-attempted all sixty writes into the same congestion.
+    """
+
+    def test_a_write_survives_a_transient_refusal(self) -> None:
+        memories = _Memories(fail_times=2, error="429 RESOURCE_EXHAUSTED")
+        _store(memories).record(_commitment())
+
+        assert memories.attempts == 3
+        assert len(memories.created) == 1
+
+    def test_a_read_survives_a_dropped_stream(self) -> None:
+        """The family found on the engine path, which this client shares a transport with."""
+        memories = _Memories(
+            stored=[encode_fact(STATEMENT, QUESTION_ID)],
+            fail_times=1,
+            error="peer closed connection without sending complete message body",
+        )
+
+        assert _store(memories).for_review("rev-acme-2026-q3") == [(QUESTION_ID, STATEMENT)]
+        assert memories.attempts == 2
+
+    def test_a_permanent_refusal_is_not_retried(self) -> None:
+        """Backing off four times on a permission error burns four ack deadlines to arrive
+        at the same denial."""
+        memories = _Memories(fail=True, error="403 PERMISSION_DENIED on Memory Bank")
+        with pytest.raises(ContextUnavailable):
+            _store(memories).record(_commitment())
+
+        assert memories.attempts == 1
+
+    def test_retrying_gives_up_rather_than_looping(self) -> None:
+        memories = _Memories(fail=True, error="503 Service Unavailable")
+        with pytest.raises(ContextUnavailable):
+            _store(memories).record(_commitment())
+
+        assert memories.attempts == commitments_module.COMMITMENT_RETRY_ATTEMPTS

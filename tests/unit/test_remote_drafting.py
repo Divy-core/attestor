@@ -93,8 +93,9 @@ class TestParsing:
 
     def test_evidence_carries_the_scores_the_tool_reported(self) -> None:
         """Citations come from the tool's return value, never from the model's prose."""
-        drafted = _parse_events([_tool_event([_passage("9. Passwords", 0.6844)])],
-                                Department.SECURITY)
+        drafted = _parse_events(
+            [_tool_event([_passage("9. Passwords", 0.6844)])], Department.SECURITY
+        )
         citation = drafted.evidence[0].to_citation()
         assert citation.retrieval_score == pytest.approx(0.6844)
         assert citation.document_uri == "gs://b/security/a.txt"
@@ -113,7 +114,10 @@ class TestEngineFailureIsNotAnEmptyAnswer:
                 return engine
 
         return RemoteDraftingPipeline(
-            review_id="rev-test", run_id="run-test", pool=_Pool(), screen_ingress=False,
+            review_id="rev-test",
+            run_id="run-test",
+            pool=_Pool(),
+            screen_ingress=False,
             screen_tool_output=False,
         )
 
@@ -259,8 +263,11 @@ class TestRateLimitsAreRetriedOnTheCall:
                 return engine
 
         return RemoteDraftingPipeline(
-            review_id="rev", run_id="run", pool=_Pool(),
-            screen_ingress=False, screen_tool_output=False,
+            review_id="rev",
+            run_id="run",
+            pool=_Pool(),
+            screen_ingress=False,
+            screen_tool_output=False,
         )
 
     @staticmethod
@@ -382,3 +389,119 @@ class TestTransientClassification:
             pass
 
         assert _is_transient(RemoteProtocolError(""))
+
+
+class TestEvidenceWithoutProseIsNotAnEmptyCorpus:
+    """The seventh instance of failure-impersonating-empty, and the first found by measuring.
+
+    `tools/compare_retrieval.py` ran 30 questions through both paths. Four came back from the
+    engine with good passages -- one with fifteen, top relevance 0.744, better than the local
+    path managed on the same question -- and **no prose at all**. Nothing raised. `draft` saw
+    empty text, took its honest branch, and recorded:
+
+        No supporting evidence was found in the corpus for this question.
+
+    Which is a false statement about the corpus, at `confidence: low`, with a human flag and
+    no error anywhere -- the exact signature of this family.
+    """
+
+    @staticmethod
+    def _pipeline(events: list[dict[str, Any]]) -> Any:
+        from dispatcher.remote import RemoteDraftingPipeline
+
+        class _Engine:
+            def stream_query(self, **_: Any) -> Any:
+                return iter(events)
+
+        class _Pool:
+            def get(self, department: Department) -> Any:
+                del department
+                return _Engine()
+
+        return RemoteDraftingPipeline(
+            review_id="rev-test",
+            run_id="run-test",
+            pool=_Pool(),
+            screen_ingress=False,
+            screen_tool_output=False,
+        )
+
+    @staticmethod
+    def _question() -> Any:
+        from attestor_core.domain import Question
+
+        return Question(
+            question_id="7" * 16,
+            raw_text="Describe your subprocessor review process.",
+            text="Describe your subprocessor review process.",
+            department=Department.SECURITY,
+        )
+
+    def test_passages_with_no_prose_are_held_for_a_human_not_filed_as_no_evidence(self) -> None:
+        pipeline = self._pipeline([_tool_event([_passage("Rotation", 0.74)])])
+        question = self._question()
+
+        outcome = pipeline.draft(question)
+        answer = outcome.answer
+
+        assert answer is not None
+        # The distinction the whole family is about.
+        assert answer.status.value == "needs_human"
+        assert answer.status.value != "flagged_no_evidence"
+        assert "no supporting evidence" not in answer.text.lower()
+        # The retrieved passage is kept, so the person who picks this up can read the
+        # evidence rather than being sent looking for a document already on their screen.
+        assert len(answer.citations) == 1
+        assert outcome.needs_human is True
+
+    def test_a_genuinely_empty_corpus_still_says_so(self) -> None:
+        """The override must not swallow the real case. No passages and no prose is exactly
+        what `flagged_no_evidence` is for, and it has to keep working."""
+        pipeline = self._pipeline([_tool_event([])])
+
+        outcome = pipeline.draft(self._question())
+        answer = outcome.answer
+
+        assert answer is not None
+        assert answer.status.value == "flagged_no_evidence"
+        assert answer.citations == []
+
+    def test_prose_with_passages_is_untouched(self) -> None:
+        """The ordinary path. If this override changed the normal case, every deployed figure
+        would move and none of them would be comparable with Phase 3's."""
+        pipeline = self._pipeline(
+            [
+                _tool_event([_passage("Rotation", 0.74)]),
+                _text_event("Passwords rotate every 90 days per the access control standard."),
+            ]
+        )
+
+        outcome = pipeline.draft(self._question())
+        answer = outcome.answer
+
+        assert answer is not None
+        assert answer.status.value in {"drafted", "needs_human"}
+        assert "rotate every 90 days" in answer.text
+
+    def test_the_flag_does_not_leak_to_the_next_question_on_the_same_thread(self) -> None:
+        """`draft_many` reuses worker threads. A no-prose flag left set would make the next
+        genuinely-empty question on that thread report as held-for-human with no citations,
+        which is the same bug pointing the other way."""
+        pipeline = self._pipeline([_tool_event([_passage("Rotation", 0.74)])])
+        first = pipeline.draft(self._question())
+        assert first.answer is not None
+        assert first.answer.status.value == "needs_human"
+
+        # Same pipeline, same thread, now a genuinely empty retrieval.
+        pipeline._pool = type(
+            "_P",
+            (),
+            {
+                "get": lambda _self, _d: type(
+                    "_E", (), {"stream_query": lambda _s, **_k: iter([_tool_event([])])}
+                )()
+            },
+        )()
+        second = pipeline.draft(self._question())
+        assert second.answer is not None
+        assert second.answer.status.value == "flagged_no_evidence"

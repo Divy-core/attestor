@@ -40,6 +40,7 @@ from collections.abc import Sequence
 from typing import Any
 
 from attestor_platform.config import EMBEDDING_MODEL, genai_client
+from attestor_platform.retry import TRANSIENT_MARKERS, is_transient
 
 logger = logging.getLogger(__name__)
 
@@ -52,15 +53,17 @@ EMBED_BATCH = 16
 #: load, not an outage.
 EMBED_RETRIES = 4
 EMBED_BACKOFF_SECONDS = 1.0
-#: Substrings that mark an error as worth retrying. Matching on the message rather than
-#: an exception type because google-genai wraps transport errors in its own class and the
-#: status lives in the text.
-_TRANSIENT_MARKERS = ("429", "resource_exhausted", "503", "unavailable", "500", "internal", "504")
 
-
-def _is_transient(exc: Exception) -> bool:
-    text = str(exc).lower()
-    return any(marker in text for marker in _TRANSIENT_MARKERS)
+#: Which failures are worth retrying: the shared list in `attestor_platform.retry`, not a
+#: second copy. This module had its own, agreeing on 429 and 503 and missing the
+#: dropped-stream family entirely — the failure mode of a duplicated whitelist is that the
+#: copy which learns something new does not teach the others.
+#:
+#: Kept as module-level names because the retry loop below is not a plain `retrying()` call:
+#: it falls back to lexical scoring rather than raising, which is a decision only this
+#: module can make.
+_TRANSIENT_MARKERS = TRANSIENT_MARKERS
+_is_transient = is_transient
 
 
 #: Cosine over `text-embedding-005` does not use the full 0..1 range: unrelated text in

@@ -27,12 +27,13 @@ from pathlib import Path
 from typing import Any
 
 from attestor_core.errors import ContextUnavailable
+from attestor_platform.config import memory_bank_engine_id
 from attestor_platform.memory import MemoryBankCommitments
 
 ROOT = Path(__file__).parent.parent
 PROOF_DIR = ROOT / "docs" / "proof"
 REVIEW_ID = "rev-acme-2026-q3"
-ENGINE_ID = os.environ.get("AGENT_ENGINE_ID", "8598754324522205184")
+ENGINE_ID = memory_bank_engine_id()
 
 #: What round 1 committed to, 22 days ago. Round 2 attacks the first of these.
 EXPECTED = {

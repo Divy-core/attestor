@@ -159,9 +159,7 @@ def _drain(subscriber: Any, path: str) -> list[dict[str, Any]]:
     there" rather than as an error.
     """
     try:
-        response = subscriber.pull(
-            request={"subscription": path, "max_messages": 20}, timeout=15
-        )
+        response = subscriber.pull(request={"subscription": path, "max_messages": 20}, timeout=15)
     except gexc.DeadlineExceeded:
         return []
 

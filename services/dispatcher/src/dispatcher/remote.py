@@ -17,10 +17,11 @@ department has exactly one deployed engine.
 
 ## What is deliberately reused rather than rewritten
 
-`RemoteDraftingPipeline` subclasses the Phase 3 `ReviewPipeline` and overrides exactly two
-methods. Everything else — per-passage Model Armor screening, the commitment consistency
-check, the one-shot constrained redraft, computed confidence, the audit events, the
-human-escalation rule — is the *same code* running on the *same objects*. That is not
+`RemoteDraftingPipeline` subclasses the Phase 3 `ReviewPipeline` and overrides three
+methods, two of which move execution and one of which corrects a statement the base class
+cannot know is false. Everything else — per-passage Model Armor screening, the commitment
+consistency check, the one-shot constrained redraft, computed confidence, the audit events,
+the human-escalation rule — is the *same code* running on the *same objects*. That is not
 laziness; it is the only way the deployed numbers can be compared with Phase 3's at all.
 Reimplementing the surrounding logic would mean any difference in the measured figures
 could be the new code rather than the new execution environment.
@@ -38,6 +39,12 @@ retry path as a **500**. A 503 from an engine is transient work, not a drafted a
 
 This is the sixth instance of the failure-impersonating-empty family recorded in
 `attestor_core.errors.ContextUnavailable`, and the first one caught before it shipped.
+
+The **seventh** was not caught before it shipped, and it is on this path too: an engine that
+retrieves passages and then returns no prose at all. `draft` sees empty text, takes its
+honest branch, and records "no supporting evidence was found in the corpus" about a question
+the corpus had fifteen passages for. Found by `tools/compare_retrieval.py` rather than by a
+stack trace, because nothing failed. Corrected in `_no_evidence_answer` below.
 
 ## Precisely which model calls move, and which do not
 
@@ -73,10 +80,18 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from attestor_core.domain import Department, Evidence, Question
+from attestor_core.domain import (
+    Answer,
+    AnswerStatus,
+    Confidence,
+    Department,
+    Evidence,
+    Question,
+)
 from attestor_core.errors import AttestorError
 from attestor_fleet.callbacks.guard import enforce_tool_policy
 from attestor_fleet.pipeline import ReviewPipeline
+from attestor_platform.retry import TRANSIENT_MARKERS, is_transient
 from attestor_platform.search import RetrievalResult
 
 logger = logging.getLogger(__name__)
@@ -115,50 +130,27 @@ DRAFT_REQUEST = (
 )
 
 
-#: Substrings that mark an engine failure as worth trying again. Two families, and the
-#: second was nearly missed.
+#: Which engine failures are worth trying again. The list itself now lives one layer down,
+#: in `attestor_platform.retry`, because it was learned here and needed elsewhere.
 #:
-#: **Rate limits** are the obvious one, and the first full-scale run found them.
-#:
-#: **Dropped streams** are the other. `stream_query` holds a chunked HTTP response open for
-#: the whole of a drafting call, and a long-lived stream is a thing that gets cut:
+#: Two families were found on this path. **Rate limits**, by the first full-scale run.
+#: **Dropped streams** — `stream_query` holds a chunked HTTP response open for the whole of
+#: a drafting call, and a long-lived stream is a thing that gets cut:
 #:
 #:     RemoteProtocolError: peer closed connection without sending complete message body
 #:     (incomplete chunked read)
 #:
 #: That was observed on a single-question smoke test and initially mistaken for the harness
 #: hanging. On a 123-question partition it is not an oddity, it is a matter of time — and
-#: without this it fails the entire partition, which then redrafts every question in it.
+#: without a retry it fails the entire partition, which then redrafts every question in it.
 #:
-#: Matched on the message rather than on exception classes: the SDK wraps httpx, grpc and
-#: google-api-core errors at several layers and the type that surfaces is not stable across
-#: versions. Coarser than isinstance and considerably harder to break by a dependency bump.
-TRANSIENT_ENGINE_ERRORS = (
-    "429",
-    "RESOURCE_EXHAUSTED",
-    "RemoteProtocolError",
-    "incomplete chunked read",
-    "peer closed connection",
-    "ServerDisconnected",
-    "ConnectionReset",
-    "ConnectionError",
-    "503",
-    "UNAVAILABLE",
-    "504",
-    "DEADLINE_EXCEEDED",
-    "Timeout",
-)
-
-
-def _is_transient(exc: BaseException) -> bool:
-    """Whether an engine failure is worth another attempt.
-
-    Deliberately a whitelist. Anything unrecognised -- a 403, a malformed request, a
-    contract error -- fails on the first attempt, because backing off four times on a
-    permission error burns four ack deadlines to arrive at the same denial.
-    """
-    text = f"{type(exc).__name__}: {exc}"
-    return any(marker in text for marker in TRANSIENT_ENGINE_ERRORS)
+#: Memory Bank writes go over the same transport to the same service and had none of it,
+#: which is how `close_round` came to exhaust five delivery attempts. Shared code goes
+#: *down* into a leaf rather than sideways between services, so the classifier moved to
+#: `attestor_platform.retry` and both callers use the one list. These names stay as aliases:
+#: they are the vocabulary the tests and the surrounding docstrings use.
+TRANSIENT_ENGINE_ERRORS = TRANSIENT_MARKERS
+_is_transient = is_transient
 
 
 class EngineUnavailable(AttestorError):
@@ -226,9 +218,7 @@ class EnginePool:
                 import agentplatform
 
                 client = agentplatform.Client(project=self._project, location=self._location)
-                self._engines[department] = client.agent_engines.get(
-                    name=engine_name(department)
-                )
+                self._engines[department] = client.agent_engines.get(name=engine_name(department))
             return self._engines[department]
 
 
@@ -283,10 +273,11 @@ def _parse_events(events: Any, department: Department) -> _RemoteDraft:
 class RemoteDraftingPipeline(ReviewPipeline):
     """The Phase 3 pipeline with retrieval and drafting executed on a deployed engine.
 
-    Two overrides and nothing else. The guard, the consistency check, the confidence
-    computation, the audit sink and the escalation rule are inherited unchanged, so a
-    difference between these numbers and Phase 3's is attributable to the execution
-    environment rather than to a second implementation of the same logic.
+    Three overrides. `_guarded_retrieve` and `_generate` move the work; `_no_evidence_answer`
+    corrects a sentence the base class has no way to know is false. The guard, the consistency
+    check, the confidence computation, the audit sink and the escalation rule are inherited
+    unchanged, so a difference between these numbers and Phase 3's is attributable to the
+    execution environment rather than to a second implementation of the same logic.
     """
 
     def __init__(self, *args: Any, pool: EnginePool | None = None, **kwargs: Any) -> None:
@@ -331,6 +322,10 @@ class RemoteDraftingPipeline(ReviewPipeline):
         self.remote_calls += 1
         drafted = _parse_events(events, agent_department)
         self._local.drafted = drafted.text
+        # An engine that retrieved passages and produced no prose. See
+        # `_no_evidence_answer`: this must not become a statement about the corpus.
+        self._local.no_prose = bool(drafted.evidence) and not drafted.text.strip()
+        self._local.evidence = list(drafted.evidence)
 
         return RetrievalResult(
             evidence=drafted.evidence,
@@ -373,15 +368,16 @@ class RemoteDraftingPipeline(ReviewPipeline):
         for attempt in range(ENGINE_RETRY_ATTEMPTS):
             try:
                 return list(
-                    engine.stream_query(
-                        message=message, user_id=f"{self.review_id}:{self.run_id}"
-                    )
+                    engine.stream_query(message=message, user_id=f"{self.review_id}:{self.run_id}")
                 )
-            except Exception as exc:  # noqa: BLE001 - classified immediately below
+            except Exception as exc:
                 last = exc
                 if not _is_transient(exc) or attempt == ENGINE_RETRY_ATTEMPTS - 1:
                     break
-                delay = ENGINE_RETRY_BACKOFF_SECONDS * (2**attempt) + random.uniform(0, 2.0)
+                # S311: see attestor_platform.retry -- jitter, not a secret.
+                delay = ENGINE_RETRY_BACKOFF_SECONDS * (2**attempt) + random.uniform(  # noqa: S311
+                    0, 2.0
+                )
                 logger.warning(
                     "engine %s transient failure on %s (attempt %d/%d); retrying in %.1fs",
                     department.value,
@@ -439,6 +435,58 @@ class RemoteDraftingPipeline(ReviewPipeline):
         workers = min(REMOTE_DRAFT_CONCURRENCY, len(questions))
         with ThreadPoolExecutor(max_workers=workers) as pool:
             return list(pool.map(self.draft, questions))
+
+    def _no_evidence_answer(self, question: Question) -> Answer:
+        """Distinguish "the corpus has nothing" from "the engine returned nothing".
+
+        The seventh instance of the failure-impersonating-empty family, and the first found by
+        a measurement harness rather than by a stack trace. `tools/compare_retrieval.py` ran
+        the same 30 questions through both paths and found four on which the engine had
+        retrieved good passages -- one of them fifteen, top relevance 0.744, better than the
+        local path managed -- returned **no prose at all**, and had the answer recorded as:
+
+            No supporting evidence was found in the corpus for this question.
+
+        That sentence is false. The corpus answered; the engine did not speak. `stream_query`
+        had already emitted the `function_response` parts carrying the passages, and the final
+        text part never arrived -- the same truncated-stream shape as the dropped-connection
+        family, minus the exception. `ReviewPipeline.draft` cannot tell the difference, and
+        should not have to: it checks `if not text` and takes the honest branch for the case it
+        knows about.
+
+        So the branch is corrected here, where the cause is known. The answer says what
+        happened, keeps the citations the engine did retrieve so a human can read them, and is
+        `NEEDS_HUMAN` rather than `FLAGGED_NO_EVIDENCE` -- because a person can answer this
+        question from the passages on screen, and telling them the corpus is empty would send
+        them looking for a document that is already in front of them.
+
+        This is a third override, against the two-method discipline the class docstring sets
+        out. That constraint is there to keep the deployed figures comparable with Phase 3's,
+        and it is worth breaking for exactly one reason: the alternative is the system making
+        a false statement about its own evidence. Nothing about the comparison changes -- the
+        questions that took this branch were miscounted as no-evidence before and are counted
+        as held-for-human now, which is what they always were.
+        """
+        if not getattr(self._local, "no_prose", False):
+            return super()._no_evidence_answer(question)
+
+        self._local.no_prose = False
+        evidence: list[Evidence] = list(getattr(self._local, "evidence", []) or [])
+        return Answer(
+            question_id=question.question_id,
+            round_id=self.round_id,
+            text=(
+                "Held for a human. The department engine retrieved supporting passages for "
+                "this question but returned no drafted answer, so there is evidence to work "
+                "from and no draft to review. The passages are cited below."
+            ),
+            # Citations kept deliberately. Zero citations is legal only when the system
+            # genuinely has nothing, and here it has fifteen passages.
+            citations=[e.to_citation(e.content[:400]) for e in evidence],
+            confidence=Confidence.LOW,
+            status=AnswerStatus.NEEDS_HUMAN,
+            authored_by=f"{self.__class__.__name__}",
+        )
 
     def _generate(self, model: str, prompt: str) -> str:
         """Return the engine's draft, or fall through for the calls that stay local.

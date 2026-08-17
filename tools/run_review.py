@@ -72,9 +72,10 @@ def load_commitments(review_id: str) -> list[tuple[str, str]]:
     Raises:
         ContextUnavailable: If the commitment store could not be read.
     """
+    from attestor_platform.config import memory_bank_engine_id
     from attestor_platform.memory import MemoryBankCommitments
 
-    engine_id = os.environ.get("AGENT_ENGINE_ID", "8598754324522205184")
+    engine_id = memory_bank_engine_id()
     # `for_review` raises ContextUnavailable on its own when Memory Bank cannot be read,
     # which is the behaviour this function exists to preserve. No try/except here: adding
     # one would be the fifth chance to turn "unreachable" back into "no history".

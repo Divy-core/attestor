@@ -48,24 +48,21 @@ PROOF_DIR = ROOT / "docs" / "proof"
 
 def fetch_traces(project: str, minutes: int) -> list[dict[str, Any]]:
     """List recent traces with their spans, via the Cloud Trace v1 API."""
-    import google.auth
-    import google.auth.transport.requests
     import urllib.parse
     import urllib.request
 
-    credentials, _ = google.auth.default(
-        scopes=["https://www.googleapis.com/auth/cloud-platform"]
-    )
-    credentials.refresh(google.auth.transport.requests.Request())
+    import google.auth
+    import google.auth.transport.requests
+
+    credentials, _ = google.auth.default(scopes=["https://www.googleapis.com/auth/cloud-platform"])
+    # google-auth ships no annotations for `refresh`; the call is correct and the stub
+    # gap is theirs.
+    credentials.refresh(google.auth.transport.requests.Request())  # type: ignore[no-untyped-call]
 
     start = (datetime.now(UTC) - timedelta(minutes=minutes)).isoformat()
-    query = urllib.parse.urlencode(
-        {"startTime": start, "view": "COMPLETE", "pageSize": "200"}
-    )
+    query = urllib.parse.urlencode({"startTime": start, "view": "COMPLETE", "pageSize": "200"})
     url = f"https://cloudtrace.googleapis.com/v1/projects/{project}/traces?{query}"
-    request = urllib.request.Request(
-        url, headers={"Authorization": f"Bearer {credentials.token}"}
-    )
+    request = urllib.request.Request(url, headers={"Authorization": f"Bearer {credentials.token}"})
     with urllib.request.urlopen(request, timeout=60) as response:
         payload = json.loads(response.read().decode("utf-8"))
     return list(payload.get("traces") or [])
@@ -111,7 +108,7 @@ def main() -> int:
     try:
         traces = fetch_traces(project, args.minutes)
         trace_error = None
-    except Exception as exc:  # noqa: BLE001 - the failure is the finding
+    except Exception as exc:
         traces, trace_error = [], f"{type(exc).__name__}: {exc}"
 
     span_names: Counter[str] = Counter()

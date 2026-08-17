@@ -88,6 +88,25 @@ def default_region() -> str:
     return os.environ.get("REGION", DEFAULT_REGION)
 
 
+#: The engine Memory Bank hangs off. Not a model or a region, but the same kind of fact:
+#: one value that several callers need and none of them should carry their own copy of.
+#:
+#: This is here because the copies drifted. Memory Bank is addressed by a `reasoningEngine`
+#: resource, and Phase 5 migrated the commitments off the Phase 0 probe engine
+#: (`8598754324522205184`) onto the deployed orchestrator. The dispatcher was updated. Five
+#: tools were not, including `seed.py` — so seeding without `AGENT_ENGINE_ID` in the
+#: environment would have written the round-1 commitments to the abandoned engine while the
+#: dispatcher read the live one, and the 22-day resume would have woken with no history at
+#: all. The resume harness checks the commitment *count* for exactly this reason, so it
+#: would have been caught; it should not have needed catching.
+MEMORY_BANK_ENGINE_ID: Final = "511608807718125568"
+
+
+def memory_bank_engine_id() -> str:
+    """Which engine holds this project's commitments. Overridable, single-sourced."""
+    return os.environ.get("AGENT_ENGINE_ID") or MEMORY_BANK_ENGINE_ID
+
+
 # ---------------------------------------------------------------------------------
 # The one factory
 # ---------------------------------------------------------------------------------

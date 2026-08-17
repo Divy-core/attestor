@@ -22,6 +22,21 @@ commitment has to be found by meaning. What this harness checks, in order:
 
 Step 3 is the one that matters. Detecting a contradiction and shipping it with a warning
 label would not be the product.
+
+## `--deployed`
+
+The same four checks, with retrieval and drafting executed on the deployed department
+engine under its own Agent Identity instead of in this process. Nothing else changes: the
+consistency check and the constrained redraft are dispatcher-side compliance controls in
+production too (see the table in `dispatcher/remote.py`), so what this exercises is the
+real deployed arrangement rather than a second implementation of it.
+
+Worth running as its own case rather than assuming the local result carries over, because
+the deployed path drafts under a *different instruction*. The engine carries its own
+department prompt, pickled into the artifact; the local path is handed retrieved evidence
+and a prompt this repo controls. A contradiction the local drafter walks into is not
+guaranteed to be one the engine walks into, and the interesting question is whether the
+machinery still catches it when it does.
 """
 
 from __future__ import annotations
@@ -71,10 +86,10 @@ def load_commitments() -> list[tuple[str, str]]:
     rather than reporting that the customer has no history, which would silently turn
     this whole test into a no-op that passes.
     """
+    from attestor_platform.config import memory_bank_engine_id
     from attestor_platform.memory import MemoryBankCommitments
 
-    engine_id = os.environ.get("AGENT_ENGINE_ID", "8598754324522205184")
-    return MemoryBankCommitments(engine_id=engine_id).for_review(REVIEW_ID)
+    return MemoryBankCommitments(engine_id=memory_bank_engine_id()).for_review(REVIEW_ID)
 
 
 #: The fault injection. A product-update note stating that the very thing round 1 ruled
@@ -124,6 +139,11 @@ def main() -> int:
         action="store_true",
         help="plant a corpus document that contradicts the round-1 commitment, then remove it",
     )
+    parser.add_argument(
+        "--deployed",
+        action="store_true",
+        help="retrieve and draft on the deployed department engine instead of in-process",
+    )
     args = parser.parse_args()
 
     if not os.environ.get("PROJECT_ID"):
@@ -163,7 +183,15 @@ def _run(args: argparse.Namespace, planted_uri: str) -> int:
         print(f"    - {statement[:88]}")
 
     audit = NullAuditSink()
-    pipeline = ReviewPipeline(
+    # The deployed path is a subclass overriding exactly two methods, so every assertion
+    # below is checking the same code on the same objects -- which is the only way the two
+    # results are comparable at all.
+    factory: type[ReviewPipeline] = ReviewPipeline
+    if args.deployed:
+        from dispatcher.remote import RemoteDraftingPipeline
+
+        factory = RemoteDraftingPipeline
+    pipeline = factory(
         review_id=REVIEW_ID,
         run_id=f"verify-consistency-{int(time.time())}",
         guard=None,
@@ -171,6 +199,7 @@ def _run(args: argparse.Namespace, planted_uri: str) -> int:
         ledger=BudgetLedger(review_id=REVIEW_ID),
         prior_commitments=commitments,
     )
+    print(f"  execution           : {'deployed engines' if args.deployed else 'in-process'}")
 
     question = Question.from_text(THE_QUESTION, department=Department.ENGINEERING)
     control = Question.from_text(CONTROL_QUESTION, department=Department.ENGINEERING)
@@ -261,6 +290,9 @@ def _run(args: argparse.Namespace, planted_uri: str) -> int:
     result: dict[str, Any] = {
         "case": "followup_consistency",
         "mode": "drift_injection" if planted_uri else "natural",
+        "execution": (
+            "deployed department engines under Agent Identity" if args.deployed else "in-process"
+        ),
         "planted_document": planted_uri or None,
         "pass": passed,
         "contradiction_detected": contradiction_seen,
@@ -288,7 +320,10 @@ def _run(args: argparse.Namespace, planted_uri: str) -> int:
     if args.write_proof:
         PROOF_DIR.mkdir(parents=True, exist_ok=True)
         suffix = "drift" if planted_uri else "natural"
-        out = PROOF_DIR / f"consistency-followup-{suffix}.json"
+        # A separate file rather than overwriting the local result: the two are different
+        # claims and the local one is a Phase 3 artefact the write-up already cites.
+        where = "-deployed" if args.deployed else ""
+        out = PROOF_DIR / f"consistency-followup-{suffix}{where}.json"
         out.write_text(json.dumps(result, indent=2, sort_keys=True, default=str), encoding="utf-8")
         print(f"\nwrote {out}")
 

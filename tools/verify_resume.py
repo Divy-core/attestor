@@ -41,7 +41,6 @@ from attestor_platform.firestore import (
     AnswerRepository,
     AuditEventRepository,
     ReviewRepository,
-    RoundRepository,
 )
 from attestor_platform.pubsub import WorkPublisher
 from attestor_platform.storage import StorageClient
@@ -57,16 +56,25 @@ STALL_SECONDS = 900
 
 
 def _age_days(value: Any) -> float | None:
+    """How old a Firestore timestamp is, in days. `None` if it is not a timestamp at all.
+
+    The narrowed value gets its own name rather than being reassigned over the `Any`
+    parameter: rebinding `value` keeps it `Any` for the type checker, so the arithmetic
+    below silently loses its types and the `float` this promises to return is unchecked.
+    """
+    when: datetime
     if isinstance(value, str):
         try:
-            value = datetime.fromisoformat(value)
+            when = datetime.fromisoformat(value)
         except ValueError:
             return None
-    if not isinstance(value, datetime):
+    elif isinstance(value, datetime):
+        when = value
+    else:
         return None
-    if value.tzinfo is None:
-        value = value.replace(tzinfo=UTC)
-    return round((datetime.now(UTC) - value).total_seconds() / 86400, 1)
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=UTC)
+    return round((datetime.now(UTC) - when).total_seconds() / 86400, 1)
 
 
 def main() -> int:
@@ -82,7 +90,6 @@ def main() -> int:
 
     db = firestore.Client(project=os.environ["PROJECT_ID"])
     reviews = ReviewRepository()
-    rounds = RoundRepository()
     answers_repo = AnswerRepository()
     audit = AuditEventRepository()
     storage = StorageClient()
@@ -178,8 +185,7 @@ def main() -> int:
     contradictions = [
         e
         for e in events
-        if (e.get("detail") or {}).get("redraft")
-        or (e.get("detail") or {}).get("second_verdict")
+        if (e.get("detail") or {}).get("redraft") or (e.get("detail") or {}).get("second_verdict")
     ]
 
     resumed = _answers_fingerprint(before) == _answers_fingerprint(after)
@@ -246,8 +252,7 @@ def _answers_fingerprint(answers: list[Any]) -> str:
     # compared this artefact with a later run's.
     material = "|".join(
         sorted(
-            f"{a.question_id}:{a.status.value}:"
-            f"{hashlib.sha256(a.text.encode('utf-8')).hexdigest()}"
+            f"{a.question_id}:{a.status.value}:{hashlib.sha256(a.text.encode('utf-8')).hexdigest()}"
             for a in answers
         )
     )

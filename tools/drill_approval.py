@@ -115,9 +115,7 @@ def main() -> int:
         time.sleep(5)
 
     wall = time.perf_counter() - started
-    still_pending = [
-        a for a in answers_repo.for_round(round_id) if a.status.value == "needs_human"
-    ]
+    still_pending = [a for a in answers_repo.for_round(round_id) if a.status.value == "needs_human"]
     final = [a for a in answers_repo.for_round(round_id) if a.status.value == "approved"]
     decisions = [
         e for e in audit.for_review(args.review, limit=1000) if e.get("kind") == "human_decision"

@@ -39,12 +39,30 @@ from typing import Any
 from attestor_core.domain import Commitment
 from attestor_core.errors import ContextUnavailable
 from attestor_platform.config import default_region, project_id
+from attestor_platform.retry import retrying
 
 logger = logging.getLogger(__name__)
 
 #: How many memories to pull for one review. A round-1 questionnaire yields a handful of
 #: commitments, not hundreds; a cap keeps a pathological review from unbounded retrieval.
 MAX_MEMORIES = 200
+
+#: Memory Bank calls are retried on the same terms as every other client here.
+#:
+#: This was missing until Phase 6, and the omission was measured rather than reasoned
+#: about. `close_round` on the 60-question deployed run makes one Memory Bank write per
+#: commitment — 60 calls to the same service, over the same transport, against the same
+#: per-minute regional quota that had already forced the drafting fan-out down — and with
+#: no retry the first refusal failed the whole stage. It then exhausted all five Pub/Sub
+#: delivery attempts, because every redelivery re-attempted all 60 writes into the same
+#: congestion. The review was left at `assembling` with its answers persisted and no
+#: commitments recorded.
+#:
+#: Jittered for the reason `attestor_platform.retry` explains: `close_round` writes in a
+#: loop, so a fixed backoff would march every remaining commitment into the same second.
+COMMITMENT_RETRY_ATTEMPTS = 4
+COMMITMENT_RETRY_BACKOFF_SECONDS = 2.0
+COMMITMENT_RETRY_JITTER_SECONDS = 1.5
 
 #: Commitments are stored as natural-language facts -- that is what Memory Bank indexes
 #: and what a human reading the console sees. The question id rides along in a suffix so
@@ -111,14 +129,24 @@ class MemoryBankCommitments:
     def record(self, commitment: Commitment) -> None:
         """Write one commitment. Raises rather than reporting a silent no-op.
 
+        Transient refusals are waited out first; a permanent one still raises on the first
+        attempt. `ContextUnavailable` from here means the commitment is genuinely not on
+        file, which is exactly what the caller must not be allowed to mistake for success.
+
         Raises:
             ContextUnavailable: If the write could not be performed.
         """
         try:
-            operation = self._memories().create(
-                name=self.resource_name,
-                fact=encode_fact(commitment.statement, commitment.question_id),
-                scope=self.scope_for(commitment.review_id),
+            operation = retrying(
+                lambda: self._memories().create(
+                    name=self.resource_name,
+                    fact=encode_fact(commitment.statement, commitment.question_id),
+                    scope=self.scope_for(commitment.review_id),
+                ),
+                attempts=COMMITMENT_RETRY_ATTEMPTS,
+                backoff_seconds=COMMITMENT_RETRY_BACKOFF_SECONDS,
+                jitter_seconds=COMMITMENT_RETRY_JITTER_SECONDS,
+                description=f"memory bank write {commitment.question_id}",
             )
         except Exception as exc:
             raise ContextUnavailable(
@@ -147,12 +175,18 @@ class MemoryBankCommitments:
                 mean "unreachable" -- that would disable the consistency check silently.
         """
         try:
-            retrieved = list(
-                self._memories().retrieve(
-                    name=self.resource_name,
-                    scope=self.scope_for(review_id),
-                    simple_retrieval_params={"page_size": MAX_MEMORIES},
-                )
+            retrieved = retrying(
+                lambda: list(
+                    self._memories().retrieve(
+                        name=self.resource_name,
+                        scope=self.scope_for(review_id),
+                        simple_retrieval_params={"page_size": MAX_MEMORIES},
+                    )
+                ),
+                attempts=COMMITMENT_RETRY_ATTEMPTS,
+                backoff_seconds=COMMITMENT_RETRY_BACKOFF_SECONDS,
+                jitter_seconds=COMMITMENT_RETRY_JITTER_SECONDS,
+                description=f"memory bank read {review_id}",
             )
         except Exception as exc:
             raise ContextUnavailable(
