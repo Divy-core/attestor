@@ -396,7 +396,11 @@ def main() -> int:
     print(f"\n  RESULT : {'PASS' if passed else 'FAIL'}")
 
     if args.write_proof:
-        out = PROOF_DIR / "journey.json"
+        # Named for the run, not for the tool. The first version wrote `journey.json`
+        # unconditionally and the second run of the day silently overwrote the artefact
+        # proving the first one completed — which is how a measured record quietly becomes
+        # whichever run happened last.
+        out = PROOF_DIR / f"journey-{review_id}.json"
         out.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
         print(f"\nwrote {out.relative_to(ROOT)}")
     return 0 if passed else 1

@@ -3148,10 +3148,21 @@ fix that makes the answers *correct* pushes the run further into the quota that 
 **Stated plainly, because it is the current honest state of the deployed system:** at today's
 regional quota these two properties are in tension, and this session measured both ends of it.
 
-| | Answers | Cited | Completed |
-|---|---|---|---|
-| Without the empty-retry | 312 of 312 | 43.3% | **yes**, 757.5s |
-| With the empty-retry | 239 of 312 | **91.6%** | no — quota |
+| | Answers | Cited | Held for a human | No evidence | Completed |
+|---|---|---|---|---|---|
+| Without the empty-retry | 312 of 312 | 43.3% | 43 | 172 | **yes**, 757.5s |
+| With the empty-retry | 239 of 312 | **91.6%** | 86 | **18** | no — quota, at 3,003.9s |
+
+`docs/proof/journey-rev-556261438508.json` and `journey-rev-673ce276597e.json`. The rise in
+"held for a human" from 43 to 86 is the same fix showing up from the other side: an answer with
+retrieved evidence can be escalated on low confidence or a contradiction, while an answer the
+system believes has no evidence at all is simply refused. More evidence means more genuine
+judgement calls, not fewer.
+
+**The harness reported FAIL on the second run, and that was the point of fixing it.** Every HTTP
+step passed and both exports downloaded; the run still did not settle, and an earlier version of
+`verify_journey.py` would have printed PASS on exactly that — a review holding 239 of 312
+answers with no assembly. The settle check was added a few hours before it was needed.
 
 Both are real runs on the deployed fleet, twenty minutes apart, differing by one commit. The
 resolution is the Agent Runtime quota increase already identified in Phase 5 A3 as the binding

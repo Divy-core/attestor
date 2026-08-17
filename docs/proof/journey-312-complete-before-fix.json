@@ -1,0 +1,117 @@
+{
+  "case": "journey",
+  "control_plane": "https://attestor-control-plane-elrhl52mkq-uc.a.run.app",
+  "review_id": "rev-556261438508",
+  "round_id": "rev-556261438508-r1",
+  "run_id": "run-1786989016-b0609f",
+  "dedup_key": "6d2342aa9c310b13",
+  "gcs_uri": "gs://attestor-505506-uploads/questionnaires/5419da1221054ceb8b6029f25fb0fb4c/acme-vendor-review-r1.xlsx",
+  "questionnaire_bytes": 20214,
+  "outcome": {
+    "state": "awaiting_human",
+    "settled": true,
+    "answers": 312,
+    "cited": 135,
+    "held_for_a_human": 43,
+    "no_evidence": 172,
+    "wall_seconds": 757.5
+  },
+  "export": {
+    "xlsx": {
+      "status": 200,
+      "bytes": 65892,
+      "magic": "PK\u0003\u0004",
+      "disposition": "attachment; filename=\"attestor-northwind-traders-journey-rev-556261438508-r1.xlsx\"",
+      "rows": "312",
+      "sendable": "92",
+      "source": "round_sources"
+    },
+    "pdf": {
+      "status": 200,
+      "bytes": 453254,
+      "magic": "%PDF",
+      "disposition": "attachment; filename=\"attestor-northwind-traders-journey-rev-556261438508-r1.pdf\"",
+      "rows": "312",
+      "sendable": "92",
+      "source": "not required"
+    }
+  },
+  "steps": [
+    {
+      "step": "POST /reviews with no token",
+      "ok": true,
+      "status": 401,
+      "body": "{\"detail\":\"This endpoint requires a valid X-Attestor-Token header.\"}"
+    },
+    {
+      "step": "POST /reviews with a wrong token",
+      "ok": true,
+      "status": 401,
+      "body": "{\"detail\":\"This endpoint requires a valid X-Attestor-Token header.\"}"
+    },
+    {
+      "step": "GET /reviews with no token",
+      "ok": true,
+      "status": 200
+    },
+    {
+      "step": "POST /uploads -> signed URL",
+      "ok": true,
+      "status": 201,
+      "body": "{\"upload_url\":\"https://storage.googleapis.com/attestor-505506-uploads/questionnaires/5419da1221054ceb8b6029f25fb0fb4c/acme-vendor-review-r1.xlsx?X-Goog-Algorithm=GOOG4-RSA-SHA256&X-Goog-Credential=attestor-control-plane%40attestor-505506.iam.gserviceaccount.com%2F20260817%2Fauto%2Fstorage%2Fgoog4_re",
+      "seconds": 0.67
+    },
+    {
+      "step": "PUT -> storage.googleapis.com",
+      "ok": true,
+      "status": 200,
+      "bytes": 20214,
+      "body": "",
+      "seconds": 0.96
+    },
+    {
+      "step": "POST /reviews",
+      "ok": true,
+      "status": 201,
+      "body": "{\"review_id\":\"rev-556261438508\",\"customer\":\"Northwind Traders (journey)\",\"framework\":\"caiq\",\"residency\":\"us\",\"created_at\":\"2026-08-17T17:50:15.654881Z\",\"current_round\":1,\"state\":\"intake\",\"blocked_from\":null}"
+    },
+    {
+      "step": "POST /reviews/{}/rounds",
+      "ok": true,
+      "status": 202,
+      "body": "{\"review_id\":\"rev-556261438508\",\"round_id\":\"rev-556261438508-r1\",\"run_id\":\"run-1786989016-b0609f\",\"kind\":\"intake_document\",\"dedup_key\":\"6d2342aa9c310b13\",\"stream\":\"/runs/run-1786989016-b0609f/events\"}"
+    },
+    {
+      "step": "the review settles on its own",
+      "ok": true,
+      "state": "awaiting_human",
+      "answers": 312,
+      "seconds": 757.47
+    },
+    {
+      "step": "GET export?format=xlsx",
+      "ok": true,
+      "status": 200,
+      "bytes": 65892,
+      "magic": "PK\u0003\u0004",
+      "disposition": "attachment; filename=\"attestor-northwind-traders-journey-rev-556261438508-r1.xlsx\"",
+      "rows": "312",
+      "sendable": "92",
+      "source": "round_sources",
+      "seconds": 1.88
+    },
+    {
+      "step": "GET export?format=pdf",
+      "ok": true,
+      "status": 200,
+      "bytes": 453254,
+      "magic": "%PDF",
+      "disposition": "attachment; filename=\"attestor-northwind-traders-journey-rev-556261438508-r1.pdf\"",
+      "rows": "312",
+      "sendable": "92",
+      "source": "not required",
+      "seconds": 5.54
+    }
+  ],
+  "pass": true
+}
