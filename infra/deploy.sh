@@ -43,7 +43,7 @@ for arg in "$@"; do
     esac
 done
 
-if [[ -t 1 ]]; then B=$'\033[1m'; R=$'\033[0m'; else B=""; R=""; fi
+if [[ -t 1 ]]; then B=$'\033[1m'; Y=$'\033[33m'; R=$'\033[0m'; else B=""; Y=""; R=""; fi
 section() { printf '\n%s==> %s%s\n' "$B" "$1" "$R"; }
 
 PROJECT_NUMBER="$(gcloud projects describe "$PROJECT_ID" --format='value(projectNumber)')"
@@ -139,6 +139,39 @@ gcloud run deploy attestor-control-plane \
 fi
 
 section "Cloud Run: dispatcher"
+
+# Which engine owns which partition, resolved BEFORE the deploy so it can go in the same
+# `--set-env-vars`. It used to be applied afterwards with a separate `services update`,
+# and that left a window -- one whole revision -- in which the dispatcher was live,
+# receiving pushes, and had no engine names. `--set-env-vars` REPLACES the variable set
+# rather than merging into it, so every redeploy re-opened that window. Session three hit
+# it twice.
+ENGINE_VARS=""
+if [[ -f docs/proof/fleet-deployment.json ]]; then
+    ENGINE_VARS="$(uv run python - <<'PY'
+import json
+from pathlib import Path
+
+record = json.loads(Path("docs/proof/fleet-deployment.json").read_text(encoding="utf-8"))
+names = {"security": "SECURITY", "legal": "LEGAL", "engineering": "ENGINEERING"}
+pairs = [
+    f"ATTESTOR_ENGINE_{names[e['role']]}={e['resource_name']}"
+    for e in record["engines"]
+    if e["role"] in names
+]
+# Memory Bank is scoped per engine, so this names the engine holding the commitments --
+# the orchestrator, because commitments are review-scoped rather than department-scoped.
+orchestrator = next(e for e in record["engines"] if e["role"] == "orchestrator")
+pairs.append(f"AGENT_ENGINE_ID={orchestrator['resource_name'].rsplit('/', 1)[-1]}")
+print(",".join(pairs))
+PY
+)"
+    printf '  %s\n' "${ENGINE_VARS//,/$'\n  '}"
+else
+    printf '  %sWARNING%s docs/proof/fleet-deployment.json not found -- the dispatcher\n' "$Y" "$R"
+    printf '          will start with no engine names and every draft will fail.\n'
+fi
+
 gcloud builds submit . \
     --project "$PROJECT_ID" --region "$REGION" \
     --config infra/cloudrun/cloudbuild.dispatcher.yaml \
@@ -164,7 +197,7 @@ gcloud run deploy attestor-dispatcher \
     --memory 2Gi \
     --timeout 3600 \
     --no-allow-unauthenticated \
-    --set-env-vars "PROJECT_ID=${PROJECT_ID},VERTEX_LOCATION=${REGION},ATTESTOR_FLEET_RUNNER=agent_runtime" \
+    --set-env-vars "PROJECT_ID=${PROJECT_ID},VERTEX_LOCATION=${REGION},ATTESTOR_FLEET_RUNNER=agent_runtime${ENGINE_VARS:+,${ENGINE_VARS}}" \
     --quiet
 
 DISPATCHER_URL="$(gcloud run services describe attestor-dispatcher \
@@ -177,37 +210,6 @@ printf '  control plane : %s\n' "$CONTROL_URL"
 if (( SERVICES_ONLY )); then
     printf '\n%sservices deployed; skipping subscription wiring%s\n' "$B" "$R"
     exit 0
-fi
-
-# ---------------------------------------------------------------------------------
-# 3. Engine resource names, so the dispatcher knows which engine owns which partition
-# ---------------------------------------------------------------------------------
-section "Engine wiring"
-if [[ -f docs/proof/fleet-deployment.json ]]; then
-    ENGINE_VARS="$(python - <<'PY'
-import json
-from pathlib import Path
-
-record = json.loads(Path("docs/proof/fleet-deployment.json").read_text(encoding="utf-8"))
-names = {"security": "SECURITY", "legal": "LEGAL", "engineering": "ENGINEERING"}
-pairs = [
-    f"ATTESTOR_ENGINE_{names[e['role']]}={e['resource_name']}"
-    for e in record["engines"]
-    if e["role"] in names
-]
-# Memory Bank is scoped per engine, so this is which engine holds the commitments --
-# the orchestrator, because commitments are review-scoped rather than department-scoped.
-orchestrator = next(e for e in record["engines"] if e["role"] == "orchestrator")
-pairs.append(f"AGENT_ENGINE_ID={orchestrator['resource_name'].rsplit('/', 1)[-1]}")
-print(",".join(pairs))
-PY
-)"
-    printf '  %s\n' "${ENGINE_VARS//,/$'\n  '}"
-    gcloud run services update attestor-dispatcher \
-        --project "$PROJECT_ID" --region "$REGION" \
-        --update-env-vars "$ENGINE_VARS" --quiet
-else
-    printf '  docs/proof/fleet-deployment.json not found -- deploy the fleet first\n'
 fi
 
 # ---------------------------------------------------------------------------------

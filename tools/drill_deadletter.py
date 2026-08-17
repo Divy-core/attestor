@@ -122,7 +122,8 @@ def main() -> int:
     print(f"\n  audit event written  : {audit_event is not None}")
     if audit_event:
         print(f"    permanent          : {detail.get('permanent')}")
-        print(f"    reason             : {str(detail.get('reason'))[:120]}")
+        print(f"    error_type         : {detail.get('error_type')}")
+        print(f"    error              : {str(detail.get('error'))[:120]}")
         print(f"    attempt            : {detail.get('attempt')}")
     print(f"  dead letter readable : {dlq_message is not None}")
 

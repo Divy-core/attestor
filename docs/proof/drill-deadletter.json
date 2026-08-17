@@ -1,0 +1,39 @@
+{
+  "audit_event": {
+    "actor": "Dispatcher",
+    "detail": {
+      "attempt": 1,
+      "dead_lettered_at": "2026-08-17T10:44:22.889339+00:00",
+      "dedup_key": "c141362bf743c8d7",
+      "error": "review 'rev-does-not-exist-e5d20808' does not exist [review_id='rev-does-not-exist-e5d20808']",
+      "error_type": "ContractViolation",
+      "kind": "triage_questions",
+      "partition": null,
+      "permanent": true
+    },
+    "kind": "work_dead_lettered",
+    "occurred_at": "2026-08-17T10:44:22.893992+00:00",
+    "question_id": null,
+    "review_id": "rev-does-not-exist-e5d20808",
+    "run_id": "dlq-drill-1786963442"
+  },
+  "case": "dead_letter_drill",
+  "dead_letter_message": {
+    "attempt": 1,
+    "dedup_key": "c141362bf743c8d7",
+    "kind": "triage_questions",
+    "message_id": "dlq-drill-1786963442-poison",
+    "occurred_at": "2026-08-17T10:44:02.324626Z",
+    "partition": null,
+    "payload": {},
+    "question_id": null,
+    "review_id": "rev-does-not-exist-e5d20808",
+    "round_id": "rev-does-not-exist-e5d20808-r1",
+    "run_id": "dlq-drill-1786963442"
+  },
+  "dedup_key": "c141362bf743c8d7",
+  "dlq_subscription": "attestor.deadletter.sub",
+  "live": true,
+  "pass": true,
+  "review_id": "rev-does-not-exist-e5d20808"
+}

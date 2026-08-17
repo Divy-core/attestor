@@ -50,8 +50,18 @@ printf '%sAttestor teardown%s  project=%s region=%s dry_run=%s purge_data=%s\n' 
 # 1. Agent Runtime engines -- the most expensive thing if left running
 # ---------------------------------------------------------------------------------
 section "Agent Runtime engines"
-engines="$(
-    python - "$PROJECT_ID" "$REGION" <<'PY' || true
+
+# `uv run python`, not `python`, and NO `|| true`.
+#
+# This block used both, and the first dry run of session three showed exactly what the
+# header of this file warns about: bare `python` has no `agentplatform` module, the
+# traceback was swallowed by `|| true`, `$engines` came back empty, and the script
+# cheerfully printed "none found" for the five most expensive resources in the project
+# while reporting success. A listing that fails must stop the teardown, because
+# "I found nothing" and "I could not look" are not the same statement -- the same
+# distinction this codebase enforces everywhere else.
+if ! engines="$(
+    uv run python - "$PROJECT_ID" "$REGION" <<'PY'
 import sys
 import agentplatform
 
@@ -61,7 +71,13 @@ for engine in client.agent_engines.list():
     resource = engine.api_resource
     print(f"{resource.name}\t{getattr(resource, 'display_name', '')}")
 PY
-)"
+)"; then
+    printf '  %sFATAL%s could not list Agent Runtime engines -- refusing to continue.\n' "$Y" "$R"
+    printf '        An empty listing here is indistinguishable from a failed one, and\n'
+    printf '        reporting a clean teardown while five engines keep billing is the\n'
+    printf '        worst outcome this script has.\n'
+    exit 1
+fi
 
 if [[ -z "$engines" ]]; then
     printf '  none found\n'
@@ -72,7 +88,7 @@ else
         if (( DRY_RUN )); then
             printf '  %sDRY-RUN%s would delete %s\n' "$Y" "$R" "$name"
         else
-            python - "$PROJECT_ID" "$REGION" "$name" <<'PY'
+            uv run python - "$PROJECT_ID" "$REGION" "$name" <<'PY'
 import sys
 import agentplatform
 
@@ -98,6 +114,41 @@ else
         [[ -z "$svc" ]] && continue
         run gcloud run services delete "$svc" --project "$PROJECT_ID" --region "$REGION" --quiet
     done <<<"$services"
+fi
+
+# ---------------------------------------------------------------------------------
+# 2b. Pub/Sub subscriptions, including the push subscription Eventarc drives
+# ---------------------------------------------------------------------------------
+#
+# Subscriptions rather than topics. A subscription with a backlog is the thing that
+# accrues storage and keeps redelivering to an endpoint that no longer exists; a topic
+# with no subscription holds nothing. Topics are left so that `deploy.sh` restores a
+# working system without re-running `bootstrap.sh`.
+section "Pub/Sub subscriptions"
+subscriptions="$(gcloud pubsub subscriptions list --project "$PROJECT_ID" \
+    --format='value(name)' 2>/dev/null || true)"
+if [[ -z "$subscriptions" ]]; then
+    printf '  none found\n'
+else
+    while read -r sub; do
+        [[ -z "$sub" ]] && continue
+        run gcloud pubsub subscriptions delete "$sub" --project "$PROJECT_ID" --quiet
+    done <<<"$subscriptions"
+fi
+
+# ---------------------------------------------------------------------------------
+# 2c. Container images
+# ---------------------------------------------------------------------------------
+#
+# Artifact Registry bills for storage, and the dispatcher image is not small. Deleting
+# the repository takes the images with it; `deploy.sh` recreates it.
+section "Artifact Registry"
+if gcloud artifacts repositories describe attestor --location "$REGION" \
+        --project "$PROJECT_ID" >/dev/null 2>&1; then
+    run gcloud artifacts repositories delete attestor --location "$REGION" \
+        --project "$PROJECT_ID" --quiet
+else
+    printf '  none found\n'
 fi
 
 # ---------------------------------------------------------------------------------
