@@ -194,3 +194,41 @@ class TestClaimInspection:
         record = repo.get("k1")
         assert record is not None
         assert record["kind"] == "draft_answer"
+
+
+class TestLeaseExtension:
+    """A live worker pushes its own lease forward rather than trusting the estimate.
+
+    Measured at 312 questions the longest partition is 269s against a 900s lease -- but
+    that depends on triage spreading questions across three departments. Concentrated in
+    one, a partition is ~682s and the margin falls from 3.3x to 1.3x.
+    """
+
+    def test_extending_moves_the_expiry_forward(self, db: _Db) -> None:
+        repo = _repo(db, lease_seconds=900)
+        _claim(repo)
+        before = db.store["k1"]["lease_expires_at"]
+
+        repo.extend("k1")
+
+        assert db.store["k1"]["lease_expires_at"] >= before
+
+    def test_an_extended_claim_is_not_reclaimable(self, db: _Db) -> None:
+        """The point of the whole mechanism: a long-running handler keeps its work."""
+        repo = _repo(db, lease_seconds=0)  # would expire instantly without the extension
+        _claim(repo)
+
+        # A worker that is alive and heartbeating with a real lease.
+        live = _repo(db, lease_seconds=900)
+        live.extend("k1")
+
+        assert _claim(repo, run="run-2").outcome is ClaimOutcome.HELD
+
+    def test_extending_does_not_resurrect_a_completed_claim(self, db: _Db) -> None:
+        """Completion outranks the lease, so a late heartbeat cannot reopen finished work."""
+        repo = _repo(db)
+        _claim(repo)
+        repo.complete("k1")
+        repo.extend("k1")
+
+        assert _claim(repo, run="run-2").outcome is ClaimOutcome.DUPLICATE

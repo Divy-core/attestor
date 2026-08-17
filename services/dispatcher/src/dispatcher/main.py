@@ -47,6 +47,7 @@ from attestor_core.protocol import WorkEnvelope
 from attestor_platform.firestore import ClaimOutcome, WorkClaimRepository
 from dispatcher.deadletter import DeadLetterSink
 from dispatcher.handlers import HandlerRegistry, HandlerResult
+from dispatcher.lease import LeaseKeeper
 from dispatcher.push import PushMessage, parse_push
 
 logger = logging.getLogger(__name__)
@@ -158,7 +159,12 @@ def _dispatch(message: PushMessage, response: Response) -> dict[str, Any]:
         return {"result": "held", "dedup_key": envelope.dedup_key}
 
     try:
-        result: HandlerResult = handlers().run(envelope)
+        # The lease is pushed forward while the handler works, so a partition that runs
+        # long cannot have its claim taken over by a redelivery. See `lease.py` for the
+        # measured margins that made this necessary rather than decorative.
+        with LeaseKeeper(claims(), envelope.dedup_key) as keeper:
+            result: HandlerResult = handlers().run(envelope)
+        log_context["lease_heartbeats"] = keeper.heartbeats
     except (ContractViolation, IllegalTransition) as exc:
         # Permanent by construction. A malformed payload or a transition this review
         # cannot make will fail identically on every retry.
