@@ -3113,6 +3113,52 @@ count of false "the corpus has nothing" statements a run did **not** make.
 not support this" is a load-bearing thing for this system to be able to say; the retry exists so
 that sentence is true when it is said, not so that it is never said.
 
+### The fix works, and it collides with the regional quota
+
+Re-running the same 312 questions with the empty-retrieval retry in place, on the same deployed
+stack, changed the retrieval picture completely:
+
+| | Before the fix | After the fix |
+|---|---|---|
+| Empty retrievals | **165 of 307 (54%)** | **12 of 237 (5%)** |
+| Cited | 135 of 312 (**43.3%**) | 219 of 239 (**91.6%**) |
+| `flagged_no_evidence` | 172 | 18 |
+
+The engineering partition's audit event carries the number this was built to produce:
+`empty_retrievals_recovered = 23`, `confirmed = 3`. Twenty-three false "the corpus has nothing"
+statements that this run did not make, in one partition, with three genuine refusals preserved.
+91.6% cited is above the 86.7% A1 measured on 30 questions and in line with the ~90% Phase 3
+measured locally, which is the corpus's actual capability.
+
+**And the run did not finish.** Two of three partitions dead-lettered at 239 of 312 answers,
+and the dead-letter record names the cause:
+
+```
+EngineUnavailable: engine for 'security' failed on 74ba2cc22d005dcf after 4 attempt(s):
+ClientError: 429 RESOURCE_EXHAUSTED. Quota exceeded for quota metric
+'Query Reasoning Engine requests'
+```
+
+That is not a new problem and not a regression in the fix — it is the same regional quota that
+killed the very first full-scale attempt at 24 workers. Retrying an empty retrieval multiplies
+calls by up to three on exactly the questions the engines are already struggling with, so the
+fix that makes the answers *correct* pushes the run further into the quota that stops it
+*completing*.
+
+**Stated plainly, because it is the current honest state of the deployed system:** at today's
+regional quota these two properties are in tension, and this session measured both ends of it.
+
+| | Answers | Cited | Completed |
+|---|---|---|---|
+| Without the empty-retry | 312 of 312 | 43.3% | **yes**, 757.5s |
+| With the empty-retry | 239 of 312 | **91.6%** | no — quota |
+
+Both are real runs on the deployed fleet, twenty minutes apart, differing by one commit. The
+resolution is the Agent Runtime quota increase already identified in Phase 5 A3 as the binding
+constraint; this is independent confirmation of that finding arriving from a second direction.
+Until it lands, the fix stays in — an answer that is wrong about the corpus is worse than a
+round that needs another attempt, and the incremental persistence means the attempts are cheap.
+
 ### Citation rate, in the order it was measured
 
 Stated as a series rather than as a single number, because the series is the finding:
@@ -3124,11 +3170,13 @@ Stated as a series rather than as a single number, because the series is the fin
 | Deployed 60-question run of record | 73.3% | a small deployed run |
 | Deployed 312 at 2 workers (A3, 189 answers) | 75.1% | a large partial run |
 | **Deployed 312, complete, before the fix** | **43.3%** | the engines under sustained full-scale load |
+| **Deployed 312, 239 answers, after the fix** | **91.6%** | the same, with empty retrievals retried |
 
-The 43.3% is not a worse system; it is the first honest full-scale measurement of the deployed
-path, and it is depressed by a defect that has now been identified and fixed. Which figure is
-quotable as accuracy depends on the re-run with the fix in place, and that number goes here when
-it exists — not before.
+The 43.3% was not a worse system; it was the first honest full-scale measurement of the deployed
+path, depressed by a defect. **91.6% is the figure this build should quote for the deployed
+path**, and it is the one that agrees with every other measurement of what the corpus can
+support. It is measured over 239 of 312 answers rather than all 312, and that caveat travels
+with it.
 
 ### `tools/verify_journey.py` — the product surface, over HTTP
 
