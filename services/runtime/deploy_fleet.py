@@ -108,7 +108,11 @@ def deploy_one(client: Any, role: str, staging_bucket: str, *, reuse: bool) -> d
 
     if reuse:
         for existing in client.agent_engines.list():
-            if getattr(existing, "display_name", None) == name:
+            # display_name lives on the api_resource, NOT on the wrapper. Reading it off
+            # the wrapper returns None for every engine, so --reuse silently matched
+            # nothing and deployed a second copy of an engine that already existed.
+            resource_obj = getattr(existing, "api_resource", None)
+            if getattr(resource_obj, "display_name", None) == name:
                 resource = existing.api_resource.name
                 print(f"  {role:14} REUSED   {resource}")
                 return {

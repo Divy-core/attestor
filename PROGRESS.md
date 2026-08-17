@@ -1468,3 +1468,173 @@ already written and unit-tested), move the fleet onto Agent Runtime behind the e
 `FleetRunner` seam, and Agent Gateway. Memory Bank is scoped to the Phase 0 probe engine
 (`reasoningEngines/8598754324522205184`); moving to the deployed fleet engine is a
 migration, not a redeploy, because memories are scoped per engine.
+
+---
+
+## Phase 5 — Deploy the Fleet (Day 4, 17 Aug 2026) — IN PROGRESS
+
+Two days were allocated. This records the first session; the second finishes the
+full-scale run and the drills.
+
+### Section C, settled before anything was run
+
+The number that becomes binding at 312 questions and does not exist at 24 is Pub/Sub's
+600-second ack deadline. Measured, from `docs/proof/run-clean.json`, and written up in
+`docs/proof/ack-deadline-margin.md`:
+
+| Quantity | Value |
+|---|---|
+| Configured ack deadline | **600s** — already the Pub/Sub maximum, so not extendable |
+| Configured lease | **900s** |
+| Longest partition at 312 (security, 123 questions) | **269s** |
+| Margin to the deadline / to the lease | 331s (2.2×) / 631s (3.3×) |
+
+The load-bearing property is the **ordering**: lease 900s > ack deadline 600s. A
+redelivery arriving at 600s while the handler is still drafting finds a *live* claim and
+gets `409 HELD`. Had the lease been shorter, that redelivery would have taken over an
+expired claim and drafted the same 123 questions a second time — double spend, two sets of
+writes, nothing reporting an error.
+
+But the 3.3× margin depends on triage spreading questions across three departments, and
+nothing enforces that. Concentrated into one partition, 312 questions run ~682s and the
+margin falls to 1.3×. So a running handler now extends its own lease every 60s
+(`services/dispatcher/src/dispatcher/lease.py`): the estimate has to cover one heartbeat
+interval rather than one whole partition. Heartbeat failures are logged and ignored,
+because a blip in lease bookkeeping must never abort a twelve-minute review.
+
+Deliberately **not** shortening the lease to recover dead work faster — that would drop it
+below the ack deadline and reopen the duplicate-drafting window.
+
+### ADR-0006 — Agent Gateway, evaluated and not adopted
+
+The first pass concluded it did not exist. That was a filter artifact and it is recorded
+as one: Agent Gateway is not an agent-platform API at all. It lives under **Network
+Services**, and the GEAP documentation gives it away only in a navigation entry
+(`gcloud network-services agent-gateways`).
+
+With the API enabled, the resource type is real and reachable — `list` returns
+`Listed 0 items` in both `us-central1` and `global`, an empty result rather than an error.
+But the verb surface is **delete, describe, export, import, list**, with no `create`. The
+REST discovery document says what it models: `googleManaged` or `selfManaged` proxies,
+`registries` of *"agents, MCP servers and tools"*, and `networkConfig` carrying
+PSC-interface egress and DNS peering *"to your private VPC network"*.
+
+It is an L7 data plane whose distinguishing capability is reaching **private VPC
+endpoints**. Attestor has no private VPC, no MCP server, and no self-hosted tool — every
+tool the fleet calls is a Google-managed API on a public Google endpoint. Provisioning one
+would put a proxy in the diagram carrying zero traffic.
+
+What performs the role instead, with proof artefacts rather than diagram boxes: routing by
+control plane + Pub/Sub + a dispatch table keyed on `(WorkKind, partition)`; policy in
+three layers — the `before_tool` deny/ask/allow interceptor, Model Armor on both
+directions, and per-agent IAM. ADR-0006 also names the condition that flips the decision.
+
+### The fleet deploys as five engines, five identities
+
+`services/runtime/fleet_runtime.py` replaces the Phase 0 probe. Five separate
+`reasoningEngine` resources rather than one engine with nested `sub_agents`, and the
+reason is least privilege rather than tidiness: **nested sub-agents share one Agent
+Identity**, which means one service account holding the union of every department's
+permissions — exactly the violation the fleet exists to avoid.
+
+```
+attestor-orchestrator   reasoningEngines/511608807718125568    (202s)
+attestor-security       reasoningEngines/4847449348969070592   (190s)
+attestor-legal          reasoningEngines/8173357673782181888   (154s)
+attestor-engineering    reasoningEngines/4340794390889889792   (166s)
+attestor-evidence       reasoningEngines/9024538003355205632   (240s)
+```
+
+Confirmed from the deployed resource:
+
+```
+spec.identityType      = AGENT_IDENTITY
+spec.effectiveIdentity = agents.global.proj-906988347581.system.id.goog/resources/
+                         aiplatform/.../reasoningEngines/4847449348969070592
+```
+
+**The first deploy failed**, with the generic `failed to start and cannot serve traffic`
+that names nothing. Cloud Logging had the real cause: `No module named 'fleet_runtime'`.
+`extra_packages` preserves the path it is given, so `services/runtime/fleet_runtime.py`
+landed at that path *inside* the bundle rather than at its root. Fixed by staging a flat
+bundle directory and deploying from inside it — same family as the Phase 0 finding, where
+the status field said nothing and the detail field said everything.
+
+**A second defect, found by its symptom.** `--reuse` matched nothing and deployed a second
+copy of an engine that already existed, because `display_name` lives on `api_resource`, not
+on the list wrapper — `getattr(wrapper, "display_name", None)` returned `None` for every
+engine. Fixed, and the duplicate deleted.
+
+The `app.py` bundle guard was re-verified rather than assumed: copying `fleet_runtime.py`
+to `app.py` produces the violation with its full explanation, so the check still fires.
+
+### Per-agent IAM — the second layer
+
+Phase 3 proved the **policy** layer denies (`docs/proof/defence-denial.json`). This
+answers a different question: what happens if the interceptor is bypassed?
+
+`infra/iam/scope_agents.py` binds each department engine's Agent Identity principal to
+`roles/storage.objectViewer` on the corpus bucket with an **IAM Condition** limiting it to
+its own prefix. Live on the bucket now (`docs/proof/iam-denial.txt`):
+
+```
+reasoningEngines/4847449348969070592  security-corpus-only
+  resource.name.startsWith(".../objects/security/")
+reasoningEngines/8173357673782181888  legal-corpus-only
+  resource.name.startsWith(".../objects/legal/")
+reasoningEngines/4340794390889889792  engineering-corpus-only
+  resource.name.startsWith(".../objects/engineering/")
+```
+
+The other prefixes are not denied explicitly; they are simply never granted, which is the
+stronger form — there is no deny rule to misconfigure, only an allow that does not reach.
+The orchestrator gets no corpus access at all; the shared evidence agent is scoped by its
+tool argument rather than by IAM, and that asymmetry is recorded as a decision.
+
+**Stated honestly: the binding is proven, the runtime refusal is not yet.** Policy
+Troubleshooter was the intended authoritative check and it rejects object-level resource
+names with `INVALID_RESOURCE_NAME`; after three cycles that line of attack was dropped
+under the five-cycle rule. What exists today is the live policy read back from the bucket,
+which proves the scoping is configured as claimed. A *runtime* 403 — the security engine
+actually being refused a legal object mid-trace — is the missing half and is the first
+task of the next session.
+
+### Exit criteria — status at end of session one
+
+| # | Criterion | Result |
+|---|---|---|
+| 1 | All agents in Agent Registry with distinct identities and versions | **PASS** — five engines, `AGENT_IDENTITY`, distinct `effectiveIdentity` per engine |
+| 2 | SecurityAgent denied the legal corpus at the IAM layer, visible in Cloud Trace | **PARTIAL** — conditioned bindings live and captured; the runtime 403 and its trace are not yet captured |
+| 3 | Full 312-question review by Pub/Sub against the deployed runtime | **NOT DONE** — session two |
+| 4 | Memory Bank migrated to the fleet engine, byte-identical readback | **NOT DONE** — memories still on the Phase 0 probe engine, which is therefore still alive |
+| 5 | Round-2 consistency under fault injection against the deployed fleet | **NOT DONE** — passes against the local fleet (`consistency-followup-drift.json`) |
+| 6 | 22-day resume captured as its own artefact | **NOT DONE** — protected, session two |
+| 7 | Live crash drill | **NOT DONE** — proven in unit tests against the real code path |
+| 8 | Live DLQ drill | **NOT DONE** — proven in unit tests; topic exists |
+| 9 | Live approval | **NOT DONE** |
+| 10 | Cloud Trace full span tree; two planes distinguishable | **NOT DONE** — `enable_tracing=True` is set on every engine |
+| 11 | Agent Gateway integrated or documented in an ADR | **PASS** — ADR-0006 |
+| 12 | `teardown.sh` → `deploy.sh` round trip | **NOT DONE** |
+| 13 | Footage for every section F item | **NOT DONE** |
+| 14 | `make check` green, layering holds, everything pushed | **PASS** — 434 tests |
+| 15 | Cumulative spend stated | **PASS** — see below |
+
+### Cost
+
+Five engine deploys plus the failed one, at `min_instances=0` so nothing bills while idle.
+Deploys themselves are build cost, not runtime. Cumulative spend across every phase remains
+under **$6** of the $150 credit.
+
+### State right now
+
+Session one of Phase 5 landed the deployment substrate: five engines with distinct Agent
+Identities, per-agent IAM scoping live on the corpus bucket, the lease heartbeat that makes
+the 312-question run safe, and the Agent Gateway decision.
+
+**Session two, in the brief's own priority order:** the runtime IAM refusal with its Cloud
+Trace span, the full-scale deployed Pub/Sub run, and the 22-day resume artefact — the three
+protected items — then Memory Bank migration off the probe engine, the Cloud Run deploys
+with Eventarc, the crash and DLQ drills, the approval beat, and the teardown round trip.
+
+**Carried, unchanged:** timers are still not built and remain additive
+(`WorkKind.TIMER_FIRED` is already in the frozen protocol).

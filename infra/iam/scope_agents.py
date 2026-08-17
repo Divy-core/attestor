@@ -40,6 +40,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -71,8 +72,16 @@ def principal_for(resource_name: str, project_number: str) -> str:
     )
 
 
+#: `gcloud` on Windows is a `.cmd` shim, which CreateProcess will not launch directly --
+#: subprocess raises "The system cannot find the file specified" naming nothing useful.
+GCLOUD = shutil.which("gcloud") or shutil.which("gcloud.cmd") or "gcloud"
+
+
 def _run(args: list[str]) -> tuple[int, str]:
-    completed = subprocess.run(args, capture_output=True, text=True, timeout=300)  # noqa: S603
+    resolved = [GCLOUD if a == "gcloud" else a for a in args]
+    completed = subprocess.run(  # noqa: S603
+        resolved, capture_output=True, text=True, timeout=300
+    )
     return completed.returncode, (completed.stdout + completed.stderr).strip()
 
 

@@ -1,0 +1,20 @@
+Per-agent IAM scoping — live bucket policy, 17 Aug 2026
+======================================================
+
+Conditioned bindings actually present on gs://attestor-505506-corpus:
+
+  role       : roles/storage.objectViewer
+  engine     : reasoningEngines/8173357673782181888
+  condition  : legal-corpus-only
+  expression : resource.name.startsWith("projects/_/buckets/attestor-505506-corpus/objects/legal/")
+
+  role       : roles/storage.objectViewer
+  engine     : reasoningEngines/4847449348969070592
+  condition  : security-corpus-only
+  expression : resource.name.startsWith("projects/_/buckets/attestor-505506-corpus/objects/security/")
+
+  role       : roles/storage.objectViewer
+  engine     : reasoningEngines/4340794390889889792
+  condition  : engineering-corpus-only
+  expression : resource.name.startsWith("projects/_/buckets/attestor-505506-corpus/objects/engineering/")
+

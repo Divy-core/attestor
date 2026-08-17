@@ -1,0 +1,44 @@
+{
+  "applied": true,
+  "bindings": [
+    {
+      "note": "no corpus access",
+      "prefix": null,
+      "principal": "principal://agents.global.proj-906988347581.system.id.goog/resources/aiplatform/projects/906988347581/locations/us-central1/reasoningEngines/511608807718125568",
+      "role": "orchestrator"
+    },
+    {
+      "applied": true,
+      "condition": "resource.name.startsWith(\"projects/_/buckets/attestor-505506-corpus/objects/security/\")",
+      "prefix": "security/",
+      "principal": "principal://agents.global.proj-906988347581.system.id.goog/resources/aiplatform/projects/906988347581/locations/us-central1/reasoningEngines/4847449348969070592",
+      "role": "security",
+      "role_granted": "roles/storage.objectViewer"
+    },
+    {
+      "applied": true,
+      "condition": "resource.name.startsWith(\"projects/_/buckets/attestor-505506-corpus/objects/legal/\")",
+      "prefix": "legal/",
+      "principal": "principal://agents.global.proj-906988347581.system.id.goog/resources/aiplatform/projects/906988347581/locations/us-central1/reasoningEngines/8173357673782181888",
+      "role": "legal",
+      "role_granted": "roles/storage.objectViewer"
+    },
+    {
+      "applied": true,
+      "condition": "resource.name.startsWith(\"projects/_/buckets/attestor-505506-corpus/objects/engineering/\")",
+      "prefix": "engineering/",
+      "principal": "principal://agents.global.proj-906988347581.system.id.goog/resources/aiplatform/projects/906988347581/locations/us-central1/reasoningEngines/4340794390889889792",
+      "role": "engineering",
+      "role_granted": "roles/storage.objectViewer"
+    },
+    {
+      "note": "shared reader, scoped by tool argument",
+      "prefix": null,
+      "principal": "principal://agents.global.proj-906988347581.system.id.goog/resources/aiplatform/projects/906988347581/locations/us-central1/reasoningEngines/9024538003355205632",
+      "role": "evidence"
+    }
+  ],
+  "bucket": "attestor-505506-corpus",
+  "project": "attestor-505506",
+  "project_number": "906988347581"
+}

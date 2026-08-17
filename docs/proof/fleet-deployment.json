@@ -2,10 +2,38 @@
   "engines": [
     {
       "created": true,
+      "display_name": "attestor-orchestrator",
+      "resource_name": "projects/906988347581/locations/us-central1/reasoningEngines/511608807718125568",
+      "role": "orchestrator",
+      "seconds": 202.4
+    },
+    {
+      "created": true,
       "display_name": "attestor-security",
-      "resource_name": "projects/906988347581/locations/us-central1/reasoningEngines/3145088689823023104",
+      "resource_name": "projects/906988347581/locations/us-central1/reasoningEngines/4847449348969070592",
       "role": "security",
-      "seconds": 172.8
+      "seconds": 190.1
+    },
+    {
+      "created": true,
+      "display_name": "attestor-legal",
+      "resource_name": "projects/906988347581/locations/us-central1/reasoningEngines/8173357673782181888",
+      "role": "legal",
+      "seconds": 153.5
+    },
+    {
+      "created": true,
+      "display_name": "attestor-engineering",
+      "resource_name": "projects/906988347581/locations/us-central1/reasoningEngines/4340794390889889792",
+      "role": "engineering",
+      "seconds": 166.2
+    },
+    {
+      "created": true,
+      "display_name": "attestor-evidence",
+      "resource_name": "projects/906988347581/locations/us-central1/reasoningEngines/9024538003355205632",
+      "role": "evidence",
+      "seconds": 240.3
     }
   ],
   "identity_type": "AGENT_IDENTITY",
