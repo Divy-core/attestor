@@ -11,8 +11,8 @@ two is gone. On every attempt:
 
 * intake parsed all 312 questions and published triage
 * triage classified all 312 and published **three** drafting partitions
-* **all three partitions were claimed within one second of each other**, by three separate
-  Cloud Run instances
+* **all three partitions were claimed within one second of each other**, and overlapped in
+  time (52.2s / 55.2s / 66.3s pairwise on the 60-question run)
 
 That last point is the thing session two could never achieve. The pull harness dispatched
 one message at a time and synchronously, so the partitions ran in series when they ran at
@@ -103,3 +103,16 @@ The demo quotes the Phase 3 figures for the 312-question claim and says they are
 deployed run is what proves the architecture: real Pub/Sub, real Cloud Run, real push
 subscription, real engines drafting under their own identities, all seven messages, and
 three partitions genuinely overlapping.
+
+## A claim corrected
+
+An earlier draft of this file said the partitions ran "on three separate Cloud Run
+instances". That is almost certainly true — the dispatcher is deployed with
+`--concurrency 1`, so three simultaneous messages cannot share an instance — but it is a
+**deployment fact, not a measurement**, and this artefact cannot show it. The dispatcher
+stamps claims with `WORKER_ID = K_REVISION`, which is the Cloud Run *revision*: all three
+partitions report `attestor-dispatcher-00008-8k8` because they ran on the same revision,
+whatever number of instances served them.
+
+What is measured is the overlap — 52.2s, 55.2s and 66.3s pairwise — which is the property
+that actually matters and the one the pull harness could never produce.

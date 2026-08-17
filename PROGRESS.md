@@ -1961,8 +1961,8 @@ it just copied is one bug away from being an erasure tool.
 
 312 questions were attempted three times on the deployed stack. Every stage **except
 drafting** completed every time, and the failure that ended session two is gone: all three
-drafting partitions were claimed within one second of each other, by three separate Cloud
-Run instances. Under the old pull harness they ran in series when they ran at all.
+drafting partitions were claimed within one second of each other and **overlapped in time**.
+Under the old pull harness they ran in series when they ran at all.
 
 Drafting hit `429 RESOURCE_EXHAUSTED` on
 `Query Reasoning Engine requests per minute per region`. Moving drafting onto the engines

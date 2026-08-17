@@ -1,10 +1,5 @@
 {
   "answers": {
-    "by_confidence": {
-      "high": 27,
-      "low": 31,
-      "medium": 2
-    },
     "citation_rate": 0.4833,
     "flagged_no_evidence": 31,
     "needs_human": 0,
@@ -13,38 +8,25 @@
   },
   "case": "deployed_pubsub_review",
   "concurrency": {
-    "configured_per_partition": 4,
-    "in_process_reference": "7.84 of 8 (Phase 3, local)",
+    "in_process_reference": 7.84,
     "measured": {
       "engineering": {
         "achieved_concurrency": 3.53,
-        "answers": 17,
-        "cited": 7,
-        "flagged_no_evidence": 10,
         "latency_sum_seconds": 247.59,
-        "needs_human": 0,
         "questions": 17,
         "remote_calls": 32,
         "wall_seconds": 70.16
       },
       "legal": {
         "achieved_concurrency": 3.72,
-        "answers": 23,
-        "cited": 12,
-        "flagged_no_evidence": 11,
         "latency_sum_seconds": 365.21,
-        "needs_human": 0,
         "questions": 23,
         "remote_calls": 40,
         "wall_seconds": 98.1
       },
       "security": {
         "achieved_concurrency": 3.97,
-        "answers": 20,
-        "cited": 10,
-        "flagged_no_evidence": 10,
         "latency_sum_seconds": 215.19,
-        "needs_human": 0,
         "questions": 20,
         "remote_calls": 20,
         "wall_seconds": 54.18
@@ -52,13 +34,18 @@
     }
   },
   "execution": {
-    "dispatcher": "Cloud Run attestor-dispatcher, Eventarc push subscription attestor.work.push",
-    "drafting": "Agent Runtime department engines, each under its own Agent Identity",
-    "harness_role": "published one envelope, then observed Firestore"
+    "dispatcher": "Cloud Run (attestor-dispatcher), Eventarc push subscription",
+    "drafting": "Agent Runtime department engines",
+    "harness_role": "published one envelope, then observed"
   },
   "final_state": "assembling",
+  "gcs_uri": "gs://attestor-505506-uploads/questionnaires/deployed-88fc084d/attestor-slice-60.xlsx",
   "partitions": {
     "ack_deadline_seconds": 600,
+    "distinct_workers": [
+      "attestor-dispatcher-00008-8k8"
+    ],
+    "in_process_estimate_seconds": 269.0,
     "lease_seconds": 900,
     "longest_seconds": 99.1,
     "margin_seconds": 500.9,
@@ -66,40 +53,41 @@
       "engineering|security": 55.2,
       "legal|engineering": 66.3,
       "legal|security": 52.2
-    },
-    "partitions_overlapped": true
+    }
   },
-  "pass_partial": true,
-  "redeliveries": [
+  "pass": false,
+  "questions_requested": 60,
+  "redelivered_claims": [
     {
       "attempts": 2,
-      "kind": "draft_answer",
+      "dedup_key": "dfeed9f7551aa74d",
       "state": "completed"
     },
     {
       "attempts": 2,
-      "kind": "draft_answer",
+      "dedup_key": "69d697fe5100e206",
       "state": "completed"
     },
     {
       "attempts": 3,
-      "kind": "draft_answer",
+      "dedup_key": "67c323338d6232fd",
       "state": "completed"
     },
     {
       "attempts": 5,
-      "kind": "close_round",
+      "dedup_key": "f34cbb4033682e28",
       "state": "failed"
     }
   ],
   "review_id": "rev-deployed-f4ea2875",
   "round_id": "rev-deployed-f4ea2875-r1",
+  "run_id": "run-1786965056",
   "scale": 60,
-  "stages_completed": "6 of 7 -- close_round exhausted 5 attempts writing commitments to Memory Bank (same quota)",
+  "stages_completed": "6 of 7 -- close_round exhausted 5 attempts writing 60 commitments to Memory Bank, one engine call each, against the same quota",
   "trace": [
     {
       "attempts": 1,
-      "failure_reason": null,
+      "dedup_key": "26f3a983a8d8e3d0",
       "kind": "intake_document",
       "n": 1,
       "partition": null,
@@ -109,7 +97,7 @@
     },
     {
       "attempts": 1,
-      "failure_reason": null,
+      "dedup_key": "b3a372715c376141",
       "kind": "triage_questions",
       "n": 2,
       "partition": null,
@@ -119,7 +107,7 @@
     },
     {
       "attempts": 2,
-      "failure_reason": "EngineUnavailable: engine for 'legal' failed on b410aa8492a452f3 after 4 attempt(s): ClientError: 429 RESOURCE_EXHAUSTED. {'error': {'code': 429, 'message': \"Quota exceeded for quota metric 'Query Reasoning Engine requests' and limit 'Query Reasoning Engine requests per minute per region' of service",
+      "dedup_key": "dfeed9f7551aa74d",
       "kind": "draft_answer",
       "n": 3,
       "partition": "legal",
@@ -129,7 +117,7 @@
     },
     {
       "attempts": 2,
-      "failure_reason": "EngineUnavailable: engine for 'engineering' failed on a112b4b9c83902a2 after 4 attempt(s): ClientError: 429 RESOURCE_EXHAUSTED. {'error': {'code': 429, 'message': \"Quota exceeded for quota metric 'Query Reasoning Engine requests' and limit 'Query Reasoning Engine requests per minute per region' of s",
+      "dedup_key": "69d697fe5100e206",
       "kind": "draft_answer",
       "n": 4,
       "partition": "engineering",
@@ -139,7 +127,7 @@
     },
     {
       "attempts": 3,
-      "failure_reason": "EngineUnavailable: engine for 'security' failed on 58cf05a1fdc0d8e8 after 4 attempt(s): ClientError: 429 RESOURCE_EXHAUSTED. {'error': {'code': 429, 'message': \"Quota exceeded for quota metric 'Query Reasoning Engine requests' and limit 'Query Reasoning Engine requests per minute per region' of serv",
+      "dedup_key": "67c323338d6232fd",
       "kind": "draft_answer",
       "n": 5,
       "partition": "security",
@@ -149,7 +137,7 @@
     },
     {
       "attempts": 1,
-      "failure_reason": null,
+      "dedup_key": "53d3b826c609e04c",
       "kind": "assemble_round",
       "n": 6,
       "partition": null,
@@ -159,7 +147,7 @@
     },
     {
       "attempts": 5,
-      "failure_reason": "ContextUnavailable: could not write commitment e9a88f7cf1df7672 to Memory Bank: ClientError: 400 INVALID_ARGUMENT. {'error': {'code': 400, 'message': 'Fact length must be less than 2048 characters.', 'status': 'INVALID_ARGUMENT'}} [question_id='250b1269d15f11d4' review_id='rev-deployed-f4ea2875']",
+      "dedup_key": "f34cbb4033682e28",
       "kind": "close_round",
       "n": 7,
       "partition": null,
@@ -168,5 +156,7 @@
       "worker": "attestor-dispatcher-00008-8k8"
     }
   ],
-  "why_not_312": "docs/proof/deployed-run-quota-ceiling.md -- Agent Runtime per-minute regional query quota"
+  "wall_seconds": 1155.2,
+  "why_not_312": "docs/proof/deployed-run-quota-ceiling.md -- Agent Runtime per-minute regional query quota",
+  "worker_id_caveat": "distinct_workers reports K_REVISION, which is the Cloud Run REVISION and not the instance -- it cannot show how many instances served the run. What is measured is that the three partitions overlapped in time (see partitions.overlap_seconds); that they were separate instances follows from --concurrency 1 being configured, which is a deployment fact rather than something this artefact demonstrates."
 }
