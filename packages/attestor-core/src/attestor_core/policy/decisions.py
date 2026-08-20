@@ -23,6 +23,7 @@ from attestor_core.domain.enums import (
     ContradictionVerdict,
     Department,
     Residency,
+    SupportVerdict,
     ToolDecision,
 )
 
@@ -185,6 +186,11 @@ class ConfidenceSignals(_Frozen):
     contradiction: ContradictionVerdict = ContradictionVerdict.NO_CONTRADICTION
     #: The question spans departments, so no single scoped agent saw the whole picture.
     cross_departmental: bool = False
+    #: Whether a SEPARATE agent found the answer's claims in the passages it cites.
+    #: Defaults to UNKNOWN rather than SUPPORTED: a check that has not run is not a check
+    #: that passed, and defaulting the other way would silently grant every answer
+    #: written before the verifier existed a clean bill it never earned.
+    support: SupportVerdict = SupportVerdict.UNKNOWN
 
 
 # -----------------------------------------------------------------------------------
@@ -244,6 +250,10 @@ def compute_confidence(signals: ConfidenceSignals) -> Confidence:
       the drafting agent itself signalled doubt in the text, which we honour.
     * **Cross-departmental caps at MEDIUM.** No single scoped agent saw the whole
       picture, so nobody is in a position to be highly confident.
+    * **The verifier's verdict.** ``UNSUPPORTED`` is LOW -- a separate agent read the cited
+      passages and did not find the claim in them. ``PARTIALLY_SUPPORTED`` and ``UNKNOWN``
+      cap at MEDIUM: HIGH requires that somebody who did not write the answer has confirmed
+      it is grounded, and "the check did not run" is not that confirmation.
     * **Everything else -> MEDIUM.**
 
     ``requires_human`` then escalates LOW answers, so the effect of this function is to
@@ -258,6 +268,25 @@ def compute_confidence(signals: ConfidenceSignals) -> Confidence:
     if signals.max_retrieval_score < _WEAK_SCORE:
         return Confidence.LOW
 
+    # The verifier's verdict, and the asymmetry in how the four values are treated.
+    #
+    # UNSUPPORTED is LOW, full stop: a separate agent read the cited passages and did not
+    # find the claim in them, which is the strongest negative signal available and strictly
+    # better evidence than any retrieval score, because retrieval scores are a property of
+    # the *question* and this is a property of the prose.
+    #
+    # UNKNOWN caps at MEDIUM rather than dropping to LOW, and that is a deliberate
+    # departure from how `contradiction` treats its UNKNOWN. The reasoning differs because
+    # the failure differs: an unrun consistency check means round two might contradict
+    # round one in front of the customer, which is unrecoverable, whereas an unrun
+    # groundedness check leaves an answer with citations, retrieval scores and a
+    # contradiction verdict still measured. Dropping to LOW would escalate every answer in
+    # the round the moment the verifier engine was unreachable -- a fail-closed that stops
+    # the product rather than protecting it. Capping says: still releasable, never HIGH,
+    # and `verifier_unavailable` in the audit trail says why.
+    if signals.support is SupportVerdict.UNSUPPORTED:
+        return Confidence.LOW
+
     strong_single = signals.max_retrieval_score >= _STRONG_MAX_SCORE
     corroborated = (
         signals.citation_count >= _CORROBORATING_CITATIONS
@@ -266,6 +295,10 @@ def compute_confidence(signals: ConfidenceSignals) -> Confidence:
 
     if (strong_single or corroborated) and not signals.agent_hedged:
         if signals.cross_departmental:
+            return Confidence.MEDIUM
+        if signals.support is not SupportVerdict.SUPPORTED:
+            # PARTIALLY_SUPPORTED and UNKNOWN both land here. An answer nobody has
+            # confirmed is grounded, or which is known to overreach, is not a HIGH.
             return Confidence.MEDIUM
         return Confidence.HIGH
 
@@ -291,15 +324,18 @@ class AnswerFacts(_Frozen):
     contradiction: ContradictionVerdict = ContradictionVerdict.NO_CONTRADICTION
     #: Question touches a commitment made in an earlier round.
     touches_prior_commitment: bool = False
+    #: The verifier's verdict. Defaults to UNKNOWN for the same reason as on
+    #: `ConfidenceSignals`: an unrun check is not a passed one.
+    support: SupportVerdict = SupportVerdict.UNKNOWN
 
 
 def requires_human(facts: AnswerFacts, prior_commitments: int = 0) -> bool:
     """Decide whether an answer must be held for human approval.
 
     Escalates when: confidence is LOW, there is no supporting evidence, Model Armor
-    quarantined it, a prior-round commitment may be contradicted, or the question
-    touches a commitment we have made before and there are commitments on file to
-    contradict.
+    quarantined it, a prior-round commitment may be contradicted, the verifier found the
+    answer unsupported by its own citations, or the question touches a commitment we have
+    made before and there are commitments on file to contradict.
 
     The last clause is the consistency guarantee. Answering round 2 inconsistently with
     round 1 fails the audit, so any answer in the blast radius of an earlier promise
@@ -312,6 +348,12 @@ def requires_human(facts: AnswerFacts, prior_commitments: int = 0) -> bool:
         return True
 
     if facts.contradiction is not ContradictionVerdict.NO_CONTRADICTION:
+        return True
+
+    # An answer a separate agent could not find in its own citations. Escalated on its own
+    # rather than only through the confidence rating, so the reason survives into the queue
+    # instead of arriving as an undifferentiated LOW.
+    if facts.support is SupportVerdict.UNSUPPORTED:
         return True
 
     if facts.touches_prior_commitment and prior_commitments > 0:

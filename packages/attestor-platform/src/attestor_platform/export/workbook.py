@@ -27,7 +27,13 @@ import logging
 from pathlib import Path
 from typing import IO, TYPE_CHECKING, Any
 
-from attestor_platform.export.model import RELEASE_RULE, ExportBundle, ExportRow, ReleaseState
+from attestor_core.domain import SupportVerdict
+from attestor_platform.export.model import (
+    RELEASE_RULE,
+    ExportBundle,
+    ExportRow,
+    ReleaseState,
+)
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from openpyxl.worksheet.worksheet import Worksheet
@@ -42,6 +48,11 @@ APPENDED_HEADERS = (
     "Owning department",
     "Citations",
     "Evidence (document — section — relevance)",
+    # Who checked the answer against those passages, and what they found. A column rather
+    # than a footnote, because "a separate agent read this and agreed" is the strongest
+    # thing this file can say about an answer no human reviewed -- and its absence, on the
+    # rows where nobody checked, is the honest thing to say about those.
+    "Verified by",
 )
 
 #: Row 1 is the header row, matching what ``parse_xlsx`` assumes when it reads the file.
@@ -61,6 +72,7 @@ _FILLS: dict[ReleaseState, str] = {
     ReleaseState.REJECTED: "FFF8E2E6",
     ReleaseState.UNANSWERED: "FFF2F3F5",
     ReleaseState.UNSUPPORTED: "FFF8E2E6",
+    ReleaseState.UNGROUNDED: "FFF8E2E6",
 }
 
 #: A cell holding more than this is truncated with a marker. Excel's hard limit is 32,767
@@ -88,6 +100,23 @@ def _evidence_column(row: ExportRow) -> str:
     return _clip("\n".join(lines))
 
 
+def _verification_column(row: ExportRow) -> str:
+    """Who checked it, and what they concluded. Empty is never rendered as a pass.
+
+    An answer nobody verified says so. That row is still sendable -- citations, retrieval
+    scores and a contradiction check all still stand behind it -- but the customer is told
+    which of the two it is, because "grounded, and someone confirmed it" and "grounded, as
+    far as anyone knows" are different assurances.
+    """
+    answer = row.answer
+    if answer is None:
+        return ""
+    if answer.support is SupportVerdict.UNKNOWN:
+        return "Not verified — no separate check was performed on this answer"
+    who = answer.verified_by or "a separate agent"
+    return f"{answer.support.value.replace('_', ' ')} — checked by {who}"
+
+
 def _values(row: ExportRow) -> list[str]:
     answer = row.answer
     return [
@@ -97,6 +126,7 @@ def _values(row: ExportRow) -> list[str]:
         row.question.department.value,
         str(row.citation_count),
         _evidence_column(row),
+        _verification_column(row),
     ]
 
 

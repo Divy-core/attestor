@@ -90,6 +90,10 @@ ARMOR_SCREENED = "armor_screened"
 ARMOR_BLOCKED = "armor_blocked"
 TOOL_DENIED = "tool_denied"
 ANSWER_DRAFTED = "answer_drafted"
+#: A SEPARATE agent checked the answer against its own citations. Its own kind rather than
+#: a field on `answer_drafted`, because it is a different actor making a different claim,
+#: and folding it in would attribute the verdict to the agent that wrote the answer.
+ANSWER_VERIFIED = "answer_verified"
 CONSISTENCY_CHECKED = "consistency_checked"
 ANSWER_ASSEMBLED = "answer_assembled"
 HUMAN_REQUIRED = "human_required"

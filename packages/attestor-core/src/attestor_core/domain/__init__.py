@@ -8,6 +8,7 @@ from attestor_core.domain.enums import (
     Department,
     Framework,
     Residency,
+    SupportVerdict,
     ToolDecision,
 )
 from attestor_core.domain.ids import make_dedup_key, make_question_id, normalize_question_text
@@ -38,6 +39,7 @@ __all__ = [
     "Review",
     "Round",
     "SourceRef",
+    "SupportVerdict",
     "ToolDecision",
     "make_dedup_key",
     "make_question_id",

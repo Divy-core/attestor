@@ -263,6 +263,9 @@ export type Citation = {
   retrieved_at: string;
 };
 
+/** Mirrors `attestor_core.domain.enums.SupportVerdict`. */
+export type SupportVerdict = 'supported' | 'partially_supported' | 'unsupported' | 'unknown';
+
 export type AnswerRow = {
   question_id: string;
   round_id: string;
@@ -271,6 +274,16 @@ export type AnswerRow = {
   confidence: Confidence;
   status: AnswerStatus;
   authored_by: string;
+  /**
+   * The agent that checked this answer against its own citations, and its verdict.
+   *
+   * Empty and `unknown` for every answer written before the verifier existed, which is the
+   * honest reading of those: nobody checked them. The detail pane says so rather than
+   * leaving the field out, because an absent verification and a passed one look identical
+   * when only the passes are rendered.
+   */
+  verified_by?: string;
+  support?: SupportVerdict;
   created_at: string;
 };
 

@@ -30,10 +30,12 @@ from attestor_core.domain import (
     Review,
     Round,
     SourceRef,
+    SupportVerdict,
 )
 from attestor_core.domain.enums import Framework, Residency, ReviewState
 from attestor_platform.export import build_bundle, build_evidence_pack, fill_workbook
-from attestor_platform.export.model import ReleaseState, release_state
+from attestor_platform.export.model import ExportRow, ReleaseState, release_state
+from attestor_platform.export.workbook import _verification_column
 
 SHEET = "CAIQ v4"
 
@@ -329,3 +331,78 @@ class TestFilenames:
         review = _review().model_copy(update={"customer": customer})
         bundle = build_bundle(review, _round(), [], [])
         assert bundle.filename("xlsx") == expected
+
+
+class TestVerificationInTheDeliverable:
+    """What the customer is told about who checked an answer.
+
+    The export is where a groundedness check either means something or does not. A verdict
+    that stays in the audit trail is a fact about our infrastructure; a verdict in the
+    workbook is a statement to a customer, and the two answers below are different
+    assurances that must not be rendered as the same one.
+    """
+
+    def _answer(self, **overrides: object) -> Answer:
+        fields: dict[str, object] = {
+            "question_id": "a" * 16,
+            "round_id": "rev-x-r1",
+            "text": "Yes, customer data is encrypted at rest.",
+            "citations": [_citation()],
+            "confidence": Confidence.HIGH,
+            "status": AnswerStatus.DRAFTED,
+            "authored_by": "SecurityAgent",
+        }
+        fields.update(overrides)
+        return Answer(**fields)  # type: ignore[arg-type]
+
+    def test_an_ungrounded_answer_is_not_sendable(self) -> None:
+        answer = self._answer(
+            support=SupportVerdict.UNSUPPORTED, verified_by="attestor-verifier"
+        )
+        state = release_state(answer)
+        assert state is ReleaseState.UNGROUNDED
+        assert not state.sendable
+
+    def test_a_human_approval_outranks_the_verifier(self) -> None:
+        """A named person took responsibility, and the verdict is why they were asked.
+
+        Letting a model's judgement override a human's signature would make the approval
+        queue pointless: the operator would approve an answer and the export would refuse
+        it anyway, with no way to resolve the disagreement.
+        """
+        answer = self._answer(
+            status=AnswerStatus.APPROVED,
+            support=SupportVerdict.UNSUPPORTED,
+            verified_by="attestor-verifier",
+        )
+        state = release_state(answer)
+        assert state is ReleaseState.APPROVED
+        assert state.sendable
+
+    def test_an_unverified_answer_is_still_sendable_and_says_so(self) -> None:
+        # UNKNOWN is the default, which every answer written before the verifier existed
+        # carries. It must not read as a pass, and it must not hold back the deliverable.
+        answer = self._answer()
+        assert answer.support is SupportVerdict.UNKNOWN
+        assert release_state(answer) is ReleaseState.SYSTEM_BACKED
+        assert _verification_column(
+            ExportRow(
+                question=_question("Do you encrypt at rest?", 2),
+                answer=answer,
+                release=ReleaseState.SYSTEM_BACKED,
+            )
+        ).startswith("Not verified")
+
+    def test_a_verified_answer_names_the_agent_that_checked_it(self) -> None:
+        answer = self._answer(
+            support=SupportVerdict.SUPPORTED, verified_by="attestor-verifier/6871..."
+        )
+        rendered = _verification_column(
+            ExportRow(
+                question=_question("Do you encrypt at rest?", 2),
+                answer=answer,
+                release=ReleaseState.SYSTEM_BACKED,
+            )
+        )
+        assert "supported" in rendered
+        assert "attestor-verifier/6871..." in rendered

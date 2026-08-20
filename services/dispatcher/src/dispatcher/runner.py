@@ -30,6 +30,7 @@ from typing import Any, Protocol
 from attestor_core.domain import Answer, AnswerStatus, Commitment, Department, Question
 from attestor_core.domain.ids import make_dedup_key
 from attestor_fleet.agents.inbox import InboxAgent, InboxVerdict
+from attestor_fleet.agents.verifier import distribution
 from attestor_platform.config import memory_bank_engine_id
 from attestor_platform.firestore import AnswerRepository, CommitmentRepository
 from attestor_platform.gmail import InboundMessage
@@ -131,6 +132,22 @@ class PipelineFleetRunner:
             self._commitments = CommitmentRepository()
         return self._commitments
 
+    def _build_verifier(self) -> Any:
+        """The agent that checks the work, bound to the identity it verifies under.
+
+        `ATTESTOR_VERIFIER_IDENTITY` names the deployed verifier engine. When it is unset
+        the verifier still runs and still refuses to review its own department's work --
+        `assert_separation` compares against the drafting agent's name either way -- but the
+        identity recorded on the audit event says `VerifierAgent (in-process)` rather than
+        naming an engine. That distinction is the difference between "a separate component
+        checked this" and "a separate credential checked this", and only one of those is a
+        control an auditor would accept, so the trail must not blur them.
+        """
+        from attestor_fleet.agents.verifier import VerifierAgent
+
+        identity = os.environ.get("ATTESTOR_VERIFIER_IDENTITY", "").strip()
+        return VerifierAgent(identity=identity or "VerifierAgent (in-process)")
+
     def _pipeline(self, review_id: str, run_id: str, round_id: str | None = None) -> Any:
         from attestor_fleet.callbacks.audit import FirestoreAuditSink
         from attestor_fleet.callbacks.budget import BudgetLedger
@@ -221,6 +238,10 @@ class PipelineFleetRunner:
             # statements this run did NOT make; `confirmed` is the number of genuine ones.
             "empty_retrievals_recovered": getattr(pipeline, "empty_retrievals_recovered", 0),
             "empty_retrievals_confirmed": getattr(pipeline, "empty_retrievals_confirmed", 0),
+            # The grounding claim, counted rather than asserted. `unknown` is reported
+            # alongside the rest and never folded away: "0 unsupported of 200" and "0
+            # unsupported of 200, of which 180 were never checked" are different sentences.
+            "support": distribution([o.support for o in outcomes if o.support is not None]),
         }
         return [o.answer for o in outcomes if o.answer is not None]
 
@@ -330,6 +351,7 @@ class AgentRuntimeFleetRunner(PipelineFleetRunner):
                 audit=FirestoreAuditSink(),
                 ledger=BudgetLedger(review_id=review_id),
                 prior_commitments=self.load_commitments(review_id),
+                verifier=self._build_verifier(),
             )
         return self._pipelines[key]
 

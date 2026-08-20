@@ -14,6 +14,7 @@ from attestor_core.domain.enums import (
     ContradictionVerdict,
     Department,
     Residency,
+    SupportVerdict,
     ToolDecision,
 )
 from attestor_core.policy import (
@@ -105,11 +106,24 @@ class TestComputeConfidence:
         assert compute_confidence(ConfidenceSignals()) is Confidence.LOW
 
     def test_strong_single_hit_is_high(self) -> None:
-        s = ConfidenceSignals(citation_count=1, max_retrieval_score=0.9, mean_retrieval_score=0.9)
+        # `support` is explicit here and in the test below, and it was not before Phase 7.
+        # HIGH now requires that an agent which did not write the answer confirmed it is
+        # grounded in its own citations; the default is UNKNOWN, which caps at MEDIUM.
+        s = ConfidenceSignals(
+            citation_count=1,
+            max_retrieval_score=0.9,
+            mean_retrieval_score=0.9,
+            support=SupportVerdict.SUPPORTED,
+        )
         assert compute_confidence(s) is Confidence.HIGH
 
     def test_corroborated_moderate_hits_are_high(self) -> None:
-        s = ConfidenceSignals(citation_count=3, max_retrieval_score=0.70, mean_retrieval_score=0.65)
+        s = ConfidenceSignals(
+            citation_count=3,
+            max_retrieval_score=0.70,
+            mean_retrieval_score=0.65,
+            support=SupportVerdict.SUPPORTED,
+        )
         assert compute_confidence(s) is Confidence.HIGH
 
     def test_weak_best_score_is_low(self) -> None:

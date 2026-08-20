@@ -29,7 +29,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum
 
-from attestor_core.domain import Answer, AnswerStatus, Question, Review, Round
+from attestor_core.domain import Answer, AnswerStatus, Question, Review, Round, SupportVerdict
 
 #: Stated on the cover of both formats. The customer is told the rule rather than left to
 #: infer it from a column of words.
@@ -38,7 +38,10 @@ RELEASE_RULE = (
     "off by a named human. An answer marked drafted with citations is grounded in retrieved "
     "evidence and was not individually reviewed — the passages it relies on are listed "
     "beside it, with the document, section and relevance score, so the claim can be checked "
-    "rather than trusted. An answer marked held, no evidence, quarantined or rejected must "
+    "rather than trusted. Every drafted answer was also read by a separate agent — one that "
+    "did not write it and cannot reach the corpus — which reports whether the cited passages "
+    "actually carry the claim; where they do not, the answer is marked as such and is not "
+    "sendable. An answer marked held, no evidence, quarantined, ungrounded or rejected must "
     "not be sent to a customer as an answer."
 )
 
@@ -63,6 +66,11 @@ class ReleaseState(StrEnum):
     #: `Answer` validator forbids this shape, so reaching it means the validator was
     #: bypassed — and the export refuses to call it sendable rather than trusting the field.
     UNSUPPORTED = "No — claims support it does not have"
+    #: Cited, but a separate agent read the passages and did not find the claim in them.
+    #: Distinct from UNSUPPORTED above, which is a *structural* failure — this one is a
+    #: judgement, made by an identity that is named in the evidence pack, and the customer
+    #: is entitled to the difference.
+    UNGROUNDED = "No — the cited passages do not support this"
 
     @property
     def sendable(self) -> bool:
@@ -77,10 +85,14 @@ class ReleaseState(StrEnum):
 def release_state(answer: Answer | None) -> ReleaseState:
     """Map one answer onto what a customer may do with it.
 
-    Reads the citations as well as the status, for the same reason the console's
-    ``lib/states.ts`` does: an answer with no citations is never presented as supported,
-    whatever its status field says. The status is a claim; the citations are the evidence for
-    it, and where they disagree the evidence wins.
+    Reads the citations and the verifier's verdict as well as the status, for the same
+    reason the console's ``lib/states.ts`` does: an answer with no citations is never
+    presented as supported, whatever its status field says. The status is a claim; the
+    citations are the evidence for it, and where they disagree the evidence wins.
+
+    An answer the verifier found ``UNSUPPORTED`` is not sendable either — but a *human's*
+    approval outranks that verdict, because a named person has taken responsibility and the
+    verdict is why the queue put it in front of them in the first place.
 
     Raises:
         ValueError: on an ``AnswerStatus`` this function does not handle. A new status that
@@ -108,6 +120,12 @@ def release_state(answer: Answer | None) -> ReleaseState:
 
     if claimed.sendable and not answer.citations:
         return ReleaseState.UNSUPPORTED
+
+    # The verifier's judgement overrides a `drafted` status, but never a human's approval.
+    # A named person who approved an answer has taken responsibility for it, and a model's
+    # groundedness verdict does not outrank that -- it is *why* the queue showed it to them.
+    if claimed is ReleaseState.SYSTEM_BACKED and answer.support is SupportVerdict.UNSUPPORTED:
+        return ReleaseState.UNGROUNDED
     return claimed
 
 

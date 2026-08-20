@@ -49,7 +49,18 @@ DEPARTMENT_ROLES: dict[str, Department] = {
 }
 
 #: Display names, and therefore Agent Registry entries.
-ROLES: tuple[str, ...] = ("orchestrator", "security", "legal", "engineering", "evidence")
+ROLES: tuple[str, ...] = (
+    "orchestrator",
+    "security",
+    "legal",
+    "engineering",
+    "evidence",
+    # Deployed as its own engine, with its own Agent Identity, and that is the whole
+    # point: separation of duties enforced by a credential rather than by a prompt. An
+    # auditor does not accept a control tested by the person who operates it, and this is
+    # the one role that must not be a mode of another agent.
+    "verifier",
+)
 
 
 # ---------------------------------------------------------------------------------
@@ -262,6 +273,24 @@ def build_agent(role: str) -> Any:
             description="Shared retrieval agent. Returns cited passages, never opinions.",
             instruction=_EVIDENCE_INSTRUCTION,
             tools=[search_any_corpus],
+        )
+
+    if role == "verifier":
+        # No corpus tool of any kind, deliberately. The verifier is given the passages the
+        # drafting agent chose to stand behind and is asked whether they carry the answer.
+        # Handing it retrieval would let it go and find a better citation, which is a
+        # different and much weaker question -- and would make it an author again.
+        from attestor_fleet.agents.verifier import PROMPT
+
+        return LlmAgent(
+            name="verifier_agent",
+            model=gemini_model(REASONING_MODEL),
+            description=(
+                "Checks a drafted answer against the passages it cites. Reports whether "
+                "every claim traces to one. Never rewrites, never retrieves."
+            ),
+            instruction=PROMPT.split("QUESTION:")[0].strip(),
+            tools=[],
         )
 
     if role == "orchestrator":

@@ -21,6 +21,7 @@ from attestor_core.domain.enums import (
     Framework,
     Residency,
     ReviewState,
+    SupportVerdict,
 )
 from attestor_core.domain.ids import make_question_id
 from attestor_core.errors import EvidenceMissing
@@ -165,6 +166,17 @@ class Answer(_Mutable):
     status: AnswerStatus = AnswerStatus.DRAFT
     #: Which agent authored it, e.g. "SecurityAgent". Part of the audit trail.
     authored_by: str
+    #: Which agent checked it against its own citations, and what that agent concluded.
+    #:
+    #: On the answer rather than only in the audit trail, for the same reason `authored_by`
+    #: is: the export has to mark an unverified answer as unverified when it goes back to
+    #: the customer, and reconstructing that from an event log at render time would make
+    #: the deliverable depend on a query rather than on the record.
+    #:
+    #: `verified_by` is empty and `support` is UNKNOWN for every answer written before the
+    #: verifier existed, which is the honest reading of those answers: nobody checked them.
+    verified_by: str = ""
+    support: SupportVerdict = SupportVerdict.UNKNOWN
     created_at: datetime = Field(default_factory=_utcnow)
 
     #: Statuses that may legitimately carry no citations. Everything else must cite.

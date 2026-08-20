@@ -27,11 +27,13 @@ from typing import Any
 from attestor_core.domain import (
     Answer,
     AnswerStatus,
+    Citation,
     Confidence,
     ContradictionVerdict,
     Department,
     Evidence,
     Question,
+    SupportVerdict,
 )
 from attestor_core.errors import PolicyViolation
 from attestor_core.policy import (
@@ -40,9 +42,11 @@ from attestor_core.policy import (
     compute_confidence,
     requires_human,
 )
+from attestor_fleet.agents.verifier import VerificationResult, VerifierAgent
 from attestor_fleet.callbacks.audit import (
     ANSWER_ASSEMBLED,
     ANSWER_DRAFTED,
+    ANSWER_VERIFIED,
     ARMOR_BLOCKED,
     CONSISTENCY_CHECKED,
     EVIDENCE_RETRIEVED,
@@ -120,6 +124,9 @@ class QuestionOutcome:
     constrained: bool = False
     error: str | None = None
     draft_seconds: float = 0.0
+    #: What the verifier concluded, and who concluded it. `None` only for outcomes that
+    #: never reached drafting -- a blocked question has nothing to verify.
+    support: VerificationResult | None = None
 
 
 @dataclass
@@ -202,9 +209,16 @@ class ReviewPipeline:
         screen_ingress: bool = True,
         screen_tool_output: bool = True,
         round_id: str | None = None,
+        verifier: VerifierAgent | None = None,
     ) -> None:
         self.review_id = review_id
         self.run_id = run_id
+        #: The agent that checks the work. Injected rather than constructed here, so the
+        #: deployed path can hand in one bound to the verifier engine's own Agent Identity
+        #: and the local harness can hand in one that is honest about being in-process.
+        #: `None` disables verification, and every answer then carries `UNKNOWN` -- which
+        #: caps confidence at MEDIUM rather than silently reading as verified.
+        self.verifier = verifier
         #: Which round these answers belong to. Defaults to `run_id`, which is what this
         #: stamped unconditionally until Phase 5 session three -- and that was a real
         #: defect, invisible locally and fatal once the answers round-tripped through
@@ -627,8 +641,18 @@ class ReviewPipeline:
         #: -- especially then, because that is the moment the constraint did its work.
         outcome.constrained = constrained
 
-        # --- confidence, computed never generated -------------------------------------
+        # --- verification, by an agent that did not write it ---------------------------
+        #
+        # Retrieval scores say how well a passage matched the QUESTION. This says whether
+        # the sentences the drafting agent wrote are carried by the passages it chose to
+        # stand behind, which is a different question and the one a reviewer asks. The
+        # separation is enforced on identity inside `verify`, not by this call site.
         citations = [e.to_citation(e.content[:400]) for e in evidence]
+        authored_by = f"{department.value.capitalize()}Agent"
+        support = self._verify(question, text, citations, authored_by)
+        outcome.support = support
+
+        # --- confidence, computed never generated -------------------------------------
         scores = [c.retrieval_score for c in citations]
         signals = ConfidenceSignals(
             citation_count=len(citations),
@@ -637,6 +661,7 @@ class ReviewPipeline:
             agent_hedged=is_hedged(text),
             contradiction=verdict,
             cross_departmental=question.department is Department.UNASSIGNED,
+            support=support.verdict,
         )
         confidence = compute_confidence(signals)
 
@@ -645,6 +670,7 @@ class ReviewPipeline:
             citation_count=len(citations),
             contradiction=verdict,
             touches_prior_commitment=bool(commitments),
+            support=support.verdict,
         )
         escalate = requires_human(facts, prior_commitments=len(self.prior_commitments))
 
@@ -655,12 +681,47 @@ class ReviewPipeline:
             citations=citations,
             confidence=confidence,
             status=AnswerStatus.NEEDS_HUMAN if escalate else AnswerStatus.DRAFTED,
-            authored_by=f"{department.value.capitalize()}Agent",
+            authored_by=authored_by,
+            verified_by=support.verified_by,
+            support=support.verdict,
         )
         outcome.needs_human = escalate
         outcome.draft_seconds = time.perf_counter() - started
         self._audit_answer(outcome)
         return outcome
+
+    def _verify(
+        self,
+        question: Question,
+        text: str,
+        citations: list[Citation],
+        authored_by: str,
+    ) -> VerificationResult:
+        """Ask the verifier, and never let its failure fail the answer.
+
+        A `PolicyViolation` from `assert_separation` is the one exception that is allowed
+        to propagate, because it means the fleet is misconfigured in a way that invalidates
+        the control -- and a misconfigured control that keeps running is the thing this
+        component exists to prevent.
+        """
+        if self.verifier is None:
+            return VerificationResult(
+                verdict=SupportVerdict.UNKNOWN,
+                reason="No verifier is configured for this pipeline.",
+                passages=len(citations),
+            )
+        result = self.verifier.verify(
+            question=question.text, answer=text, citations=citations, drafted_by=authored_by
+        )
+        self.audit.write(
+            kind=ANSWER_VERIFIED,
+            review_id=self.review_id,
+            run_id=self.run_id,
+            question_id=question.question_id,
+            actor=result.verified_by or "VerifierAgent",
+            detail={**result.as_detail(), "drafted_by": authored_by},
+        )
+        return result
 
     def _no_evidence_answer(self, question: Question) -> Answer:
         """The system saying it does not know. Zero citations is legal ONLY here."""

@@ -29,6 +29,7 @@ import logging
 from html import escape
 from typing import TYPE_CHECKING, Any
 
+from attestor_core.domain import SupportVerdict
 from attestor_platform.export.model import RELEASE_RULE, ExportBundle, ExportRow
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
@@ -235,6 +236,15 @@ def _block(row: ExportRow, index: int, styles: dict[str, Any]) -> list[Flowable]
                 + (
                     f" · confidence {row.answer.confidence.value}"
                     f" · drafted by {row.answer.authored_by}"
+                    # Two agents named on every block, or an explicit statement that only
+                    # one was involved. A security reviewer reading this pack is entitled
+                    # to know whether anybody other than the author looked at the claim.
+                    + (
+                        f" · verified by {row.answer.verified_by or 'a separate agent'}"
+                        f" ({row.answer.support.value.replace('_', ' ')})"
+                        if row.answer.support is not SupportVerdict.UNKNOWN
+                        else " · not verified"
+                    )
                     if row.answer
                     else ""
                 )

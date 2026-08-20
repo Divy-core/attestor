@@ -133,6 +133,38 @@ class ArmorDecision(StrEnum):
     DENY = "deny"
 
 
+class SupportVerdict(StrEnum):
+    """Whether a drafted answer is actually supported by the passages it cites.
+
+    The check this exists for is not "did retrieval return something" -- retrieval scores
+    already answer that, and they answer it about the *question*, not about the sentences
+    the model then wrote. An answer can cite five passages at 0.95 relevance and still
+    assert a control none of them mentions, because relevance is a property of the
+    retrieval and groundedness is a property of the prose.
+
+    Obtained by a model call, like `ContradictionVerdict`, and for the same reason it lives
+    here while being computed elsewhere: `policy` decides what to do given a verdict and
+    stays testable with no network.
+
+    The agent that produces this verdict is **not** the agent that drafted the answer, and
+    that is enforced by their identities rather than by a sentence in a prompt. Separation
+    of duties is a compliance concept before it is an architectural one, and a reviewer who
+    is also the author is not a reviewer.
+    """
+
+    #: Every claim in the answer traces to a cited passage.
+    SUPPORTED = "supported"
+    #: The answer is largely grounded but asserts something the passages do not carry.
+    PARTIALLY_SUPPORTED = "partially_supported"
+    #: The cited passages do not support the answer. Never releasable.
+    UNSUPPORTED = "unsupported"
+    #: The check could not run -- the verifier was unreachable, or returned nothing usable.
+    #: Distinct from SUPPORTED on purpose: an unperformed check is not a passed one, and
+    #: collapsing the two is the failure-impersonating-empty shape this project has now
+    #: found nine times.
+    UNKNOWN = "unknown"
+
+
 class ContradictionVerdict(StrEnum):
     """Whether a draft answer contradicts a prior-round commitment.
 

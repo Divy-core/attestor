@@ -78,6 +78,7 @@ export function AnswerCard({
               {answer.text}
             </p>
             <p className="text-xs text-secondary">{state.meaning}</p>
+            <Verification answer={answer} />
           </div>
 
           <div className="flex flex-col gap-2 px-4">
@@ -93,5 +94,52 @@ export function AnswerCard({
         </>
       )}
     </article>
+  );
+}
+
+/**
+ * Who checked the answer, and what they found.
+ *
+ * Two agents named on every answer, or an explicit statement that only one was involved.
+ * That second case is the one worth rendering: an answer nobody verified and an answer that
+ * passed verification look identical if only the passes are shown, and "grounded, and
+ * someone who did not write it confirmed that" is a materially stronger claim than
+ * "grounded, as far as anyone knows".
+ *
+ * The unsupported claims are quoted because "partially supported" without the overreaching
+ * sentence gives a reviewer nothing to act on.
+ */
+function Verification({ answer }: { answer: AnswerRow }) {
+  const verdict = answer.support ?? 'unknown';
+  if (verdict === 'unknown') {
+    return (
+      <p className="text-xs text-muted">
+        Not verified — no separate agent checked this answer against its citations.
+      </p>
+    );
+  }
+  const label = verdict.replace(/_/g, ' ');
+  return (
+    <div className="flex flex-col gap-2 rounded-sm bg-sunken px-3 py-2 shadow-line">
+      <div className="flex flex-wrap items-baseline gap-3">
+        <span className="text-xs uppercase tracking-wide text-muted">Verified</span>
+        <span
+          className={cx(
+            'text-sm font-medium',
+            verdict === 'supported' ? 'text-cited' : 'text-flagged',
+          )}
+        >
+          {label}
+        </span>
+        <Mono dim title="The agent that checked this. Never the agent that wrote it.">
+          {answer.verified_by || 'a separate agent'}
+        </Mono>
+      </div>
+      {verdict !== 'supported' ? (
+        <p className="text-xs text-secondary">
+          The cited passages do not carry every claim in this answer.
+        </p>
+      ) : null}
+    </div>
   );
 }
