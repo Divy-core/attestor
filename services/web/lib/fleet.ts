@@ -33,7 +33,7 @@ import { engineId, isDepartmentEngine } from '@/lib/registry';
  * the reason, rather than omitted so the count reads as a round number.
  */
 
-export type FleetRole = 'department' | 'orchestrator' | 'evidence' | 'service';
+export type FleetRole = 'department' | 'orchestrator' | 'evidence' | 'verifier' | 'service';
 
 export type FleetMember = {
   id: string;
@@ -122,6 +122,28 @@ function memberFor(agent: RegistryAgent): FleetMember | null {
     };
   }
 
+  if (name.endsWith('verifier')) {
+    // Separation of duties, rendered as a card. The interesting fields are the two empty
+    // ones: it reads nothing, and it has no department -- because an agent that could
+    // retrieve would be able to go and find a better citation, which is a different and
+    // weaker question, and an agent with a department would eventually be reviewing its
+    // own work.
+    return {
+      id: name,
+      name,
+      role: 'verifier',
+      department: null,
+      purpose:
+        'Reads each drafted answer against the passages it cites and reports whether the claims are in them. Never writes, never retrieves.',
+      engine,
+      reads: [],
+      refused: ALL_CORPORA.map((c) => `corpus/${c}`),
+      scopeSource:
+        'no corpus binding of any kind — infra/iam/scope_agents.py reports "verifier: no corpus access"',
+      actor: 'VerifierAgent',
+    };
+  }
+
   if (name.endsWith('evidence')) {
     // The one legitimate cross-department reader, and the one asymmetry in the whole scope
     // story. It is scoped by the `department` argument its tool takes rather than by IAM,
@@ -166,9 +188,10 @@ export function roster(agents: RegistryAgent[]): FleetMember[] {
     .sort((a, b) => {
       const order: Record<FleetRole, number> = {
         department: 0,
-        evidence: 1,
-        orchestrator: 2,
-        service: 3,
+        verifier: 1,
+        evidence: 2,
+        orchestrator: 3,
+        service: 4,
       };
       const rank = (m: FleetMember) => order[m.role];
       return rank(a) - rank(b) || a.name.localeCompare(b.name);
