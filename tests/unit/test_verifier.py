@@ -416,3 +416,48 @@ class TestTheEngineSeam:
             question="q", answer=ANSWER, citations=[_citation()], drafted_by="SecurityAgent"
         )
         assert result.verdict is SupportVerdict.UNKNOWN
+
+
+class TestTheSwitch:
+    """Turning verification off is a trade, and the trade has to be visible.
+
+    Verification is a second engine call per question. A 312-question round goes from ~312
+    reasoning-engine queries to ~624, and the Phase 6.5 run that exhausted the regional
+    `Query Reasoning Engine requests` quota did so at 239 of 312 on the *old* volume. So the
+    switch is real -- and what must not happen is a round drafted with it off reading, later,
+    like a round that was checked.
+    """
+
+    def test_it_is_on_unless_explicitly_turned_off(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from dispatcher.runner import verification_enabled
+
+        monkeypatch.delenv("ATTESTOR_VERIFY_ANSWERS", raising=False)
+        assert verification_enabled() is True
+        for value in ("0", "false", "off", "no", "OFF"):
+            monkeypatch.setenv("ATTESTOR_VERIFY_ANSWERS", value)
+            assert verification_enabled() is False
+        monkeypatch.setenv("ATTESTOR_VERIFY_ANSWERS", "1")
+        assert verification_enabled() is True
+
+    def test_answers_from_an_unverified_round_are_marked_unknown_not_supported(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The whole point of the switch being safe.
+
+        With no verifier the pipeline records UNKNOWN, which caps confidence at MEDIUM and
+        prints "Not verified" in the export. If it recorded SUPPORTED, a round drafted with
+        the check switched off would be indistinguishable afterwards from one that passed it
+        -- which is the failure-impersonating-empty shape, applied to a control.
+        """
+        from dispatcher.runner import PipelineFleetRunner
+
+        monkeypatch.setenv("ATTESTOR_VERIFY_ANSWERS", "off")
+        assert PipelineFleetRunner()._build_verifier() is None
+
+        signals = ConfidenceSignals(
+            citation_count=5, max_retrieval_score=0.95, mean_retrieval_score=0.80
+        )
+        assert signals.support is SupportVerdict.UNKNOWN
+        assert compute_confidence(signals) is Confidence.MEDIUM

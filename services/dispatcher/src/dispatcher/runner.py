@@ -135,6 +135,20 @@ class PipelineFleetRunner:
     def _build_verifier(self) -> Any:
         """The agent that checks the work, running wherever it honestly runs.
 
+        Returns `None` when `ATTESTOR_VERIFY_ANSWERS` is off, and that switch exists for one
+        measured reason rather than as a general feature flag. Verification is a second
+        engine call per question, so a 312-question round goes from ~312 reasoning-engine
+        queries to ~624 -- and the Phase 6.5 run that hit the regional
+        "Query Reasoning Engine requests" quota did so at 239 of 312 with the *old* volume.
+        Turning it on therefore lowers the largest N that completes, and pretending otherwise
+        would mean discovering it in the middle of a demo run.
+
+        On by default, because separation of duties is the point of the component and a
+        control that ships off is not a control. Off is a deliberate trade, made once, with
+        the reason on the audit trail: every answer in a round drafted without it carries
+        `support=unknown`, which caps its confidence at MEDIUM and prints
+        "Not verified" in the export.
+
         In-process here. `AgentRuntimeFleetRunner` overrides this to return one bound to the
         deployed verifier engine, and the identity string follows the execution rather than
         being configured beside it -- so there is no setting in which the audit trail names
@@ -148,6 +162,13 @@ class PipelineFleetRunner:
         """
         from attestor_fleet.agents.verifier import VerifierAgent
 
+        if not verification_enabled():
+            logger.warning(
+                "ATTESTOR_VERIFY_ANSWERS is off; every answer this round will carry "
+                "support=unknown, which caps confidence at MEDIUM and prints as "
+                "'Not verified' in the export"
+            )
+            return None
         return VerifierAgent(identity="VerifierAgent (in-process)")
 
     def _pipeline(self, review_id: str, run_id: str, round_id: str | None = None) -> Any:
@@ -343,6 +364,8 @@ class AgentRuntimeFleetRunner(PipelineFleetRunner):
         """
         from dispatcher.remote import RemoteVerifierAgent, verifier_engine_name
 
+        if not verification_enabled():
+            return super()._build_verifier()
         try:
             name = verifier_engine_name()
         except Exception as exc:
@@ -373,6 +396,16 @@ class AgentRuntimeFleetRunner(PipelineFleetRunner):
                 verifier=self._build_verifier(),
             )
         return self._pipelines[key]
+
+
+def verification_enabled() -> bool:
+    """Whether answers are checked by a second agent. On unless explicitly turned off."""
+    return os.environ.get("ATTESTOR_VERIFY_ANSWERS", "1").strip().lower() not in {
+        "0",
+        "false",
+        "off",
+        "no",
+    }
 
 
 #: Which implementation the dispatcher builds. Agent Runtime by default -- the fleet

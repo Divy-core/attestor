@@ -1,5 +1,5 @@
 {
-  "applied": true,
+  "applied": false,
   "bindings": [
     {
       "note": "no corpus access",
@@ -8,7 +8,6 @@
       "role": "orchestrator"
     },
     {
-      "applied": true,
       "condition": "resource.name.startsWith(\"projects/_/buckets/attestor-505506-corpus/objects/security/\")",
       "prefix": "security/",
       "principal": "principal://agents.global.proj-906988347581.system.id.goog/resources/aiplatform/projects/906988347581/locations/us-central1/reasoningEngines/6333637226001334272",
@@ -16,7 +15,6 @@
       "role_granted": "roles/storage.objectViewer"
     },
     {
-      "applied": true,
       "condition": "resource.name.startsWith(\"projects/_/buckets/attestor-505506-corpus/objects/legal/\")",
       "prefix": "legal/",
       "principal": "principal://agents.global.proj-906988347581.system.id.goog/resources/aiplatform/projects/906988347581/locations/us-central1/reasoningEngines/8173357673782181888",
@@ -24,7 +22,6 @@
       "role_granted": "roles/storage.objectViewer"
     },
     {
-      "applied": true,
       "condition": "resource.name.startsWith(\"projects/_/buckets/attestor-505506-corpus/objects/engineering/\")",
       "prefix": "engineering/",
       "principal": "principal://agents.global.proj-906988347581.system.id.goog/resources/aiplatform/projects/906988347581/locations/us-central1/reasoningEngines/4340794390889889792",
@@ -36,38 +33,16 @@
       "prefix": null,
       "principal": "principal://agents.global.proj-906988347581.system.id.goog/resources/aiplatform/projects/906988347581/locations/us-central1/reasoningEngines/9024538003355205632",
       "role": "evidence"
+    },
+    {
+      "note": "no corpus access",
+      "prefix": null,
+      "principal": "principal://agents.global.proj-906988347581.system.id.goog/resources/aiplatform/projects/906988347581/locations/us-central1/reasoningEngines/1255723093024833536",
+      "role": "verifier"
     }
   ],
   "bucket": "attestor-505506-corpus",
-  "datastore_bindings": [
-    {
-      "applied": true,
-      "condition": null,
-      "conditioned": false,
-      "datastore": "attestor-corpus-security",
-      "principal": "principal://agents.global.proj-906988347581.system.id.goog/resources/aiplatform/projects/906988347581/locations/us-central1/reasoningEngines/6333637226001334272",
-      "role": "security",
-      "role_granted": "roles/discoveryengine.viewer"
-    },
-    {
-      "applied": true,
-      "condition": null,
-      "conditioned": false,
-      "datastore": "attestor-corpus-legal",
-      "principal": "principal://agents.global.proj-906988347581.system.id.goog/resources/aiplatform/projects/906988347581/locations/us-central1/reasoningEngines/8173357673782181888",
-      "role": "legal",
-      "role_granted": "roles/discoveryengine.viewer"
-    },
-    {
-      "applied": true,
-      "condition": null,
-      "conditioned": false,
-      "datastore": "attestor-corpus-engineering",
-      "principal": "principal://agents.global.proj-906988347581.system.id.goog/resources/aiplatform/projects/906988347581/locations/us-central1/reasoningEngines/4340794390889889792",
-      "role": "engineering",
-      "role_granted": "roles/discoveryengine.viewer"
-    }
-  ],
+  "datastore_bindings": [],
   "project": "attestor-505506",
   "project_number": "906988347581"
 }

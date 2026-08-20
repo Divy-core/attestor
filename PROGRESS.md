@@ -3583,6 +3583,17 @@ independently of the code path is a setting in which the audit trail can name a 
 that did not do the work. In-process, the identity is literally
 `VerifierAgent (in-process)`; on the engine, it is the resource name.
 
+**The quota interaction, named rather than discovered.** Verification is a second engine
+call per question, so a 312-question round goes from ~312 reasoning-engine queries to ~624 —
+and the Phase 6.5 run that exhausted the regional `Query Reasoning Engine requests` quota did
+so at 239 of 312 on the *old* volume. Turning the verifier on therefore **lowers the largest
+N that completes**, which is directly in tension with what section E of the brief asks for.
+`ATTESTOR_VERIFY_ANSWERS` exists for that one reason and is on by default, because a control
+that ships off is not a control. Turning it off is a deliberate trade whose consequence is
+visible afterwards: every answer in that round carries `support=unknown`, which caps its
+confidence at MEDIUM and prints *"Not verified"* in the export, so a round drafted without the
+check can never be mistaken for one that passed it.
+
 And the one fallback that must not exist does not. When the verifier engine is unreachable,
 the runner falls back to in-process and says so — never to a *department* engine, which would
 put the drafting identity in the reviewer's seat, silently, on a path only taken during an
