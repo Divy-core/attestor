@@ -3583,6 +3583,18 @@ independently of the code path is a setting in which the audit trail can name a 
 that did not do the work. In-process, the identity is literally
 `VerifierAgent (in-process)`; on the engine, it is the resource name.
 
+**Wiring it, and the variable that had to exist.** `verifier_engine_name()` resolves the
+engine from `ATTESTOR_VERIFIER_ENGINE` first and from `docs/proof/fleet-deployment.json`
+second — and `docs/` is not copied into the container image, so on Cloud Run only the first
+of those can work. The deployed dispatcher's first revision with the verifier had no such
+variable, resolved nothing, and fell back to in-process while honestly saying so. That is the
+fallback working; it is not the intended configuration, and the difference was visible only
+by reading the revision's environment. `infra/deploy.sh` now emits the variable alongside the
+three department engines, from the same record, for the same reason.
+
+Live: `attestor-dispatcher-00019-ccj`, carrying
+`ATTESTOR_VERIFIER_ENGINE=…/reasoningEngines/1255723093024833536`.
+
 **The quota interaction, named rather than discovered.** Verification is a second engine
 call per question, so a 312-question round goes from ~312 reasoning-engine queries to ~624 —
 and the Phase 6.5 run that exhausted the regional `Query Reasoning Engine requests` quota did

@@ -311,6 +311,13 @@ pairs = [
     for e in record["engines"]
     if e["role"] in names
 ]
+# The verifier, named the same way and for the same reason. `docs/` is not copied into the
+# container image, so `verifier_engine_name`'s file fallback cannot resolve there -- without
+# this variable the deployed dispatcher verifies in-process and honestly says so, which is a
+# working fallback and not the intended configuration.
+verifier = next((e for e in record["engines"] if e["role"] == "verifier"), None)
+if verifier is not None:
+    pairs.append(f"ATTESTOR_VERIFIER_ENGINE={verifier['resource_name']}")
 # Memory Bank is scoped per engine, so this names the engine holding the commitments --
 # the orchestrator, because commitments are review-scoped rather than department-scoped.
 orchestrator = next(e for e in record["engines"] if e["role"] == "orchestrator")
