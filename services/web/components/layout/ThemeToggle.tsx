@@ -47,7 +47,7 @@ export function ThemeToggle() {
     <div
       role="radiogroup"
       aria-label="Colour theme"
-      className="inline-flex items-center rounded-sm border border-subtle"
+      className="inline-flex items-center rounded-sm shadow-line"
     >
       {options.map((option) => (
         <button
@@ -59,7 +59,7 @@ export function ThemeToggle() {
           aria-checked={ready ? choice === option.id : false}
           onClick={() => setChoice(option.id)}
           className={cx(
-            'px-2 py-0.5 text-xs transition-colors first:rounded-l-sm last:rounded-r-sm',
+            'px-2 py-1 text-xs transition-colors first:rounded-l-sm last:rounded-r-sm',
             ready && choice === option.id
               ? 'bg-active text-primary'
               : 'text-muted hover:text-secondary',

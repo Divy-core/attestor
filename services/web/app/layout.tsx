@@ -1,3 +1,5 @@
+import { GeistMono } from 'geist/font/mono';
+import { GeistSans } from 'geist/font/sans';
 import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
 
@@ -16,10 +18,19 @@ export const metadata: Metadata = {
  * below sets `data-theme` before React runs, so the server's markup and the client's first
  * render legitimately differ on exactly that attribute. Suppressing it here is narrower than
  * it looks — the warning is per-element, not per-tree.
+ *
+ * The two fonts are loaded through `next/font`, which self-hosts them and emits the CSS
+ * variables `styles/tokens.css` reads. No request leaves the page for a font, so there is no
+ * flash of fallback on a cold load — which on a recorded demo happens on the first frame,
+ * where it is most visible.
  */
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html
+      lang="en"
+      suppressHydrationWarning
+      className={`${GeistSans.variable} ${GeistMono.variable}`}
+    >
       <head>
         {/* Before first paint. See ThemeToggle for why this cannot be a component. */}
         <script dangerouslySetInnerHTML={{ __html: THEME_BOOTSTRAP }} />

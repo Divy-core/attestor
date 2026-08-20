@@ -102,14 +102,14 @@ export function TraceTree({ events }: { events: AuditEvent[] }) {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex flex-col gap-2 border-b border-subtle px-4 py-2.5">
+      <div className="flex flex-col gap-2 border-b border-subtle px-4 py-3">
         <div className="flex items-center gap-2">
           <input
             value={filter}
             onChange={(event) => setFilter(event.target.value)}
             placeholder="Filter by question, event kind or agent"
             aria-label="Filter events"
-            className="w-full rounded-sm border border-subtle bg-sunken px-2 py-1 text-sm text-primary placeholder:text-muted"
+            className="w-full rounded-sm shadow-line bg-sunken px-2 py-1 text-sm text-primary placeholder:text-muted"
           />
           <Mono dim className="shrink-0 tabular-nums">
             {events.length} events
@@ -120,7 +120,7 @@ export function TraceTree({ events }: { events: AuditEvent[] }) {
             onClick={() => setNotableOnly(!notableOnly)}
             aria-pressed={notableOnly}
             className={cx(
-              'rounded-sm border px-1.5 py-0.5 text-xs transition-colors',
+              'rounded-sm border px-2 py-1 text-xs transition-colors',
               notableOnly
                 ? 'border-strong bg-active text-primary'
                 : 'border-subtle text-muted hover:bg-hover',
@@ -132,7 +132,7 @@ export function TraceTree({ events }: { events: AuditEvent[] }) {
             <button
               key={kind}
               onClick={() => setFilter(kind)}
-              className="rounded-sm border border-subtle px-1.5 py-0.5 text-xs text-muted transition-colors hover:bg-hover"
+              className="rounded-sm shadow-line px-2 py-1 text-xs text-muted transition-colors hover:bg-hover"
             >
               {humanKind(kind)}{' '}
               <span className="font-mono tabular-nums">{count}</span>
@@ -164,7 +164,7 @@ export function TraceTree({ events }: { events: AuditEvent[] }) {
                     aria-expanded={expanded}
                     className="flex w-full items-center gap-3 px-4 py-2 text-left transition-colors hover:bg-hover"
                   >
-                    <span aria-hidden className="w-3 shrink-0 font-mono text-xs text-muted">
+                    <span aria-hidden className="w-4 shrink-0 font-mono text-xs text-muted">
                       {expanded ? '−' : '+'}
                     </span>
                     <Mono className="min-w-0 flex-1 truncate">{group.label}</Mono>
@@ -172,7 +172,7 @@ export function TraceTree({ events }: { events: AuditEvent[] }) {
                       {group.events.length} events
                     </span>
                     {group.notable > 0 ? (
-                      <span className="shrink-0 rounded-sm border border-subtle bg-fill-denied px-1.5 py-0.5 text-xs text-denied">
+                      <span className="shrink-0 rounded-sm shadow-line bg-fill-denied px-2 py-1 text-xs text-denied">
                         {group.notable} notable
                       </span>
                     ) : null}
@@ -194,12 +194,12 @@ export function TraceTree({ events }: { events: AuditEvent[] }) {
 
       <div className="flex items-center gap-2 border-t border-subtle px-4 py-2">
         <Button
-          variant="quiet"
+          tone="ghost"
           onClick={() => setOpen(new Set(visible.map((group) => group.key)))}
         >
           Expand all
         </Button>
-        <Button variant="quiet" onClick={() => setOpen(new Set())}>
+        <Button tone="ghost" onClick={() => setOpen(new Set())}>
           Collapse all
         </Button>
       </div>
@@ -221,8 +221,8 @@ function EventRow({ event }: { event: AuditEvent }) {
   const entries = Object.entries(detail).filter(([, value]) => value !== null && value !== '');
 
   return (
-    <li className="flex flex-col gap-1 py-1.5">
-      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
+    <li className="flex flex-col gap-1 py-2">
+      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
         <span
           className={cx(
             'text-sm',
@@ -242,7 +242,7 @@ function EventRow({ event }: { event: AuditEvent }) {
       </div>
 
       {entries.length > 0 ? (
-        <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-0.5">
+        <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1">
           {entries.map(([key, value]) => (
             <div key={key} className="col-span-2 grid grid-cols-subgrid">
               <dt className="text-xs text-muted">{key}</dt>

@@ -5,7 +5,7 @@ import { useState } from 'react';
 import { ArmorEventRow, InjectionDiff } from '@/components/armor/InjectionDiff';
 import { PlaneNote } from '@/components/trace/PlaneNote';
 import { TraceTree } from '@/components/trace/TraceTree';
-import { Card, CardHeader, EmptyState, Tabs } from '@/components/ui/primitives';
+import { Panel, PanelHeader, Empty, Tabs } from '@/components/ui/primitives';
 import type { AuditEvent } from '@/lib/api/client';
 
 /**
@@ -41,29 +41,27 @@ export function TracePanels({
       />
 
       {tab === 'trail' ? (
-        <Card className="flex min-h-0 flex-1 flex-col overflow-hidden">
-          <CardHeader
+        <Panel className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          <PanelHeader
             title="Compliance plane"
             meta="Grouped by question, because the question this answers is “why did we answer yes to Q112?”"
           />
           <TraceTree events={events} />
-        </Card>
+        </Panel>
       ) : null}
 
       {tab === 'armor' ? (
         armorEvents.length === 0 ? (
-          <Card>
-            <EmptyState title="Nothing was blocked in this review">
-              Guardrail events appear here when Model Armor refuses content — a prompt injection in
-              a questionnaire cell, or a poisoned passage retrieved from the corpus. An empty list
-              means nothing hostile was submitted, not that screening is off: every question is
-              screened on ingress and every retrieved passage on egress.
-            </EmptyState>
-          </Card>
+          <Panel>
+            <Empty
+              title="Nothing was blocked in this review"
+              hint="Guardrail events appear here when Model Armor refuses content — a prompt injection in a questionnaire cell, or a poisoned passage retrieved from the corpus. An empty list means nothing hostile was submitted, not that screening is off: every question is screened on ingress and every retrieved passage on egress."
+            />
+          </Panel>
         ) : (
           <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,4fr)_minmax(0,8fr)] gap-3">
-            <Card className="flex min-h-0 flex-col overflow-hidden">
-              <CardHeader title="Blocks" meta={`${armorEvents.length} in this review`} />
+            <Panel className="flex min-h-0 flex-col overflow-hidden">
+              <PanelHeader title="Blocks" meta={`${armorEvents.length} in this review`} />
               <div className="min-h-0 flex-1 overflow-y-auto">
                 {armorEvents.map((event, index) => (
                   <ArmorEventRow
@@ -74,7 +72,7 @@ export function TracePanels({
                   />
                 ))}
               </div>
-            </Card>
+            </Panel>
             <div className="min-h-0 overflow-y-auto">
               {armorEvents[selected] ? <InjectionDiff event={armorEvents[selected]} /> : null}
             </div>

@@ -27,10 +27,23 @@ type Outcome = { dedupKey: string; runId: string } | { error: string } | null;
 export function ApprovalQueue({
   pending,
   onResolved,
+  focus,
 }: {
   pending: Array<{ question: QuestionRow; answer: AnswerRow }>;
   onResolved: () => void;
+  /**
+   * The question the grid has selected. When it is in this queue it is ordered first, so
+   * pressing `a` on a row lands on that row rather than at the top of a list of seventy.
+   */
+  focus?: string | null;
 }) {
+  const ordered =
+    focus == null
+      ? pending
+      : [
+          ...pending.filter((row) => row.question.question_id === focus),
+          ...pending.filter((row) => row.question.question_id !== focus),
+        ];
   if (pending.length === 0) {
     return (
       <div className="flex flex-col items-start gap-2 px-4 py-8">
@@ -47,7 +60,7 @@ export function ApprovalQueue({
 
   return (
     <ul className="flex flex-col">
-      {pending.map(({ question, answer }) => (
+      {ordered.map(({ question, answer }) => (
         <ApprovalRow
           key={question.question_id}
           question={question}
@@ -127,7 +140,7 @@ function ApprovalRow({
           rows={5}
           aria-label="Edited answer"
           className={cx(
-            'w-full rounded-sm border border-line bg-sunken px-2 py-1.5 text-sm text-primary',
+            'w-full rounded-sm shadow-line-strong bg-sunken px-2 py-2 text-sm text-primary',
           )}
         />
       ) : (
@@ -158,13 +171,13 @@ function ApprovalRow({
         </div>
       ) : (
         <div className="flex items-center gap-2">
-          <Button variant="primary" onClick={() => submit(true)} disabled={busy}>
+          <Button tone="primary" onClick={() => submit(true)} disabled={busy}>
             {busy ? 'Publishing' : editing ? 'Save and approve' : 'Approve'}
           </Button>
           <Button onClick={() => setEditing(!editing)} disabled={busy}>
             {editing ? 'Cancel edit' : 'Edit'}
           </Button>
-          <Button variant="quiet" onClick={() => submit(false)} disabled={busy}>
+          <Button tone="ghost" onClick={() => submit(false)} disabled={busy}>
             Reject
           </Button>
         </div>

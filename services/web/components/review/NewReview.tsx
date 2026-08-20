@@ -72,11 +72,11 @@ const STEP_COPY: Record<StartProgress['step'], string> = {
   done: 'Started. Opening the review.',
 };
 
-export function NewReviewButton({ variant = 'primary' }: { variant?: 'primary' | 'default' }) {
+export function NewReviewButton({ tone = 'primary' }: { tone?: 'primary' | 'secondary' }) {
   const [open, setOpen] = useState(false);
   return (
     <>
-      <Button variant={variant} onClick={() => setOpen(true)}>
+      <Button tone={tone} onClick={() => setOpen(true)}>
         New review
       </Button>
       {open ? <NewReviewDialog onClose={() => setOpen(false)} /> : null}
@@ -136,10 +136,10 @@ function NewReviewDialog({ onClose }: { onClose: () => void }) {
       onClose={busy ? () => {} : onClose}
       footer={
         <>
-          <Button variant="quiet" onClick={onClose} disabled={busy}>
+          <Button tone="ghost" onClick={onClose} disabled={busy}>
             Cancel
           </Button>
-          <Button variant="primary" onClick={() => void submit()} disabled={!ready || busy}>
+          <Button tone="primary" onClick={() => void submit()} disabled={!ready || busy}>
             {busy ? 'Starting…' : 'Start review'}
           </Button>
         </>
@@ -213,7 +213,7 @@ function NewReviewDialog({ onClose }: { onClose: () => void }) {
             if (!busy) accept(event.dataTransfer.files?.[0]);
           }}
           className={[
-            'flex flex-col items-start gap-2 rounded-sm border border-dashed px-4 py-5',
+            'flex flex-col items-start gap-2 rounded-sm border border-dashed px-4 py-6',
             'transition-colors',
             dragging ? 'border-focus bg-hover' : 'border-line bg-sunken',
           ].join(' ')}

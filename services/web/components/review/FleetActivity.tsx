@@ -102,7 +102,7 @@ export function FleetActivity({ questions, answers, events, total }: Props) {
       </div>
 
       {byDepartment.length > 0 ? (
-        <div className="flex flex-col gap-1.5 border-t border-subtle pt-3">
+        <div className="flex flex-col gap-2 border-t border-subtle pt-3">
           <div className="flex items-baseline justify-between gap-3">
             <h3 className="text-sm font-medium text-primary">Department engines</h3>
             <span className="text-xs text-muted">
@@ -114,8 +114,8 @@ export function FleetActivity({ questions, answers, events, total }: Props) {
           <ul className="flex flex-col gap-1">
             {byDepartment.map((row) => (
               <li key={row.department} className="flex items-center gap-3">
-                <span className="w-24 shrink-0 text-sm text-secondary">{row.department}</span>
-                <span className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-sm bg-track">
+                <span className="w-16 shrink-0 text-sm text-secondary">{row.department}</span>
+                <span className="h-2 min-w-0 flex-1 overflow-hidden rounded-sm bg-track">
                   <span
                     className="block h-full bg-scale transition-[width] duration-state"
                     style={{
@@ -123,7 +123,7 @@ export function FleetActivity({ questions, answers, events, total }: Props) {
                     }}
                   />
                 </span>
-                <span className="w-20 shrink-0 text-right font-mono text-sm tabular-nums text-secondary">
+                <span className="w-16 shrink-0 text-right font-mono text-sm tabular-nums text-secondary">
                   {row.done}/{row.owned}
                 </span>
               </li>
@@ -133,9 +133,9 @@ export function FleetActivity({ questions, answers, events, total }: Props) {
       ) : null}
 
       {judgements.length > 0 ? (
-        <div className="flex flex-col gap-1.5 border-t border-subtle pt-3">
+        <div className="flex flex-col gap-2 border-t border-subtle pt-3">
           <h3 className="text-sm font-medium text-primary">The orchestrator’s decisions</h3>
-          <ul className="flex flex-col gap-1.5">
+          <ul className="flex flex-col gap-2">
             {judgements.map((event, index) => {
               const detail = (event.detail ?? {}) as Record<string, unknown>;
               const decidedBy = String(detail.decided_by ?? 'unrecorded');
@@ -143,15 +143,15 @@ export function FleetActivity({ questions, answers, events, total }: Props) {
               return (
                 <li
                   key={`${event.event_id ?? event.kind}-${index}`}
-                  className="flex flex-col gap-0.5"
+                  className="flex flex-col gap-1"
                 >
                   <div className="flex items-baseline gap-2">
                     <span className="text-sm text-primary">{describe(event.kind, detail)}</span>
                     <span
                       className={
                         fallback
-                          ? 'rounded-sm border border-subtle bg-fill-degraded px-1.5 text-xs text-degraded'
-                          : 'rounded-sm border border-subtle bg-fill-cited px-1.5 text-xs text-cited'
+                          ? 'rounded-sm shadow-line bg-fill-degraded px-2 text-xs text-degraded'
+                          : 'rounded-sm shadow-line bg-fill-cited px-2 text-xs text-cited'
                       }
                       title={
                         fallback
@@ -217,7 +217,7 @@ function Counter({
     undefined: 'text-primary',
   }[String(tone)];
   return (
-    <div className="flex flex-col gap-0.5">
+    <div className="flex flex-col gap-1">
       <span className="text-xs uppercase tracking-wide text-muted">{label}</span>
       <span className="flex items-baseline gap-1">
         <span className={`font-mono text-xl tabular-nums ${ink ?? 'text-primary'}`}>{value}</span>

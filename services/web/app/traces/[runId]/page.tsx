@@ -1,6 +1,6 @@
 import { AppShell } from '@/components/layout/AppShell';
 import { TracePanels } from '@/components/trace/TracePanels';
-import { ErrorState, Mono } from '@/components/ui/primitives';
+import { Failure, Mono } from '@/components/ui/primitives';
 import { ApiError, api, type AuditEvent } from '@/lib/api/client';
 
 export const dynamic = 'force-dynamic';
@@ -52,9 +52,9 @@ export default async function TracePage({ params }: { params: Promise<{ runId: s
   if (error !== null || reviewId === null) {
     return (
       <AppShell pathname={`/traces/${runId}`} title="Audit trail">
-        <div className="p-5">
-          <ErrorState
-            title={error !== null ? 'The audit trail could not be read.' : 'No trail for this run.'}
+        <div className="p-6">
+          <Failure
+            what={error !== null ? 'The audit trail could not be read.' : 'No trail for this run.'}
             detail={
               error ??
               `No audit event carries run_id ${runId}. Either the run has not written its first event yet, or it belongs to a review outside the twenty most recent.`
@@ -75,7 +75,7 @@ export default async function TracePage({ params }: { params: Promise<{ runId: s
         </>
       }
     >
-      <div className="flex h-full min-h-0 flex-col p-5">
+      <div className="flex h-full min-h-0 flex-col p-6">
         <TracePanels events={events} armorEvents={armorEvents} />
       </div>
     </AppShell>

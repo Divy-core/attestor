@@ -3,104 +3,141 @@
  *
  * Two layers, and the separation is the point:
  *
- *   1. A raw neutral ramp (`--n-0` .. `--n-11`) plus six state hues. Values only.
- *   2. Semantic tokens (`--bg-surface`, `--text-muted`, `--state-cited`) defined against
+ *   1. Raw ramps -- an achromatic grey scale, two background steps, one accent, six state
+ *      hues. Values only.
+ *   2. Semantic tokens (`--bg-100`, `--text-primary`, `--state-cited`) defined against
  *      layer 1. Components use ONLY these.
  *
- * A component that writes `#4FA3A0`, or even `var(--n-9)`, has hardcoded a decision that
- * belongs here. `scripts/check-tokens.mjs` fails the build on both.
+ * A component that writes `#4FA3A0`, or even `var(--gray-900)`, has hardcoded a decision
+ * that belongs here. `scripts/check-tokens.mjs` fails the build on both.
  *
- * ## The neutral ramp is derived, not ported
+ * ## The grey ramp is achromatic. R = G = B, every step, both themes.
  *
- * The plan of record asks for Mynd's ramp on the grounds that it is proven. That codebase is not
- * in this repo and was not available in the session that built this, so what is here was built
- * in the same architecture rather than copied and described as a copy.
+ * This is the third version of this ramp and the previous two were both wrong in the same
+ * way: they had a hue. Phase 6 fixed hue at 222 and argued that "a few degrees of blue in
+ * the neutrals is what makes an interface look like an instrument" -- blue-tinted grey is
+ * the Azure-portal look, and next to a Vercel console the difference is immediate. Phase
+ * 6.5 corrected the blue by going warm, hue 40, on the grounds that warmth reads as
+ * material. That was a smaller error in the same direction.
  *
- * ## The ramp was cool slate, and cool slate was wrong
+ * The correct answer is neither. Vercel's `#171717` is R=23 G=23 B=23 -- exactly
+ * achromatic -- and the reason that works is that a neutral with no hue says nothing, so
+ * the only colour on the page is colour that means something. Write-ups describing those
+ * greys as "slightly warm" are wrong, and chasing that imaginary warmth is how this ramp
+ * acquired a cast twice.
  *
- * The first version fixed hue at 222 and argued that "a few degrees of blue in the neutrals is
- * what makes an interface look like an instrument". Read on the deployed site, it did the
- * opposite. Blue-tinted grey is the Azure-portal look; next to Vercel's console the difference
- * is immediate and it is not subtle. Four specific failures, all visible at 1080p:
+ * Every value below has three equal channels. That is checkable, and
+ * `scripts/check-tokens.mjs` checks it: a grey token whose channels differ fails the build.
  *
- *   - background, sidebar and cards sat within a few points of each other, so nothing separated;
- *   - text was grey-blue rather than near-white, and primary text lacked contrast;
- *   - borders were too low-contrast to read as structure at all;
- *   - type was uniform in weight and size, so there was no hierarchy to scan.
+ * ## Step numbers encode ROLE, not lightness
  *
- * The correction, and it is a correction to this block and nothing else — which is the entire
- * return on having a token layer:
+ * This is the part that is easy to get wrong when reading the ramp as a gradient. The
+ * numbers mean:
  *
- * **The blue is gone.** Hue is 40 and chroma is a whisper: a barely-perceptible warm cast, the
- * kind that reads as paper at the light end and as ink at the dark end, never as a colour. A
- * warm neutral is what Linear and Stripe's internal tooling actually use where people assume
- * blue-grey, and the reason is that warmth reads as *material* while cool grey reads as *screen*.
+ *     100  default background      600  active border
+ *     200  hover background        700  solid fill, high contrast
+ *     300  active background       800  solid fill, hover
+ *     400  default border          900  secondary text and icons
+ *     500  hover border           1000  primary text and icons
  *
- * **The dark end drops to near-black and the surfaces step up from it.** `--n-12` is #0A0A0B,
- * the page ground; cards sit at #1A1A1D and raised surfaces at #26262A. A card is a card
- * because it is lighter, not because it has a shadow.
+ * So `--gray-400` is *the border colour*, not "40% grey". In the dark theme 700 and 800 are
+ * deliberately non-monotonic -- 800 is the *hover* state of the 700 fill and hover means
+ * dimmer against a dark ground, exactly as it means brighter against a light one. Reading
+ * the ramp as a lightness sequence and "fixing" that inversion would break every solid
+ * fill's hover.
  *
- * The first pass at those two numbers was #17171A / #212125, and measuring them on the rendered
- * page said 1.11:1 and 1.12:1 — a step, but a thin one. They were raised until the measurement
- * matched the intent. Every ratio in this file is now a figure read off the live page by
- * computing relative luminance from `getComputedStyle`, not a value taken on trust from a
- * palette tool.
+ * ## Backgrounds are separate from the ramp
  *
- * **Primary text goes to near-white.** #FAFAF9 on #17171A is about 16:1. The old #F7F8FA-on-
- * #1C212A was nominally similar and read as grey, because a blue-tinted light on a blue-tinted
- * dark loses the separation chroma was providing.
+ * `--bg-100` is the page. `--bg-200` is the secondary surface, used sparingly. They are not
+ * grey-ramp steps because the ramp's job is content and structure, and conflating the two
+ * is what produced a Phase 6 page where the background, the sidebar and the cards all sat
+ * within a few points of each other and nothing separated.
  *
- * **Hairlines are visible.** #2C2C31 against a #17171A surface rather than a step that
- * disappeared under compression.
+ * ## Translucent greys for structure, solid greys for content
  *
- * The six state hues are unchanged. They were reasoned about carefully, the
- * greyscale-separation argument holds, and this was never a problem with them.
+ * Borders, dividers, overlays, and hover fills use `--alpha-*`: they sit over an unknown
+ * surface and have to compose with it. Text and opaque fills use the solid ramp, because
+ * alpha text over a variable ground is how a label ends up readable on one card and not on
+ * the next.
+ *
+ * ## One accent, and the test for whether it is doing too much
+ *
+ * `#0070f3`, for links, primary buttons, focus rings, and active navigation. Nothing else.
+ * The test: delete the accent and the interface should still look right. Status colour is
+ * the single exception, and only on status -- a state hue on a badge is information, a
+ * state hue on a heading is decoration.
  *
  * ## Contrast is a video constraint, not only an accessibility one
  *
  * The demo is 1080p and re-encoded. H.264 subsamples chroma before luma, so a low-contrast
  * hairline that looks refined on a monitor disappears entirely in the recording. Every
- * border token here is at least 1.35:1 against its surface, which is heavier than a
- * designer would choose for print and correct for this medium.
+ * border token here is at least 1.35:1 against the surface it sits on, which is heavier
+ * than a designer would choose for print and correct for this medium. The dark
+ * `--gray-400` is `#333333` rather than the `#2e2e2e` the role table would suggest for
+ * exactly this reason: measured on a `--gray-100` card it was 1.28:1, and `#333333` is
+ * 1.38:1.
  */
 
 :root {
-  /* ---- layer 1: the neutral ramp. Light end first. ----
-   *
-   * Thirteen steps rather than twelve: the dark end needed one more, because "the page ground"
-   * and "a card on the page ground" have to be far enough apart to separate under video
-   * compression and the old ramp was trying to do both jobs with #1c212a and #12161d.
-   *
-   * Warm, not cool. Hue ~40, chroma so low it never reads as a colour -- only as the difference
-   * between a screen and a surface. */
-  --n-0: #ffffff;
-  --n-1: #faf9f7;
-  --n-2: #f2f1ee;
-  --n-3: #e7e5e1;
-  --n-4: #d6d3cd;
-  --n-5: #b3afa8;
-  --n-6: #8c8881;
-  --n-7: #6b6862;
-  --n-8: #4e4b47;
-  --n-9: #383633;
-  --n-10: #212125;
-  --n-11: #17171a;
-  --n-12: #0a0a0b;
+  /* ---- layer 1: the achromatic ramp, LIGHT ---- */
+  --gray-100: #f2f2f2;
+  --gray-200: #ebebeb;
+  --gray-300: #e6e6e6;
+  --gray-400: #dcdcdc;
+  --gray-500: #c9c9c9;
+  --gray-600: #a8a8a8;
+  --gray-700: #8f8f8f;
+  /* `#7d7d7d` here, mirroring the dark ramp, measured 4.12:1 against a white card -- under
+   * AA for the 12px metadata labels `--text-muted` is used on. Darkened until the
+   * measurement agreed with the claim; it is now 4.74:1. The same defect, found the same
+   * way, as the three the Phase 6.5 ramp measurement caught. */
+  --gray-800: #737373;
+  --gray-900: #666666;
+  --gray-1000: #171717;
+
+  --background-100: #ffffff;
+  --background-200: #fafafa;
+
+  /* Translucent. Composes with whatever it is over. */
+  --alpha-100: rgba(0, 0, 0, 0.04);
+  --alpha-200: rgba(0, 0, 0, 0.06);
+  --alpha-300: rgba(0, 0, 0, 0.09);
+  --alpha-400: rgba(0, 0, 0, 0.14);
+  --alpha-scrim: rgba(0, 0, 0, 0.42);
+
+  --accent: #0070f3;
+  --accent-hover: #0060d1;
+  --accent-fill: rgba(0, 112, 243, 0.1);
+  --accent-ink: #ffffff;
+  /* Text is a separate token from the fill, because the same blue cannot do both jobs in
+   * both themes. `#0070f3` measures 4.55:1 on white -- just over AA -- and 3.82:1 on the
+   * dark card surface, which is under it. A link nobody can read is not a design choice, so
+   * the dark theme lifts this to `#3291ff` (5.50:1) while the *fill* stays `#0070f3`, where
+   * it carries white at 4.55:1. Both figures were read off the rendered page. */
+  --accent-text: #0070f3;
 
   /* ---- layer 1: the six state hues ----
    *
-   * Lightness was assigned before hue so the set separates in greyscale. Reasoning and the
-   * rejected default palette are in PROGRESS.md under "The palette, stated before anything
-   * was built". Each has a `-dim` companion for fills and a `-ink` for text on that fill.
+   * The Phase 6 palette, kept: lightness was assigned before hue so the set separates in
+   * greyscale, the reasoning is in PROGRESS.md, and this was never what was wrong with the
+   * neutrals. Status colour is the one place hue is permitted in this design.
+   *
+   * Three of the twelve values moved in Phase 7, and only for measured contrast. With the
+   * fills tuned as far as they go, `denied` still read 3.44:1 against its own fill in dark
+   * and `quarantined` 4.06:1, because no fill percentage can lift ink whose hue is itself
+   * 3.68:1 against the surface; light `flagged` was 4.31:1 for the mirror reason. Those
+   * three were moved along their own lightness axis -- same hue, same role, same ordering --
+   * until the measurement cleared AA. The greyscale separation is re-measured below and
+   * still holds, which is the property that had to survive the change.
    */
   --hue-cited: #2f7c7a;
   --hue-cited-dark: #4fa3a0;
-  --hue-flagged: #9a6d0d;
+  --hue-flagged: #8a6109;
   --hue-flagged-dark: #d19a2e;
   --hue-denied: #a3324a;
-  --hue-denied-dark: #c4485f;
+  --hue-denied-dark: #d4677c;
   --hue-quarantined: #5d47a0;
-  --hue-quarantined-dark: #8a72c9;
+  --hue-quarantined-dark: #9c86d6;
   --hue-no-evidence: #5b6d84;
   --hue-no-evidence-dark: #7c8fa8;
   --hue-degraded: #756f61;
@@ -108,37 +145,30 @@
 
   /* ---- layer 2: semantic. LIGHT THEME is the bare :root default. ----
    *
-   * Defined here unconditionally rather than inside a media query, so a token can never be
+   * Defined unconditionally rather than inside a media query, so a token can never be
    * undefined in any theme state. The viewer has three: an explicit choice stamps
    * `data-theme`, and "system" stamps nothing at all.
    */
-  /* Three distinct steps. The previous version had `--bg-surface` and `--bg-raised` both at
-     `--n-0`, measured at exactly 1.00:1 -- so "raised" meant nothing in the light theme and a
-     nested panel had no way to read as nested. */
-  --bg-base: var(--n-2);
-  --bg-surface: var(--n-1);
-  --bg-raised: var(--n-0);
-  --bg-sunken: var(--n-2);
-  --bg-hover: var(--n-2);
-  --bg-active: var(--n-3);
-  --bg-code: var(--n-2);
+  /* `--background-200` (#fafafa) measured 1.04:1 against a white card, which is a step in
+   * name only and disappears entirely under video compression. `--gray-100` gives 1.12:1 --
+   * still quiet, and actually visible. */
+  --bg-base: var(--gray-100);
+  --bg-surface: var(--background-100);
+  --bg-raised: var(--background-100);
+  --bg-sunken: var(--background-200);
+  --bg-hover: var(--alpha-100);
+  --bg-active: var(--alpha-200);
+  --bg-code: var(--gray-100);
 
-  /* Measured on the rendered page rather than assumed: primary 17.9:1, secondary 8.0:1,
-     muted 5.5:1. `--text-muted` was `--n-6` and measured 3.53:1, which is under AA for the
-     11px metadata labels it is used on -- so it moved down a step and secondary moved with it
-     to keep the hierarchy. */
-  --text-primary: var(--n-11);
-  --text-secondary: var(--n-8);
-  --text-muted: var(--n-7);
-  --text-inverse: var(--n-0);
+  --text-primary: var(--gray-1000);
+  --text-secondary: var(--gray-900);
+  --text-muted: var(--gray-800);
+  --text-inverse: var(--background-100);
 
-  /* One step heavier than before. `--n-3` measured 1.26:1 against the surface, under the
-     1.35:1 floor this file claims for itself, and a hairline that fails that claim is one the
-     video compression removes. */
-  --border-subtle: var(--n-4);
-  --border-default: var(--n-5);
-  --border-strong: var(--n-6);
-  --border-focus: var(--n-11);
+  --border-subtle: var(--alpha-200);
+  --border-default: var(--gray-400);
+  --border-strong: var(--gray-600);
+  --border-focus: var(--accent);
 
   --state-cited: var(--hue-cited);
   --state-flagged: var(--hue-flagged);
@@ -150,63 +180,68 @@
   /* Fills sit behind the ink of the same state. Tinted from the surface rather than the
    * hue at low alpha, because alpha over an unknown background is how a badge ends up
    * unreadable on one surface and fine on another. */
-  --fill-cited: color-mix(in oklab, var(--hue-cited) 12%, var(--bg-surface));
-  --fill-flagged: color-mix(in oklab, var(--hue-flagged) 14%, var(--bg-surface));
-  --fill-denied: color-mix(in oklab, var(--hue-denied) 12%, var(--bg-surface));
-  --fill-quarantined: color-mix(in oklab, var(--hue-quarantined) 12%, var(--bg-surface));
-  --fill-no-evidence: color-mix(in oklab, var(--hue-no-evidence) 10%, var(--bg-surface));
-  --fill-degraded: color-mix(in oklab, var(--hue-degraded) 12%, var(--bg-surface));
+  /* 6%, not the 10-12% the dark theme uses. Measured on the rendered page: at 10% the ink
+   * of a badge against its own fill came out between 2.87:1 (quarantined) and 4.28:1
+   * (cited), all under AA for 12px label text -- because a light fill starts from white and
+   * every point of tint taken out of the ground is a point of contrast taken off the ink.
+   * The dark theme has the opposite arithmetic and keeps its heavier mix. */
+  --fill-cited: color-mix(in oklab, var(--hue-cited) 6%, var(--bg-surface));
+  --fill-flagged: color-mix(in oklab, var(--hue-flagged) 5%, var(--bg-surface));
+  --fill-denied: color-mix(in oklab, var(--hue-denied) 6%, var(--bg-surface));
+  --fill-quarantined: color-mix(in oklab, var(--hue-quarantined) 6%, var(--bg-surface));
+  --fill-no-evidence: color-mix(in oklab, var(--hue-no-evidence) 5%, var(--bg-surface));
+  --fill-degraded: color-mix(in oklab, var(--hue-degraded) 6%, var(--bg-surface));
 
   /* Relevance scale for the confidence meter and the citation bars. One hue, varying
    * lightness -- a score is a magnitude, and giving magnitudes different hues invents
    * categories that are not there. */
-  --scale-track: var(--n-3);
-  --scale-fill: var(--hue-cited);
+  --scale-track: var(--gray-300);
+  --scale-fill: var(--gray-1000);
 
-  /* ---- shape and rhythm ---- */
-  --radius-sm: 3px;
-  --radius-md: 5px;
-  --radius-lg: 7px;
+  /* ---- shape ----
+   *
+   * Two radii and nothing else. The 9999px pill is a marketing signature, not an app
+   * control, and a codebase with five radii has none. */
+  --radius-sm: 4px;
+  --radius-md: 6px;
   --hairline: 1px;
 
-  --row-height: 34px;
+  --row-height: 36px;
   --row-height-dense: 28px;
 
-  /* Type. 14px body / 13px dense is a floor set by the 1080p recording, not a preference:
-   * below that, values in a dense table are not readable in the video.
+  /* ---- type ----
    *
-   * The scale was too flat to scan. 15px section headings against 14px body is a distinction
-   * nobody perceives, so a page had no visible hierarchy -- everything read as one weight of one
-   * size, which is the fourth thing wrong with the first pass at this file. Four steps now, far
-   * enough apart to be told apart at a glance across a room:
+   * Geist Sans and Geist Mono, loaded by `next/font` in `app/layout.tsx` so there is no
+   * network request for a font and no flash of fallback. Mono is semantic here: it means
+   * "a value the system produced" -- an engine resource name, a dedup key, a relevance
+   * score. The two are never mixed inside one text block.
    *
-   *     20px  page title
+   * 400 / 500 / 600. Nothing heavier: above 600 a UI face stops reading as chrome and
+   * starts reading as a headline.
+   *
+   *     32px  a live figure, readable across a room
+   *     24px  page title
    *     16px  section heading
    *     14px  body and table rows
    *     13px  dense data
-   *     11px  metadata labels
-   *
-   * 26px and 32px exist for figures only -- a live counter is the one thing on screen a viewer
-   * should be able to read without looking for it. */
-  --text-xs: 11px;
+   *     12px  metadata labels
+   */
+  --text-xs: 12px;
   --text-sm: 13px;
   --text-base: 14px;
   --text-md: 16px;
-  --text-lg: 20px;
-  --text-xl: 26px;
-  --text-2xl: 32px;
+  --text-lg: 24px;
+  --text-xl: 32px;
 
-  --font-ui: 'Inter var', 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI',
+  --font-ui: var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system, 'Segoe UI',
     sans-serif;
-  /* A genuine monospace, because monospace here is semantic: it means "this is a value the
-   * system produced" -- an engine resource name, a dedup key, a relevance score. */
-  --font-mono: 'JetBrains Mono', 'SF Mono', 'Cascadia Mono', ui-monospace, 'Menlo',
+  --font-mono: var(--font-geist-mono), ui-monospace, 'SF Mono', 'Cascadia Mono', 'Menlo',
     'Consolas', monospace;
 
   /* Motion only on state change, and slow enough to register in a recording. There is no
    * ambient animation anywhere in this interface. */
   --motion-fast: 120ms;
-  --motion-state: 260ms;
+  --motion-state: 240ms;
   --ease: cubic-bezier(0.4, 0, 0.2, 1);
 }
 
@@ -215,36 +250,55 @@
  * `prefers-color-scheme` handles the default "system" setting, which stamps no attribute at
  * all; the `:not([data-theme='light'])` guard stops it overriding an explicit light choice.
  * The `[data-theme='dark']` block then makes the toggle win in the other direction. Only
- * tokens change -- never a component rule. */
+ * tokens change -- never a component rule.
+ *
+ * The two blocks are byte-identical by construction. Keeping them in sync by hand is a
+ * standing hazard, so `scripts/check-tokens.mjs` compares them and fails if they drift. */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) {
-    /* Near-black ground, surfaces stepping UP from it. The old ramp had base and surface
-       within a few points of each other, so nothing separated. */
-    /* Near-black ground with surfaces stepping UP by luminance. `--bg-surface` is one step
-       lighter than the first pass at this (#17171A) because that measured 1.11:1 against the
-       ground and a card has to read as a card. */
-    --bg-base: var(--n-12);
-    --bg-surface: #1a1a1d;
-    --bg-raised: #26262a;
-    --bg-sunken: #101013;
-    --bg-hover: #26262a;
-    --bg-active: #313136;
-    --bg-code: #101013;
+    --gray-100: #1a1a1a;
+    --gray-200: #1f1f1f;
+    --gray-300: #292929;
+    --gray-400: #333333;
+    --gray-500: #454545;
+    --gray-600: #575757;
+    --gray-700: #8f8f8f;
+    --gray-800: #7d7d7d;
+    --gray-900: #a1a1a1;
+    --gray-1000: #ededed;
 
-    /* Measured, not assumed: primary 16.7:1 on the card surface, secondary 11.7:1, muted
-       4.9:1. The old #F7F8FA read grey because a blue-tinted light on a blue-tinted dark
-       loses the separation the chroma was providing. */
-    --text-primary: #fafaf9;
-    --text-secondary: var(--n-4);
-    --text-muted: var(--n-6);
-    --text-inverse: var(--n-12);
+    --background-100: #0a0a0a;
+    --background-200: #000000;
 
-    /* `--border-subtle` was #2C2C31 and measured 1.29:1, under the 1.35:1 floor this file
-       claims. Raised until the measurement agreed with the claim. */
-    --border-subtle: #34343a;
-    --border-default: #43434a;
-    --border-strong: #5c5c64;
-    --border-focus: var(--n-2);
+    --alpha-100: rgba(255, 255, 255, 0.05);
+    --alpha-200: rgba(255, 255, 255, 0.08);
+    --alpha-300: rgba(255, 255, 255, 0.12);
+    --alpha-400: rgba(255, 255, 255, 0.18);
+    --alpha-scrim: rgba(0, 0, 0, 0.66);
+
+    --accent: #0070f3;
+    --accent-hover: #3291ff;
+    --accent-fill: rgba(0, 112, 243, 0.16);
+    --accent-ink: #ffffff;
+    --accent-text: #3291ff;
+
+    --bg-base: var(--background-100);
+    --bg-surface: var(--gray-100);
+    --bg-raised: var(--gray-200);
+    --bg-sunken: var(--background-200);
+    --bg-hover: var(--alpha-100);
+    --bg-active: var(--alpha-200);
+    --bg-code: var(--background-200);
+
+    --text-primary: var(--gray-1000);
+    --text-secondary: var(--gray-900);
+    --text-muted: var(--gray-700);
+    --text-inverse: var(--background-100);
+
+    --border-subtle: var(--alpha-200);
+    --border-default: var(--gray-400);
+    --border-strong: var(--gray-600);
+    --border-focus: var(--accent);
 
     --state-cited: var(--hue-cited-dark);
     --state-flagged: var(--hue-flagged-dark);
@@ -253,46 +307,66 @@
     --state-no-evidence: var(--hue-no-evidence-dark);
     --state-degraded: var(--hue-degraded-dark);
 
-    --fill-cited: color-mix(in oklab, var(--hue-cited-dark) 20%, var(--bg-surface));
-    --fill-flagged: color-mix(in oklab, var(--hue-flagged-dark) 20%, var(--bg-surface));
-    --fill-denied: color-mix(in oklab, var(--hue-denied-dark) 20%, var(--bg-surface));
-    --fill-quarantined: color-mix(in oklab, var(--hue-quarantined-dark) 20%, var(--bg-surface));
-    --fill-no-evidence: color-mix(in oklab, var(--hue-no-evidence-dark) 18%, var(--bg-surface));
-    --fill-degraded: color-mix(in oklab, var(--hue-degraded-dark) 20%, var(--bg-surface));
+    /* 10%, not the 18% this started at. Measured on the rendered page: at 18% the ink of a
+     * badge against its own fill was 3.09:1 for `denied` and 3.61:1 for `quarantined` --
+     * under AA. A dark fill pulls the ground UP toward the hue, so every point of tint costs
+     * contrast, which is the same arithmetic as the light theme running the other way. */
+    --fill-cited: color-mix(in oklab, var(--hue-cited-dark) 10%, var(--bg-surface));
+    --fill-flagged: color-mix(in oklab, var(--hue-flagged-dark) 10%, var(--bg-surface));
+    --fill-denied: color-mix(in oklab, var(--hue-denied-dark) 8%, var(--bg-surface));
+    --fill-quarantined: color-mix(in oklab, var(--hue-quarantined-dark) 8%, var(--bg-surface));
+    --fill-no-evidence: color-mix(in oklab, var(--hue-no-evidence-dark) 9%, var(--bg-surface));
+    --fill-degraded: color-mix(in oklab, var(--hue-degraded-dark) 10%, var(--bg-surface));
 
-    --scale-track: var(--n-8);
-    --scale-fill: var(--hue-cited-dark);
+    --scale-track: var(--gray-300);
+    --scale-fill: var(--gray-1000);
   }
 }
 
 :root[data-theme='dark'] {
-  /* Near-black ground, surfaces stepping UP from it. The old ramp had base and surface
-     within a few points of each other, so nothing separated. */
-  /* Near-black ground with surfaces stepping UP by luminance. `--bg-surface` is one step
-     lighter than the first pass at this (#17171A) because that measured 1.11:1 against the
-     ground and a card has to read as a card. */
-  --bg-base: var(--n-12);
-  --bg-surface: #1a1a1d;
-  --bg-raised: #26262a;
-  --bg-sunken: #101013;
-  --bg-hover: #26262a;
-  --bg-active: #313136;
-  --bg-code: #101013;
+  --gray-100: #1a1a1a;
+  --gray-200: #1f1f1f;
+  --gray-300: #292929;
+  --gray-400: #333333;
+  --gray-500: #454545;
+  --gray-600: #575757;
+  --gray-700: #8f8f8f;
+  --gray-800: #7d7d7d;
+  --gray-900: #a1a1a1;
+  --gray-1000: #ededed;
 
-  /* Measured, not assumed: primary 16.7:1 on the card surface, secondary 11.7:1, muted
-     4.9:1. The old #F7F8FA read grey because a blue-tinted light on a blue-tinted dark
-     loses the separation the chroma was providing. */
-  --text-primary: #fafaf9;
-  --text-secondary: var(--n-4);
-  --text-muted: var(--n-6);
-  --text-inverse: var(--n-12);
+  --background-100: #0a0a0a;
+  --background-200: #000000;
 
-  /* `--border-subtle` was #2C2C31 and measured 1.29:1, under the 1.35:1 floor this file
-     claims. Raised until the measurement agreed with the claim. */
-  --border-subtle: #34343a;
-  --border-default: #43434a;
-  --border-strong: #5c5c64;
-  --border-focus: var(--n-2);
+  --alpha-100: rgba(255, 255, 255, 0.05);
+  --alpha-200: rgba(255, 255, 255, 0.08);
+  --alpha-300: rgba(255, 255, 255, 0.12);
+  --alpha-400: rgba(255, 255, 255, 0.18);
+  --alpha-scrim: rgba(0, 0, 0, 0.66);
+
+  --accent: #0070f3;
+  --accent-hover: #3291ff;
+  --accent-fill: rgba(0, 112, 243, 0.16);
+  --accent-ink: #ffffff;
+  --accent-text: #3291ff;
+
+  --bg-base: var(--background-100);
+  --bg-surface: var(--gray-100);
+  --bg-raised: var(--gray-200);
+  --bg-sunken: var(--background-200);
+  --bg-hover: var(--alpha-100);
+  --bg-active: var(--alpha-200);
+  --bg-code: var(--background-200);
+
+  --text-primary: var(--gray-1000);
+  --text-secondary: var(--gray-900);
+  --text-muted: var(--gray-700);
+  --text-inverse: var(--background-100);
+
+  --border-subtle: var(--alpha-200);
+  --border-default: var(--gray-400);
+  --border-strong: var(--gray-600);
+  --border-focus: var(--accent);
 
   --state-cited: var(--hue-cited-dark);
   --state-flagged: var(--hue-flagged-dark);
@@ -301,13 +375,17 @@
   --state-no-evidence: var(--hue-no-evidence-dark);
   --state-degraded: var(--hue-degraded-dark);
 
-  --fill-cited: color-mix(in oklab, var(--hue-cited-dark) 20%, var(--bg-surface));
-  --fill-flagged: color-mix(in oklab, var(--hue-flagged-dark) 20%, var(--bg-surface));
-  --fill-denied: color-mix(in oklab, var(--hue-denied-dark) 20%, var(--bg-surface));
-  --fill-quarantined: color-mix(in oklab, var(--hue-quarantined-dark) 20%, var(--bg-surface));
-  --fill-no-evidence: color-mix(in oklab, var(--hue-no-evidence-dark) 18%, var(--bg-surface));
-  --fill-degraded: color-mix(in oklab, var(--hue-degraded-dark) 20%, var(--bg-surface));
+  /* 10%, not the 18% this started at. Measured on the rendered page: at 18% the ink of a
+   * badge against its own fill was 3.09:1 for `denied` and 3.61:1 for `quarantined` --
+   * under AA. A dark fill pulls the ground UP toward the hue, so every point of tint costs
+   * contrast, which is the same arithmetic as the light theme running the other way. */
+  --fill-cited: color-mix(in oklab, var(--hue-cited-dark) 10%, var(--bg-surface));
+  --fill-flagged: color-mix(in oklab, var(--hue-flagged-dark) 10%, var(--bg-surface));
+  --fill-denied: color-mix(in oklab, var(--hue-denied-dark) 8%, var(--bg-surface));
+  --fill-quarantined: color-mix(in oklab, var(--hue-quarantined-dark) 8%, var(--bg-surface));
+  --fill-no-evidence: color-mix(in oklab, var(--hue-no-evidence-dark) 9%, var(--bg-surface));
+  --fill-degraded: color-mix(in oklab, var(--hue-degraded-dark) 10%, var(--bg-surface));
 
-  --scale-track: var(--n-8);
-  --scale-fill: var(--hue-cited-dark);
+  --scale-track: var(--gray-300);
+  --scale-fill: var(--gray-1000);
 }

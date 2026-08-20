@@ -16,7 +16,6 @@
      * costs, byte sizes. A number that changes width as it updates is the single clearest
      * tell of an interface nobody thought about, and this page has figures updating live. */
     font-variant-numeric: tabular-nums;
-    font-feature-settings: 'tnum' 1, 'cv05' 1, 'ss03' 1;
     -webkit-text-size-adjust: 100%;
   }
 
@@ -31,9 +30,8 @@
     text-rendering: optimizeLegibility;
   }
 
-  /* Focus is the foreground colour rather than an accent hue, so nothing about chrome can
-   * be mistaken for status. Two pixels and an offset: visible over any surface, including
-   * inside a coloured badge. */
+  /* The accent, and one of the four places it is allowed to appear. Two pixels with an
+   * offset: visible over any surface, including inside a coloured badge. */
   :focus-visible {
     outline: 2px solid var(--border-focus);
     outline-offset: 2px;
@@ -52,6 +50,14 @@
   .mono {
     font-family: var(--font-mono);
     font-variant-ligatures: none;
+  }
+
+  a {
+    color: var(--accent-text);
+    text-decoration: none;
+  }
+  a:hover {
+    text-decoration: underline;
   }
 
   /* Honoured rather than declared. Every transition in the tree is on a state change, so
@@ -79,7 +85,7 @@
   }
   *::-webkit-scrollbar-thumb {
     background: var(--border-default);
-    border-radius: 999px;
+    border-radius: var(--radius-sm);
     border: 2px solid transparent;
     background-clip: content-box;
   }
@@ -90,12 +96,12 @@
 }
 
 @layer components {
-  /* The hatched fill for `quarantined`, and the half fill for `degraded`.
+  /* The hatched fill for `quarantined`.
    *
-   * These are the two states whose identity is carried by FORM rather than hue, which is
-   * what makes the six-state set survive greyscale and video compression. Defined here
-   * because a repeating-linear-gradient is not expressible as a Tailwind utility and
-   * inlining it in three components would be three copies of one decision. */
+   * One of the two states whose identity is carried by FORM rather than hue, which is what
+   * makes the six-state set survive greyscale and video compression. Defined here because a
+   * repeating-linear-gradient is not expressible as a Tailwind utility and inlining it in
+   * three components would be three copies of one decision. */
   .fill-hatched {
     background-image: repeating-linear-gradient(
       -45deg,
@@ -104,12 +110,26 @@
     );
   }
 
-  .dot-half {
-    background: linear-gradient(
-      to right,
-      var(--state-degraded) 0 50%,
-      transparent 50% 100%
-    );
-    box-shadow: inset 0 0 0 1px var(--state-degraded);
+  /* One department engine drafting, right now.
+   *
+   * The only animation in the interface, and it earns its place: three of these running at
+   * once is what makes "a fleet" legible as three things happening in parallel rather than
+   * as a progress bar with a plural label. Slow, because a fast pulse reads as a spinner and
+   * a spinner means "waiting" -- the opposite of what is true here.
+   *
+   * `prefers-reduced-motion` above stops it, and what remains is a static dot that still
+   * says which engines are working, so nothing is lost but the movement. */
+  .pulse-working {
+    animation: attestor-pulse 1.8s var(--ease) infinite;
+  }
+
+  @keyframes attestor-pulse {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.35;
+    }
   }
 }

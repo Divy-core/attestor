@@ -1,7 +1,7 @@
 import Link from 'next/link';
 
 import { AppShell } from '@/components/layout/AppShell';
-import { Card, EmptyState, ErrorState, Mono } from '@/components/ui/primitives';
+import { Panel, Empty, Failure, Mono } from '@/components/ui/primitives';
 import { ApiError, api, type ReviewRow } from '@/lib/api/client';
 import { ago } from '@/lib/format';
 
@@ -23,15 +23,15 @@ export default async function TracesIndexPage() {
 
   return (
     <AppShell pathname="/traces" title="Audit trails">
-      <div className="p-5">
-        <Card className="overflow-hidden">
+      <div className="p-6">
+        <Panel className="overflow-hidden">
           {error !== null ? (
-            <ErrorState title="Reviews could not be listed." detail={error} />
+            <Failure what="Reviews could not be listed." detail={error} />
           ) : reviews.length === 0 ? (
-            <EmptyState title="No trails yet">
-              Every agent decision, retrieval, refusal and guardrail block appends to{' '}
-              <Mono dim>audit_events</Mono> as it happens. A trail appears here with its review.
-            </EmptyState>
+            <Empty
+              title="No trails yet"
+              hint="Every agent decision, retrieval, refusal and guardrail block appends to audit_events as it happens. A trail appears here with its review."
+            />
           ) : (
             <ul className="flex flex-col">
               {reviews.map((review) => (
@@ -44,8 +44,8 @@ export default async function TracesIndexPage() {
                       <span className="truncate text-sm text-primary">{review.customer}</span>
                       <Mono dim>{review.review_id}</Mono>
                     </span>
-                    <span className="w-28 shrink-0 text-sm text-secondary">{review.state}</span>
-                    <span className="w-28 shrink-0 text-right text-sm text-muted">
+                    <span className="w-16 shrink-0 text-sm text-secondary">{review.state}</span>
+                    <span className="w-16 shrink-0 text-right text-sm text-muted">
                       {ago(review.created_at)}
                     </span>
                   </Link>
@@ -53,7 +53,7 @@ export default async function TracesIndexPage() {
               ))}
             </ul>
           )}
-        </Card>
+        </Panel>
         <p className="px-1 pt-3 text-sm text-secondary">
           Open a review and follow <span className="text-primary">Audit trail</span> to see its
           compliance plane. A trail is addressed by run, and a review may have several — a

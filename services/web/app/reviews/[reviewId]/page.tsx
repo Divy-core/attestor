@@ -4,7 +4,7 @@ import { AppShell } from '@/components/layout/AppShell';
 import { NewReviewButton } from '@/components/review/NewReview';
 import { ReviewWorkspace } from '@/components/review/ReviewWorkspace';
 import { RoundTimeline } from '@/components/review/RoundTimeline';
-import { Button, ErrorState, Mono } from '@/components/ui/primitives';
+import { Button, Failure, Mono } from '@/components/ui/primitives';
 import {
   ApiError,
   api,
@@ -82,10 +82,10 @@ export default async function ReviewPage({
   if (review === null || latestRound === null) {
     return (
       <AppShell pathname={`/reviews/${reviewId}`} title="Review">
-        <div className="p-5">
+        <div className="p-6">
           {loadError !== null ? (
-            <ErrorState
-              title="This review could not be read."
+            <Failure
+              what="This review could not be read."
               detail={loadError}
               action={
                 <Link href="/reviews">
@@ -123,10 +123,10 @@ export default async function ReviewPage({
         <>
           {runId !== null ? (
             <Link href={`/traces/${runId}`}>
-              <Button variant="quiet">Audit trail</Button>
+              <Button tone="ghost">Audit trail</Button>
             </Link>
           ) : null}
-          <NewReviewButton variant="default" />
+          <NewReviewButton tone="secondary" />
         </>
       }
     >

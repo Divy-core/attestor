@@ -1,6 +1,6 @@
 import { AppShell } from '@/components/layout/AppShell';
 import { ScopeMatrix } from '@/components/registry/ScopeMatrix';
-import { Card, CardHeader, EmptyState, ErrorState, Mono } from '@/components/ui/primitives';
+import { Panel, PanelHeader, Empty, Failure, Mono } from '@/components/ui/primitives';
 import { ApiError, api, type RegistryAgent } from '@/lib/api/client';
 import { describe, engineId, identityFor, isDepartmentEngine, partition } from '@/lib/registry';
 
@@ -36,10 +36,10 @@ export default async function RegistryPage() {
       title="Registry"
       meta={error === null && agents.length > 0 ? describe(split) : undefined}
     >
-      <div className="flex flex-col gap-3 p-5">
+      <div className="flex flex-col gap-3 p-6">
         {error !== null ? (
-          <ErrorState
-            title="The Agent Registry could not be read."
+          <Failure
+            what="The Agent Registry could not be read."
             detail={error}
             action={
               <span className="text-xs text-secondary">
@@ -49,20 +49,19 @@ export default async function RegistryPage() {
             }
           />
         ) : agents.length === 0 ? (
-          <EmptyState title="No agents catalogued">
-            Agents appear here automatically when deployed to Agent Runtime — there is no manual
-            registration step. Run <Mono dim>services/runtime/deploy_fleet.py</Mono> to deploy the
-            fleet.
-          </EmptyState>
+          <Empty
+            title="No agents catalogued"
+            hint="Agents appear here automatically when deployed to Agent Runtime — there is no manual registration step. Run services/runtime/deploy_fleet.py to deploy the fleet."
+          />
         ) : (
           <>
-            <Card>
-              <CardHeader
+            <Panel>
+              <PanelHeader
                 title="Scope"
                 meta={`${split.fleet.filter(isDepartmentEngine).length} department engines, one corpus each`}
               />
               <ScopeMatrix agents={split.fleet} />
-            </Card>
+            </Panel>
 
             <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 xl:grid-cols-3">
               {split.fleet.map((agent) => (
@@ -70,7 +69,7 @@ export default async function RegistryPage() {
               ))}
             </div>
 
-            <Card>
+            <Panel>
               <div className="flex flex-col gap-2 px-4 py-3">
                 <h2 className="text-sm font-medium text-primary">
                   What this listing does and does not prove
@@ -106,11 +105,11 @@ export default async function RegistryPage() {
                   </p>
                 ) : null}
               </div>
-            </Card>
+            </Panel>
 
             {split.other.length > 0 ? (
-              <Card>
-                <CardHeader title="Other agents in this project" meta="Not deployed by Attestor" />
+              <Panel>
+                <PanelHeader title="Other agents in this project" meta="Not deployed by Attestor" />
                 <ul className="flex flex-col">
                   {split.other.map((agent) => (
                     <li
@@ -126,7 +125,7 @@ export default async function RegistryPage() {
                     </li>
                   ))}
                 </ul>
-              </Card>
+              </Panel>
             ) : null}
           </>
         )}
@@ -139,8 +138,8 @@ function AgentCard({ agent }: { agent: RegistryAgent }) {
   const engine = engineId(agent);
   const identity = identityFor(agent);
   return (
-    <Card>
-      <CardHeader
+    <Panel>
+      <PanelHeader
         title={agent.display_name ?? agent.name ?? 'unnamed'}
         meta={isDepartmentEngine(agent) ? agent.department : 'no corpus binding'}
       />
@@ -168,7 +167,7 @@ function AgentCard({ agent }: { agent: RegistryAgent }) {
           <Field label="Tools" value={agent.tools.join(', ')} source="Agent Registry" />
         ) : null}
       </dl>
-    </Card>
+    </Panel>
   );
 }
 
@@ -191,7 +190,7 @@ function Field({
   source: string;
 }) {
   return (
-    <div className="flex flex-col gap-0.5">
+    <div className="flex flex-col gap-1">
       <dt className="text-xs uppercase tracking-wide text-muted">{label}</dt>
       <dd className="min-w-0">
         {value === null ? (

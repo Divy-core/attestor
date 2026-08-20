@@ -49,7 +49,7 @@ export function StreamIndicator({
       <span
         aria-hidden
         className={cx(
-          'inline-block h-1.5 w-1.5 rounded-full',
+          'inline-block h-2 w-2 rounded-sm',
           solid ? 'bg-primary' : 'border border-strong bg-transparent',
         )}
       />

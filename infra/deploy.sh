@@ -62,6 +62,16 @@ WEB_SA="attestor-web@${PROJECT_ID}.iam.gserviceaccount.com"
 WORK_TOPIC="attestor.work"
 DEADLETTER_TOPIC="attestor.deadletter"
 PUSH_SUBSCRIPTION="attestor.work.push"
+# Gmail publishes change notifications here. A SEPARATE topic from the work topic on
+# purpose: what Gmail publishes is its own shape, not a WorkEnvelope, and the endpoint
+# that reads it has a different ack contract. See ADR-0009.
+GMAIL_TOPIC="attestor-gmail"
+GMAIL_SUBSCRIPTION="attestor.gmail.push"
+# Gmail's own publisher identity. Fixed and documented by Google -- not one of ours.
+GMAIL_PUBLISHER="serviceAccount:gmail-api-push@system.gserviceaccount.com"
+# Holds the OAuth refresh token for the watched mailbox, written once by
+# tools/gmail_authorize.py. Never in this repo and never in an environment variable.
+GMAIL_SECRET="attestor-gmail-oauth"
 
 DISPATCHER_SA="attestor-dispatcher@${PROJECT_ID}.iam.gserviceaccount.com"
 CONTROL_SA="attestor-control-plane@${PROJECT_ID}.iam.gserviceaccount.com"
@@ -153,6 +163,63 @@ gcloud iam service-accounts add-iam-policy-binding "$CONTROL_SA" \
     --project "$PROJECT_ID" \
     --member="serviceAccount:${CONTROL_SA}" \
     --role=roles/iam.serviceAccountTokenCreator --quiet >/dev/null
+
+# ---------------------------------------------------------------------------------
+# Inbound email (Phase 7, ADR-0009)
+#
+# Two grants the dispatcher needs before an email can become work, both narrow:
+#
+# 1. Read the Gmail refresh token. Scoped to the ONE secret, not project-wide
+#    `secretmanager.secretAccessor` -- a service that can read every secret in the project
+#    to read one of them is not least privilege, it is a habit.
+#
+# 2. Write to the uploads bucket. The dispatcher has had `storage.objectViewer` since
+#    Phase 4 and that was correct while every questionnaire arrived through a signed URL
+#    minted by the control plane. An attachment pulled from an email has to be staged by
+#    the dispatcher itself, so it needs create -- granted ON THE UPLOADS BUCKET and nowhere
+#    else. In particular not on the corpus bucket: attacker-supplied text one indexing job
+#    away from being cited as evidence about our own controls is precisely the shape of the
+#    tool-poisoning attack the Armor egress surface exists to stop.
+# ---------------------------------------------------------------------------------
+section "Inbound email"
+
+if gcloud secrets describe "$GMAIL_SECRET" --project "$PROJECT_ID" >/dev/null 2>&1; then
+    gcloud secrets add-iam-policy-binding "$GMAIL_SECRET" \
+        --project "$PROJECT_ID" \
+        --member="serviceAccount:${DISPATCHER_SA}" \
+        --role=roles/secretmanager.secretAccessor --quiet --format=none
+    printf '  %s -> dispatcher may read it\n' "$GMAIL_SECRET"
+else
+    printf '  %s does NOT exist yet.\n' "$GMAIL_SECRET"
+    printf '    Inbound email stays off until it does. Create it with:\n'
+    printf '      PROJECT_ID=%s uv run python tools/gmail_authorize.py --client-secrets ...\n' \
+        "$PROJECT_ID"
+    printf '    then re-run this script to grant the dispatcher access.\n'
+fi
+
+UPLOADS_BUCKET="gs://${PROJECT_ID}-uploads"
+if gcloud storage buckets describe "$UPLOADS_BUCKET" --project "$PROJECT_ID" >/dev/null 2>&1; then
+    gcloud storage buckets add-iam-policy-binding "$UPLOADS_BUCKET" \
+        --member="serviceAccount:${DISPATCHER_SA}" \
+        --role=roles/storage.objectAdmin --project "$PROJECT_ID" --quiet --format=none
+    printf '  %s -> dispatcher may stage attachments\n' "$UPLOADS_BUCKET"
+else
+    printf '  %s not found; skipping the staging grant\n' "$UPLOADS_BUCKET"
+fi
+
+if gcloud pubsub topics describe "$GMAIL_TOPIC" --project "$PROJECT_ID" >/dev/null 2>&1; then
+    printf '  exists: %s\n' "$GMAIL_TOPIC"
+else
+    gcloud pubsub topics create "$GMAIL_TOPIC" --project "$PROJECT_ID" --quiet
+    printf '  created: %s\n' "$GMAIL_TOPIC"
+fi
+
+# Without this binding `users.watch` returns a 403 naming the topic, and it is the first
+# thing that goes wrong every time. Gmail publishes as a fixed system account.
+gcloud pubsub topics add-iam-policy-binding "$GMAIL_TOPIC" \
+    --member="$GMAIL_PUBLISHER" --role=roles/pubsub.publisher \
+    --project "$PROJECT_ID" --quiet --format=none
+printf '  %s may publish to %s\n' "gmail-api-push" "$GMAIL_TOPIC"
 
 # ---------------------------------------------------------------------------------
 # The write token
@@ -393,6 +460,37 @@ gcloud pubsub subscriptions add-iam-policy-binding "$PUSH_SUBSCRIPTION" \
     --member="serviceAccount:service-${PROJECT_NUMBER}@gcp-sa-pubsub.iam.gserviceaccount.com" \
     --role=roles/pubsub.subscriber --project "$PROJECT_ID" --quiet --format=none
 
+# The Gmail notification subscription. Same invoker account and the same OIDC posture as
+# the work subscription -- the dispatcher stays --no-allow-unauthenticated, so a stranger who
+# learns the URL cannot inject a notification and make the fleet re-read a mailbox.
+#
+# No dead-letter topic, deliberately, and a short ack deadline. A notification is not work:
+# it is a pointer at a history delta, it is cheap to recompute, and the *work* it produces
+# has its own dead-letter path with its own audit event. Dead-lettering the notification
+# would move a message nobody can act on into a queue nobody reads.
+GMAIL_SUB_ARGS=(
+    --topic "$GMAIL_TOPIC"
+    --push-endpoint "${DISPATCHER_URL}/gmail/push"
+    --push-auth-service-account "$INVOKER_SA"
+    --ack-deadline 60
+    --min-retry-delay 10s
+    --max-retry-delay 300s
+    --message-retention-duration 1d
+    --project "$PROJECT_ID"
+    --quiet
+)
+if gcloud pubsub subscriptions describe "$GMAIL_SUBSCRIPTION" \
+        --project "$PROJECT_ID" >/dev/null 2>&1; then
+    gcloud pubsub subscriptions update "$GMAIL_SUBSCRIPTION" \
+        --push-endpoint "${DISPATCHER_URL}/gmail/push" \
+        --push-auth-service-account "$INVOKER_SA" \
+        --ack-deadline 60 --project "$PROJECT_ID" --quiet
+    printf '  updated %s\n' "$GMAIL_SUBSCRIPTION"
+else
+    gcloud pubsub subscriptions create "$GMAIL_SUBSCRIPTION" "${GMAIL_SUB_ARGS[@]}"
+    printf '  created %s\n' "$GMAIL_SUBSCRIPTION"
+fi
+
 # A subscription ON the dead-letter topic. Without one, a dead-lettered message is
 # discarded the moment it arrives and the DLQ is a hole rather than a queue -- which is
 # precisely why session two's stalled run had nothing to inspect. The drill in
@@ -412,3 +510,5 @@ printf '  control plane : %s\n' "$CONTROL_URL"
 printf '  dispatcher    : %s\n' "$DISPATCHER_URL"
 printf '  web           : %s\n' "${WEB_URL:-not deployed}"
 printf '  subscription  : %s -> %s/pubsub/push\n' "$PUSH_SUBSCRIPTION" "$DISPATCHER_URL"
+printf '  inbound mail  : %s -> %s/gmail/push\n' "$GMAIL_SUBSCRIPTION" "$DISPATCHER_URL"
+printf '                  register the watch: PROJECT_ID=%s uv run python tools/gmail_watch.py --apply\n' "$PROJECT_ID"

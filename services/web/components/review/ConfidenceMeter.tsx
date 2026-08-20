@@ -36,10 +36,10 @@ function Signal({
         <span className="text-xs text-muted">{label}</span>
         <Mono className="text-xs">{value}</Mono>
       </div>
-      <div className="h-1 w-full rounded-full bg-track" role="presentation">
+      <div className="h-1 w-full rounded-sm bg-track" role="presentation">
         {fraction === null ? null : (
           <div
-            className="h-1 rounded-full bg-scale transition-all duration-state"
+            className="h-1 rounded-sm bg-scale transition-all duration-state"
             style={{ width: `${Math.max(2, Math.min(100, fraction * 100))}%` }}
           />
         )}
@@ -64,7 +64,7 @@ export function ConfidenceMeter({ answer }: { answer: AnswerRow }) {
   const stretch = (value: number) => (value - FLOOR) / (CEILING - FLOOR);
 
   return (
-    <div className="flex flex-col gap-3 rounded border border-subtle bg-sunken p-3">
+    <div className="flex flex-col gap-3 rounded shadow-line bg-sunken p-3">
       <div className="flex items-baseline justify-between">
         <span className="text-xs uppercase tracking-wide text-muted">Confidence</span>
         <span className="text-sm font-medium text-primary">{answer.confidence}</span>

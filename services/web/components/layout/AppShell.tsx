@@ -1,37 +1,43 @@
 import Link from 'next/link';
 import type { ReactNode } from 'react';
 
+import { CommandPalette } from '@/components/layout/CommandPalette';
 import { ThemeToggle } from '@/components/layout/ThemeToggle';
-import { Mono, cx } from '@/components/ui/primitives';
+import { Key, Mono, cx } from '@/components/ui/primitives';
 import { env } from '@/lib/env';
 
 /**
- * The frame. A fixed left rail, a thin header, and everything else is the page.
+ * The frame: a narrow rail, a thin header, and everything else is the page.
  *
  * No hero, no marketing copy, no product tour. The subject is a compliance console and the
  * content is the interesting part; the chrome's job is to take as little room as it can and
  * then get out of the way.
+ *
+ * The rail is 200px and does not collapse. A collapsible sidebar is a control that has to be
+ * discovered, remembered, and animated, in exchange for space this layout does not need —
+ * the workspace is three panes and the third one is where the width goes.
  */
 
-const NAV: ReadonlyArray<{ href: string; label: string; match: string }> = [
-  { href: '/', label: 'Fleet', match: '^/$' },
-  { href: '/reviews', label: 'Reviews', match: '^/reviews' },
-  { href: '/registry', label: 'Registry', match: '^/registry' },
-  { href: '/traces', label: 'Traces', match: '^/traces' },
+export const NAV: ReadonlyArray<{ href: string; label: string; match: string; hint: string }> = [
+  { href: '/', label: 'Fleet', match: '^/$', hint: 'Six agents, what each is doing now' },
+  { href: '/reviews', label: 'Reviews', match: '^/reviews', hint: 'Every review and its round' },
+  { href: '/registry', label: 'Registry', match: '^/registry', hint: 'The live Agent Registry' },
+  { href: '/traces', label: 'Traces', match: '^/traces', hint: 'One run, span by span' },
 ];
 
-export function Sidebar({ pathname }: { pathname: string }) {
+function Rail({ pathname }: { pathname: string }) {
   return (
     <nav
       aria-label="Sections"
-      className="flex h-full w-52 shrink-0 flex-col gap-px border-r border-subtle bg-base px-2 py-3"
+      className="flex h-full w-rail shrink-0 flex-col gap-1 border-r border-subtle px-2 py-3"
     >
       <Link
         href="/"
-        className="mb-4 px-2 text-md font-medium tracking-tight text-primary no-underline"
+        className="mb-4 px-2 text-md font-semibold tracking-tight text-primary no-underline hover:no-underline"
       >
         Attestor
       </Link>
+
       {NAV.map((item) => {
         const active = new RegExp(item.match).test(pathname);
         return (
@@ -39,9 +45,12 @@ export function Sidebar({ pathname }: { pathname: string }) {
             key={item.href}
             href={item.href}
             aria-current={active ? 'page' : undefined}
+            title={item.hint}
             className={cx(
-              'rounded-sm px-2 py-1 text-sm no-underline transition-colors',
-              active ? 'bg-active text-primary' : 'text-secondary hover:bg-hover',
+              'rounded-sm px-2 py-2 text-sm no-underline transition-colors hover:no-underline',
+              active
+                ? 'bg-active font-medium text-primary'
+                : 'text-secondary hover:bg-hover hover:text-primary',
             )}
           >
             {item.label}
@@ -49,7 +58,11 @@ export function Sidebar({ pathname }: { pathname: string }) {
         );
       })}
 
-      <div className="mt-auto flex flex-col gap-1.5 px-2 pt-4">
+      <div className="mt-auto flex flex-col gap-2 px-2 pt-4">
+        <div className="flex items-center gap-2 pb-2 text-xs text-muted">
+          <Key>⌘K</Key>
+          <span>anywhere</span>
+        </div>
         {/*
           The deployment, rendered as monospace metadata rather than described in prose.
           "Visible proof it runs on Google Cloud" is 30% of the score's own wording, and a
@@ -59,7 +72,10 @@ export function Sidebar({ pathname }: { pathname: string }) {
         <Mono dim title="GCP project">
           {env.projectId}
         </Mono>
-        <Mono dim title="Region -- everything is us-central1 by design; Model Armor's regional support is narrower than Vertex's">
+        <Mono
+          dim
+          title="Region -- everything is us-central1 by design; Model Armor's regional support is narrower than Vertex's"
+        >
           {env.region}
         </Mono>
         <Mono dim title="Cloud Run revision serving this page">
@@ -76,31 +92,35 @@ export function AppShell({
   title,
   meta,
   actions,
+  reviews = [],
 }: {
   children: ReactNode;
   pathname: string;
   title: ReactNode;
   meta?: ReactNode;
   actions?: ReactNode;
+  /** What the palette can jump to. Empty is fine; it still navigates and still filters. */
+  reviews?: ReadonlyArray<{ review_id: string; customer: string; state: string }>;
 }) {
   return (
     <div className="flex h-screen w-full overflow-hidden bg-base">
-      <Sidebar pathname={pathname} />
+      <Rail pathname={pathname} />
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-14 shrink-0 items-center justify-between gap-4 border-b border-subtle px-5">
+        <header className="flex h-12 shrink-0 items-center justify-between gap-4 border-b border-subtle px-4">
           <div className="flex min-w-0 items-baseline gap-3">
-            <h1 className="truncate text-lg font-medium text-primary">{title}</h1>
+            <h1 className="truncate text-md font-semibold text-primary">{title}</h1>
             {meta ? <div className="truncate text-sm text-muted">{meta}</div> : null}
           </div>
-          <div className="flex shrink-0 items-center gap-3">
+          <div className="flex shrink-0 items-center gap-2">
             {actions}
             <ThemeToggle />
           </div>
         </header>
         {/* The page owns its own scrolling. A body that scrolls horizontally at 1080p is the
             one layout failure that cannot be hidden in a recording. */}
-        <main className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">{children}</main>
+        <main className="min-h-0 flex-1 overflow-hidden">{children}</main>
       </div>
+      <CommandPalette reviews={reviews} />
     </div>
   );
 }

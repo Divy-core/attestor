@@ -1,191 +1,62 @@
+import type { CSSProperties, ReactNode } from 'react';
+
+import { STATES, type StateDescriptor, type StateForm } from '@/lib/states';
+
 /**
- * The primitive set. Small, unstyled-by-default, and deliberately few.
+ * The whole vocabulary. Everything the interface is made of is here or composed from here.
  *
- * Everything here obeys three rules that come from the design brief rather than from taste:
+ * ## Four rules, and they are what the rebuild is
  *
- * **Depth is hairlines and background steps.** No drop shadows anywhere. A shadow over a dark
- * surface reads as blur once the recording is re-encoded, and it is the single most common
- * tell of a dashboard template.
+ * 1. **Hairlines do all the separation.** No card fills, no zebra striping, no boxes inside
+ *    boxes. A panel is a panel because a 1px rule says where it stops, and that rule is a
+ *    `box-shadow: 0 0 0 1px` rather than a `border` — a shadow does not participate in
+ *    layout, so a row that gains a ring on selection does not change height and the list
+ *    does not shift under the cursor.
+ * 2. **Generous padding inside a cell, tight rhythm between rows.** Density comes from
+ *    removing the space *between* things, not from cramping what is inside them.
+ * 3. **Hierarchy from type, never from colour.** Size and weight carry the structure. The
+ *    accent is for links, primary actions and focus; the six state hues are for status and
+ *    nothing else. Delete the accent and this should still read correctly.
+ * 4. **Every element earns its pixel.** There is no decorative component in this file.
  *
- * **Nothing important lives in a hover state.** Hover does not exist on a recording. Hover is
- * used only to confirm that a row is interactive; every piece of information is visible at
- * rest.
+ * ## Server components by default
  *
- * **Colour only carries meaning.** There is no accent hue in this file. Selection and focus
- * use the foreground colour, so nothing about chrome can be mistaken for status.
- *
- * ## No `'use client'`, deliberately
- *
- * This module is imported by server components (`AppShell`, every page) and by client ones. A
- * shared module is compiled into both graphs, which is what makes that possible — and it is only
- * possible while nothing here calls a hook. Adding `'use client'` to get one hook broke every
- * server component that imports `cx`:
- *
- *     Attempted to call cx() from the server but cx is on the client
- *
- * found by loading the page rather than by type-checking it, because it is a boundary error and
- * not a type error. Anything needing `useEffect` or `useRef` goes in its own client module —
- * `Modal` did, and lives in `components/ui/Modal.tsx`.
+ * Nothing here declares `'use client'`. That is load-bearing and was learned the hard way in
+ * Phase 6.5: adding the directive to this module made every server component that imported
+ * `cx` fail at runtime with "Attempted to call cx() from the server", and `tsc --noEmit` was
+ * clean throughout. Anything needing state lives in its own client module.
  */
-
-import type { ReactNode } from 'react';
-
-import { STATES, type StateDescriptor } from '@/lib/states';
 
 export function cx(...parts: Array<string | false | null | undefined>): string {
   return parts.filter(Boolean).join(' ');
 }
 
 // ---------------------------------------------------------------------------------
-// Surfaces
-// ---------------------------------------------------------------------------------
-
-export function Card({
-  children,
-  className,
-  as: Tag = 'section',
-}: {
-  children: ReactNode;
-  className?: string;
-  as?: 'section' | 'div' | 'article';
-}) {
-  return (
-    <Tag className={cx('rounded border border-subtle bg-surface', className)}>{children}</Tag>
-  );
-}
-
-export function CardHeader({
-  title,
-  meta,
-  actions,
-}: {
-  title: ReactNode;
-  meta?: ReactNode;
-  actions?: ReactNode;
-}) {
-  return (
-    <header className="flex items-baseline justify-between gap-4 border-b border-subtle px-4 py-2.5">
-      <div className="flex min-w-0 items-baseline gap-3">
-        <h2 className="truncate text-md font-medium text-primary">{title}</h2>
-        {meta ? <div className="truncate text-xs text-muted">{meta}</div> : null}
-      </div>
-      {actions ? <div className="flex shrink-0 items-center gap-2">{actions}</div> : null}
-    </header>
-  );
-}
-
-// ---------------------------------------------------------------------------------
-// State badge -- the piece the whole palette exists for
+// Text
 // ---------------------------------------------------------------------------------
 
 /**
- * The dot is not decoration: it is the channel that survives greyscale.
+ * A value the system produced, not prose about it.
  *
- * Three of the six states are solid dots separated by lightness; the other three are
- * separated by fill treatment — a ring for the honest blank, hatching for containment, a half
- * fill for partial capability. Rendering the dot from `descriptor.form` rather than from a
- * per-component decision is what keeps that guarantee true everywhere at once.
- */
-function StateDot({ state }: { state: StateDescriptor }) {
-  const base = 'inline-block h-2 w-2 shrink-0 rounded-full';
-  if (state.form === 'ring') {
-    return (
-      <span
-        aria-hidden
-        className={cx(base, 'border-2 border-current bg-transparent', state.ink)}
-      />
-    );
-  }
-  if (state.form === 'hatched') {
-    return (
-      <span
-        aria-hidden
-        className={cx(base, 'fill-hatched border border-current', state.ink)}
-      />
-    );
-  }
-  if (state.form === 'half') {
-    return <span aria-hidden className={cx(base, 'dot-half', state.ink)} />;
-  }
-  return <span aria-hidden className={cx(base, 'bg-current', state.ink)} />;
-}
-
-export function StateBadge({
-  state,
-  compact = false,
-}: {
-  state: StateDescriptor;
-  compact?: boolean;
-}) {
-  return (
-    <span
-      // `title` carries the meaning, but the meaning is also rendered in the legend and in
-      // the answer card -- a tooltip is never the only place an explanation lives.
-      title={state.meaning}
-      className={cx(
-        'inline-flex items-center gap-1.5 whitespace-nowrap rounded-sm border',
-        'border-subtle px-1.5 py-0.5 text-xs',
-        state.fill,
-        state.ink,
-      )}
-    >
-      <StateDot state={state} />
-      {compact ? null : <span className="font-medium">{state.label}</span>}
-    </span>
-  );
-}
-
-/**
- * The legend. Present on every page that shows states, at rest, not behind a control.
- *
- * A six-state vocabulary that a viewer has to infer is a six-state vocabulary that does not
- * communicate. Four seconds of a recording is not enough time to work out what hatching
- * means, and the judge watching has never seen this interface before.
- */
-export function StateLegend({ keys }: { keys: readonly (keyof typeof STATES)[] }) {
-  return (
-    <ul className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
-      {keys.map((key) => {
-        const state = STATES[key];
-        return (
-          <li key={key} className="flex items-center gap-1.5 text-xs text-secondary">
-            <StateDot state={state} />
-            <span>{state.label}</span>
-          </li>
-        );
-      })}
-    </ul>
-  );
-}
-
-// ---------------------------------------------------------------------------------
-// Machine values
-// ---------------------------------------------------------------------------------
-
-/**
- * Monospace here is semantic, not stylistic: it means "this is a value the system produced".
- * Engine resource names, dedup keys, trace ids, relevance scores, revisions.
- *
- * Rendering the real ones is also worth marks. The rubric asks for "visible proof it runs on
- * Google Cloud", and an interface that quietly shows its actual `reasoningEngines/...` paths
- * and its `.run.app` origin answers that without a line of marketing copy.
+ * Monospace is semantic here rather than stylistic: an engine resource name, a dedup key, a
+ * relevance score, a revision. If it could have been typed by a person it is not `Mono`.
  */
 export function Mono({
   children,
-  title,
+  dim,
   className,
-  dim = false,
+  title,
 }: {
   children: ReactNode;
-  title?: string;
-  className?: string;
   dim?: boolean;
+  className?: string;
+  title?: string;
 }) {
   return (
     <span
       title={title}
       className={cx(
-        'font-mono text-xs',
+        'font-mono text-xs tabular-nums',
         dim ? 'text-muted' : 'text-secondary',
         className,
       )}
@@ -195,22 +66,156 @@ export function Mono({
   );
 }
 
-/** A labelled machine value. The label is what makes a bare hash mean something. */
-export function MetaValue({
-  label,
+/** A column heading or a metadata label. Never a sentence. */
+export function Label({ children, className }: { children: ReactNode; className?: string }) {
+  return (
+    <span
+      className={cx(
+        'text-xs font-medium uppercase tracking-wide text-muted',
+        className,
+      )}
+    >
+      {children}
+    </span>
+  );
+}
+
+/**
+ * One live figure, big enough to read across a room.
+ *
+ * The only place 32px type appears. A counter moving during a run is the one thing on
+ * screen a viewer should not have to look for.
+ */
+export function Figure({
   value,
-  title,
+  of,
+  label,
+  tone = 'default',
 }: {
+  value: number | string;
+  of?: number | string;
   label: string;
-  value: ReactNode;
-  title?: string;
+  tone?: 'default' | 'muted';
 }) {
   return (
-    <div className="flex min-w-0 flex-col gap-0.5">
-      <span className="block text-xs uppercase tracking-wide text-muted">{label}</span>
-      <Mono title={title} className="block truncate text-sm">
-        {value}
-      </Mono>
+    <div className="flex flex-col gap-1">
+      <div className="flex items-baseline gap-1">
+        <span
+          className={cx(
+            'text-xl font-medium tabular-nums',
+            tone === 'muted' ? 'text-muted' : 'text-primary',
+          )}
+        >
+          {value}
+        </span>
+        {of !== undefined ? (
+          <span className="text-sm tabular-nums text-muted">/ {of}</span>
+        ) : null}
+      </div>
+      <Label>{label}</Label>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------------
+// Surfaces
+// ---------------------------------------------------------------------------------
+
+/**
+ * A bounded region. One hairline, no fill of its own beyond the surface step.
+ *
+ * `flush` exists for a panel that owns a list: the list rows supply their own horizontal
+ * padding and a panel that also padded them would double it.
+ */
+export function Panel({
+  children,
+  className,
+  flush,
+}: {
+  children: ReactNode;
+  className?: string;
+  flush?: boolean;
+}) {
+  return (
+    <section
+      className={cx(
+        'rounded bg-surface shadow-line',
+        flush ? '' : 'p-4',
+        className,
+      )}
+    >
+      {children}
+    </section>
+  );
+}
+
+/** A panel's heading row. Separated by a rule, not by a filled bar. */
+export function PanelHeader({
+  title,
+  meta,
+  actions,
+}: {
+  title: ReactNode;
+  meta?: ReactNode;
+  actions?: ReactNode;
+}) {
+  return (
+    <header className="flex items-center justify-between gap-4 border-b border-subtle px-4 py-3">
+      <div className="flex min-w-0 items-baseline gap-3">
+        <h2 className="truncate text-md font-semibold text-primary">{title}</h2>
+        {meta ? <span className="truncate text-sm text-muted">{meta}</span> : null}
+      </div>
+      {actions ? <div className="flex shrink-0 items-center gap-2">{actions}</div> : null}
+    </header>
+  );
+}
+
+/**
+ * What a region says when it is genuinely empty.
+ *
+ * `hint` is required rather than optional on purpose. An empty state that only says "no
+ * results" tells a person nothing they did not already know; the useful half is what would
+ * appear here and how to make it appear.
+ */
+export function Empty({
+  title,
+  hint,
+  action,
+}: {
+  title: string;
+  hint: string;
+  action?: ReactNode;
+}) {
+  return (
+    <div className="flex flex-col items-start gap-2 px-4 py-8">
+      <p className="text-base font-medium text-secondary">{title}</p>
+      <p className="max-w-prose text-sm text-muted">{hint}</p>
+      {action ? <div className="pt-2">{action}</div> : null}
+    </div>
+  );
+}
+
+/**
+ * A read that failed, rendered as a failure.
+ *
+ * Distinct from `Empty` and that distinction is the point. "This review has no answers" and
+ * "the read failed" are different facts, and the second one rendered as the first is the
+ * mistake this codebase has made repeatedly in Python and intends never to make in the UI.
+ */
+export function Failure({
+  what,
+  detail,
+  action,
+}: {
+  what: string;
+  detail: string;
+  action?: ReactNode;
+}) {
+  return (
+    <div className="flex flex-col items-start gap-2 rounded bg-fill-denied px-4 py-3 shadow-line">
+      <p className="text-base font-medium text-denied">{what}</p>
+      <p className="max-w-prose font-mono text-xs text-secondary">{detail}</p>
+      {action ? <div className="pt-1">{action}</div> : null}
     </div>
   );
 }
@@ -219,29 +224,35 @@ export function MetaValue({
 // Controls
 // ---------------------------------------------------------------------------------
 
+type ButtonTone = 'primary' | 'secondary' | 'ghost' | 'danger';
+
+const BUTTON_TONES: Record<ButtonTone, string> = {
+  // The accent's only appearances: this, links, focus, and the active nav item.
+  primary: 'bg-accent text-accent-ink hover:bg-accent-hover',
+  secondary: 'bg-surface text-primary shadow-line-strong hover:bg-hover',
+  ghost: 'bg-transparent text-secondary hover:bg-hover hover:text-primary',
+  danger: 'bg-transparent text-denied shadow-line-strong hover:bg-fill-denied',
+};
+
 export function Button({
   children,
-  onClick,
-  variant = 'default',
-  disabled = false,
+  tone = 'secondary',
   type = 'button',
+  onClick,
+  disabled,
   title,
+  className,
+  small,
 }: {
   children: ReactNode;
-  onClick?: () => void;
-  variant?: 'default' | 'primary' | 'quiet';
-  disabled?: boolean;
+  tone?: ButtonTone;
   type?: 'button' | 'submit';
+  onClick?: () => void;
+  disabled?: boolean;
   title?: string;
+  className?: string;
+  small?: boolean;
 }) {
-  const styles = {
-    // Inverted rather than coloured. The one emphatic control on a page should read as
-    // emphatic without borrowing a state hue and implying a status.
-    primary: 'bg-primary text-inverse border-primary hover:opacity-90',
-    default: 'bg-surface text-primary border-line hover:bg-hover',
-    quiet: 'bg-transparent text-secondary border-transparent hover:bg-hover',
-  }[variant];
-
   return (
     <button
       type={type}
@@ -249,9 +260,11 @@ export function Button({
       disabled={disabled}
       title={title}
       className={cx(
-        'inline-flex items-center gap-1.5 rounded-sm border px-2.5 py-1 text-sm',
-        'transition-colors disabled:cursor-not-allowed disabled:opacity-50',
-        styles,
+        'inline-flex shrink-0 items-center justify-center gap-2 rounded-sm font-medium transition-colors',
+        'disabled:cursor-not-allowed disabled:opacity-40',
+        small ? 'h-row-dense px-2 text-xs' : 'h-row px-3 text-sm',
+        BUTTON_TONES[tone],
+        className,
       )}
     >
       {children}
@@ -259,84 +272,260 @@ export function Button({
   );
 }
 
+/** A keyboard shortcut, shown where the action is. */
+export function Key({ children }: { children: ReactNode }) {
+  return (
+    <kbd className="rounded-sm bg-sunken px-1 font-mono text-xs text-muted shadow-line">
+      {children}
+    </kbd>
+  );
+}
+
+// ---------------------------------------------------------------------------------
+// Status
+// ---------------------------------------------------------------------------------
+
 /**
- * A labelled form control. The label is a real `<label>` wired by id, not a `<div>` above the
- * input, because the whole point of a compliance console is that a keyboard user can drive it.
+ * The state marker. Hue *and* form, so it survives greyscale and video compression.
  *
- * `hint` sits under the control at rest. There is no tooltip on any field in this interface: a
- * recording has no hover, and a form whose constraints are only discoverable by hovering is a
- * form nobody watching the video can understand.
+ * Three of the six carry their identity in shape rather than colour — a hollow ring for the
+ * honest blank, a hatched fill for containment, a half-filled dot for partial capability —
+ * and those are exactly the three whose luminances sit within a point of each other. If the
+ * only difference between them were hue the design would fail its own exit criterion.
  */
-export function Field({
-  id,
-  label,
-  hint,
+export function StateDot({ form, className }: { form: StateForm; className?: string }) {
+  const base = 'inline-block h-2 w-2 shrink-0 rounded-sm';
+  if (form === 'ring') {
+    return <span className={cx(base, 'bg-transparent shadow-line-strong', className)} />;
+  }
+  if (form === 'half') {
+    return (
+      <span
+        className={cx(base, 'bg-current', className)}
+        style={{ clipPath: 'polygon(0 0, 50% 0, 50% 100%, 0 100%)' }}
+      />
+    );
+  }
+  if (form === 'hatched') {
+    return (
+      <span
+        className={cx(base, className)}
+        style={{
+          backgroundImage:
+            'repeating-linear-gradient(45deg, currentColor 0 2px, transparent 2px 4px)',
+        }}
+      />
+    );
+  }
+  return <span className={cx(base, 'bg-current', className)} />;
+}
+
+export function StateBadge({
+  state,
   children,
+  className,
 }: {
-  id: string;
-  label: string;
-  hint?: ReactNode;
-  children: ReactNode;
+  state: StateDescriptor;
+  children?: ReactNode;
+  className?: string;
 }) {
   return (
-    <div className="flex flex-col gap-1">
-      <label htmlFor={id} className="text-xs uppercase tracking-wide text-muted">
-        {label}
-      </label>
+    <span
+      title={state.meaning}
+      className={cx(
+        'inline-flex items-center gap-2 rounded-sm px-2 py-1 text-xs font-medium',
+        state.fill,
+        state.ink,
+        className,
+      )}
+    >
+      <StateDot form={state.form} />
+      {children ?? state.label}
+    </span>
+  );
+}
+
+/** Every state, once, with what each means. */
+export function StateLegend({ keys }: { keys: readonly (keyof typeof STATES)[] }) {
+  return (
+    <ul className="flex flex-wrap items-center gap-2">
+      {keys.map((key) => (
+        <li key={key}>
+          <StateBadge state={STATES[key]} />
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/**
+ * A review's lifecycle position. Deliberately monochrome.
+ *
+ * `drafting` is not good or bad, it is a position in a sequence, so it gets weight and a
+ * rule rather than a hue. Six state colours already carry meaning; adding three more for
+ * lifecycle positions would dilute all of them.
+ */
+export function LifecycleBadge({ state, tone }: { state: string; tone: string }) {
+  return (
+    <span
+      className={cx(
+        'inline-flex items-center rounded-sm px-2 py-1 text-xs font-medium shadow-line',
+        tone === 'terminal' ? 'text-muted' : 'text-primary',
+      )}
+    >
+      {state.replace(/_/g, ' ')}
+    </span>
+  );
+}
+
+// ---------------------------------------------------------------------------------
+// Magnitudes
+// ---------------------------------------------------------------------------------
+
+/**
+ * A proportion, drawn once.
+ *
+ * One hue at varying length rather than a spectrum: a score is a magnitude, and giving
+ * magnitudes different hues invents categories that are not there.
+ */
+export function Meter({
+  value,
+  max = 1,
+  label,
+  className,
+}: {
+  value: number;
+  max?: number;
+  label: string;
+  className?: string;
+}) {
+  const fraction = max > 0 ? Math.max(0, Math.min(1, value / max)) : 0;
+  const style: CSSProperties = { width: `${(fraction * 100).toFixed(1)}%` };
+  return (
+    <span
+      role="img"
+      aria-label={label}
+      title={label}
+      className={cx('block h-1 w-full overflow-hidden rounded-sm bg-track', className)}
+    >
+      <span className="block h-full bg-scale" style={style} />
+    </span>
+  );
+}
+
+// ---------------------------------------------------------------------------------
+// Rows
+// ---------------------------------------------------------------------------------
+
+/**
+ * One line of a dense list.
+ *
+ * Selection is a ring plus a background step, never a colour: the row is not a *status*, it
+ * is the thing the cursor is on. The ring is a shadow so the row does not resize.
+ */
+export function Row({
+  children,
+  selected,
+  onClick,
+  className,
+  id,
+}: {
+  children: ReactNode;
+  selected?: boolean;
+  onClick?: () => void;
+  className?: string;
+  id?: string;
+}) {
+  return (
+    <div
+      id={id}
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? -1 : undefined}
+      onClick={onClick}
+      className={cx(
+        'flex w-full items-center gap-3 border-b border-subtle px-4 py-2 text-left transition-colors',
+        onClick ? 'cursor-pointer' : '',
+        selected ? 'bg-active' : 'hover:bg-hover',
+        className,
+      )}
+    >
       {children}
-      {hint ? <p className="text-xs text-muted">{hint}</p> : null}
     </div>
   );
 }
 
+// ---------------------------------------------------------------------------------
+// Form controls
+//
+// Three inputs and a label, because the New review form needs exactly three inputs and a
+// component library is a liability at this size. Each one is a hairline and a background
+// step -- the same vocabulary as everything else, so a form does not look like a different
+// application from the grid next to it.
+// ---------------------------------------------------------------------------------
+
 const CONTROL =
-  'w-full rounded-sm border border-line bg-surface px-2.5 py-1.5 text-base text-primary ' +
-  'outline-none transition-colors placeholder:text-muted focus:border-focus ' +
-  'disabled:cursor-not-allowed disabled:opacity-50';
+  'h-row w-full rounded-sm bg-sunken px-2 text-sm text-primary shadow-line outline-none placeholder:text-muted';
+
+export function Field({
+  label,
+  hint,
+  id,
+  children,
+}: {
+  label: string;
+  hint?: ReactNode;
+  id?: string;
+  children: ReactNode;
+}) {
+  return (
+    <label htmlFor={id} className="flex flex-col gap-2">
+      <Label>{label}</Label>
+      {children}
+      {hint ? <span className="text-xs text-muted">{hint}</span> : null}
+    </label>
+  );
+}
 
 export function TextInput({
-  id,
   value,
   onChange,
   placeholder,
-  disabled = false,
-  autoFocus = false,
+  disabled,
+  autoFocus,
+  id,
 }: {
-  id: string;
   value: string;
-  onChange: (value: string) => void;
+  onChange: (next: string) => void;
   placeholder?: string;
   disabled?: boolean;
   autoFocus?: boolean;
+  id?: string;
 }) {
   return (
     <input
       id={id}
-      type="text"
       value={value}
       disabled={disabled}
-      // A modal opened by a deliberate click should place the caret in its first field. Not
-      // doing so costs a tab press on camera, and it is what every comparable console does.
       autoFocus={autoFocus}
       placeholder={placeholder}
       onChange={(event) => onChange(event.target.value)}
-      className={CONTROL}
+      className={cx(CONTROL, 'disabled:opacity-50')}
     />
   );
 }
 
 export function Select<T extends string>({
-  id,
   value,
-  options,
   onChange,
-  disabled = false,
+  options,
+  disabled,
+  id,
 }: {
-  id: string;
   value: T;
+  onChange: (next: T) => void;
   options: ReadonlyArray<{ value: T; label: string }>;
-  onChange: (value: T) => void;
   disabled?: boolean;
+  id?: string;
 }) {
   return (
     <select
@@ -344,7 +533,7 @@ export function Select<T extends string>({
       value={value}
       disabled={disabled}
       onChange={(event) => onChange(event.target.value as T)}
-      className={CONTROL}
+      className={cx(CONTROL, 'disabled:opacity-50')}
     >
       {options.map((option) => (
         <option key={option.value} value={option.value}>
@@ -356,36 +545,29 @@ export function Select<T extends string>({
 }
 
 /**
- * A determinate bar. Determinate only — there is no indeterminate variant, because an
- * indeterminate bar is ambient motion and the brief rules that out.
- *
- * Used for the upload, which is the one thing in this interface with a genuine fraction.
+ * Determinate progress, for the one thing in this interface that has a known total: an
+ * upload. Everything else is a count of work whose size is not known until it is done, and
+ * a bar that guesses at that would be a fiction rendered as a measurement.
  */
 export function Progress({ fraction, label }: { fraction: number; label: string }) {
-  const percent = Math.round(Math.max(0, Math.min(1, fraction)) * 100);
   return (
     <div className="flex flex-col gap-1">
       <div className="flex items-baseline justify-between gap-2">
-        <span className="text-sm text-secondary">{label}</span>
-        <span className="font-mono text-sm tabular-nums text-secondary">{percent}%</span>
+        <span className="text-xs text-muted">{label}</span>
+        <Mono>{Math.round(fraction * 100)}%</Mono>
       </div>
-      <div
-        role="progressbar"
-        aria-valuenow={percent}
-        aria-valuemin={0}
-        aria-valuemax={100}
-        aria-label={label}
-        className="h-1.5 w-full overflow-hidden rounded-sm bg-track"
-      >
-        <div
-          className="h-full bg-scale transition-[width] duration-state"
-          style={{ width: `${percent}%` }}
-        />
-      </div>
+      <Meter value={fraction} label={label} />
     </div>
   );
 }
 
+/**
+ * A tab strip. Used by the trace viewer, where the three panes genuinely are alternatives.
+ *
+ * The review workspace deliberately does NOT use this: its panes are simultaneous, because
+ * losing the question list to read an answer is the thing the three-pane layout exists to
+ * prevent.
+ */
 export function Tabs<T extends string>({
   tabs,
   active,
@@ -396,113 +578,25 @@ export function Tabs<T extends string>({
   onChange: (id: T) => void;
 }) {
   return (
-    <div role="tablist" className="flex items-center gap-1 border-b border-subtle">
-      {tabs.map((tab) => {
-        const selected = tab.id === active;
-        return (
-          <button
-            key={tab.id}
-            role="tab"
-            aria-selected={selected}
-            onClick={() => onChange(tab.id)}
-            className={cx(
-              'relative -mb-px border-b-2 px-3 py-1.5 text-sm transition-colors',
-              selected
-                ? 'border-primary text-primary font-medium'
-                : 'border-transparent text-muted hover:text-secondary',
-            )}
-          >
-            {tab.label}
-            {typeof tab.count === 'number' ? (
-              <span className="ml-1.5 font-mono text-xs text-muted">{tab.count}</span>
-            ) : null}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------------
-// Empty, loading and error -- designed, not default
-//
-// The clearest single difference between a funded product and a weekend build. An empty state
-// explains what will appear and how to make it appear. A loading state shows shape, not a
-// spinner, so the layout does not jump when content lands. An error says what happened and
-// what to do, with no apology and no vagueness.
-// ---------------------------------------------------------------------------------
-
-export function EmptyState({
-  title,
-  children,
-  action,
-}: {
-  title: string;
-  children: ReactNode;
-  action?: ReactNode;
-}) {
-  return (
-    <div className="flex flex-col items-start gap-2 px-4 py-10">
-      {/* A dashed rule rather than an icon. This interface has no icon next to every label,
-          and an illustration here would be the most decorative thing on the page. */}
-      <div className="w-full border-t border-dashed border-line" />
-      <h3 className="pt-3 text-sm font-medium text-primary">{title}</h3>
-      <p className="max-w-prose text-sm text-secondary">{children}</p>
-      {action}
-    </div>
-  );
-}
-
-export function ErrorState({
-  title,
-  detail,
-  action,
-}: {
-  title: string;
-  detail: string;
-  action?: ReactNode;
-}) {
-  return (
-    <div className="flex flex-col items-start gap-2 border-l-2 border-denied bg-fill-denied px-4 py-3">
-      <h3 className="text-sm font-medium text-primary">{title}</h3>
-      {/* The service's own words, monospaced, because on the registry 503 the detail names
-          the host and the HTTP status and that IS the diagnostic. Paraphrasing it into
-          "something went wrong" throws away the only actionable thing in the response. */}
-      <p className="max-w-prose font-mono text-xs text-secondary">{detail}</p>
-      {action}
-    </div>
-  );
-}
-
-/**
- * Shape, not a spinner. The skeleton occupies the same geometry the content will, so nothing
- * moves when the data lands — which matters more here than usual, because the demo is one
- * unedited take and a layout that jumps is a layout the viewer watches jump.
- *
- * No shimmer animation. It is ambient motion, the brief rules it out, and `prefers-reduced-
- * motion` would have to disable it anyway.
- */
-export function Skeleton({ rows = 6, dense = false }: { rows?: number; dense?: boolean }) {
-  return (
-    <div aria-busy="true" aria-live="polite" className="flex flex-col">
-      <span className="sr-only">Loading</span>
-      {Array.from({ length: rows }, (_, index) => (
-        <div
-          key={index}
+    <div role="tablist" className="flex shrink-0 items-center gap-1 border-b border-subtle px-4 py-2">
+      {tabs.map((tab) => (
+        <button
+          key={tab.id}
+          role="tab"
+          aria-selected={tab.id === active}
+          onClick={() => onChange(tab.id)}
           className={cx(
-            'flex items-center gap-3 border-b border-subtle px-4',
-            dense ? 'h-row-dense' : 'h-row',
+            'inline-flex items-center gap-2 rounded-sm px-2 py-1 text-sm transition-colors',
+            tab.id === active
+              ? 'bg-active font-medium text-primary'
+              : 'text-secondary hover:bg-hover',
           )}
         >
-          <div className="h-2 w-2 rounded-full bg-sunken" />
-          <div
-            className="h-2 rounded-sm bg-sunken"
-            // Varying widths so it reads as text rather than as a progress bar. Deterministic
-            // from the index: a random width would change between server and client render
-            // and produce a hydration mismatch.
-            style={{ width: `${[42, 61, 35, 54, 48, 67, 39, 58][index % 8]}%` }}
-          />
-        </div>
+          {tab.label}
+          {typeof tab.count === 'number' ? (
+            <span className="font-mono text-xs tabular-nums text-muted">{tab.count}</span>
+          ) : null}
+        </button>
       ))}
     </div>
   );

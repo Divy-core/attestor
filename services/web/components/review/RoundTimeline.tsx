@@ -35,7 +35,7 @@ export function RoundTimeline({
   return (
     <section
       aria-label="Rounds"
-      className="flex flex-col gap-2 border-b border-subtle px-5 py-3"
+      className="flex flex-col gap-2 border-b border-subtle px-6 py-3"
     >
       <div className="flex items-baseline justify-between">
         <span className="text-xs uppercase tracking-wide text-muted">Rounds</span>
@@ -69,7 +69,7 @@ export function RoundTimeline({
               <span
                 aria-hidden
                 className={cx(
-                  'mt-2.5 h-2 w-2 rounded-full',
+                  'mt-3 h-2 w-2 rounded-sm',
                   tone === 'terminal'
                     ? 'bg-primary'
                     : tone === 'blocked'

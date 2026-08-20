@@ -1,21 +1,29 @@
 'use client';
 
+import { useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { AnswerCard } from '@/components/review/AnswerCard';
 import { ApprovalQueue } from '@/components/review/ApprovalQueue';
 import { ExportPanel } from '@/components/review/ExportPanel';
 import { FleetActivity } from '@/components/review/FleetActivity';
-import { QuestionGrid } from '@/components/review/QuestionGrid';
+import { EMPTY_FILTERS, QuestionGrid, type GridFilters } from '@/components/review/QuestionGrid';
 import { StreamIndicator } from '@/components/review/StreamIndicator';
-import { Button, Card, ErrorState, StateLegend, Tabs } from '@/components/ui/primitives';
+import { Button, Empty, Failure, cx } from '@/components/ui/primitives';
+import type { AnswerRow, AuditEvent, Department, QuestionRow } from '@/lib/api/client';
 import { createPoller } from '@/lib/poll';
 import { openRunStream, type RunEventFrame, type StreamHealth } from '@/lib/sse';
-import { STATE_ORDER } from '@/lib/states';
-import type { AnswerRow, AuditEvent, QuestionRow } from '@/lib/api/client';
+import type { StateKey } from '@/lib/states';
 
 /**
- * The live workspace. Server-rendered data arrives as props; this keeps it current.
+ * The review workspace, which **is** the product. Everything else is navigation to it.
+ *
+ * ## Three panes, not three pages
+ *
+ * A list of questions, the selected answer with its evidence, and a live band across the top
+ * saying what the fleet is doing. All visible at once, because the job is scanning 312 rows
+ * and stopping on the ones that need a person — and a design where reading an answer means
+ * losing the list is a design that makes that job harder.
  *
  * ## Why the stream does not carry the data
  *
@@ -31,8 +39,8 @@ import type { AnswerRow, AuditEvent, QuestionRow } from '@/lib/api/client';
  *
  * The one exception is the orchestrator's judgement events, which `FleetActivity` accumulates
  * from the stream directly. Those are not rows to refetch — they are an append-only log, the
- * frame carries the whole event, and there is no endpoint that returns "the last four decisions"
- * to refetch from. Nothing derived from them is used to render an answer.
+ * frame carries the whole event, and there is no endpoint that returns "the last four
+ * decisions" to refetch from. Nothing derived from them is used to render an answer.
  *
  * ## The three failure modes, wired
  *
@@ -48,14 +56,21 @@ import type { AnswerRow, AuditEvent, QuestionRow } from '@/lib/api/client';
  * A 312-question review emits ~949 audit events, and every one of them means the round moved.
  * The first version of this component called `refetch()` on each — two reads apiece, so roughly
  * 1,900 requests through the proxy to a control plane running `--max-instances 4`, arriving in
- * bursts as three partitions drafted in parallel. That is what produced the
- * `429 on refresh` banner in the screen recording: not the polling fallback (which is stopped
- * while the stream is live) and not Cloud Run's instance cap on its own, but the page asking
- * for the same 312 rows a thousand times in twelve minutes.
+ * bursts as three partitions drafted in parallel. That is what produced the `429 on refresh`
+ * banner in the screen recording: not the polling fallback (which is stopped while the stream
+ * is live) and not Cloud Run's instance cap on its own, but the page asking for the same 312
+ * rows a thousand times in twelve minutes.
  *
  * `scheduleRefetch` collapses a burst into one read on a trailing edge, with a floor between
  * reads. The grid still fills in visibly — a second of latency is invisible next to a
  * forty-second drafting call — and the request count drops by roughly two orders of magnitude.
+ *
+ * ## Filters live in the URL
+ *
+ * `?q=encryption&dept=legal&state=flagged&sel=<question id>` is a link a person can send, and
+ * "here is the row I am looking at" is the most common thing anyone wants to do with a
+ * console. `router.replace` rather than `push`, so filtering does not fill the back button
+ * with every keystroke.
  */
 
 type Props = {
@@ -70,8 +85,6 @@ type Props = {
   loadError: string | null;
 };
 
-type Tab = 'questions' | 'approvals' | 'export';
-
 /**
  * No more than one read per this many milliseconds, however many events arrive.
  *
@@ -80,6 +93,9 @@ type Tab = 'questions' | 'approvals' | 'export';
  * bought with requests that trip a rate limit.
  */
 const MIN_REFETCH_INTERVAL_MS = 1_200;
+
+/** Kept in step with `FleetActivity`'s own set, which is the one that renders them. */
+const JUDGEMENT_KINDS = new Set(['plan_selected', 'retry_decided', 'run_completed']);
 
 export function ReviewWorkspace({
   reviewId,
@@ -90,13 +106,49 @@ export function ReviewWorkspace({
   initialJudgements,
   loadError,
 }: Props) {
+  const params = useSearchParams();
+
   const [questions, setQuestions] = useState(initialQuestions);
   const [answers, setAnswers] = useState(initialAnswers);
   const [judgements, setJudgements] = useState<AuditEvent[]>(initialJudgements);
+
+  // The URL seeds this state and then mirrors it. It is deliberately NOT the source of
+  // truth, and the first version of this component made it one -- `router.replace` per
+  // keystroke, with `dynamic = 'force-dynamic'` on the page, so every press of `j` was an
+  // RSC round trip. Pressing it three times in a row moved the selection once and then
+  // stopped, which is how this was found: by pressing the key, not by reading the code.
+  //
+  // So navigation is local state, and `history.replaceState` writes the shareable URL
+  // afterwards. Same link, no round trip, and the grid responds at the speed of a keypress.
+  const [view, setView] = useState<'answer' | 'queue' | 'export'>(() => {
+    const initial = params.get('view');
+    return initial === 'queue' || initial === 'export' ? initial : 'answer';
+  });
   const [selected, setSelected] = useState<string | null>(
-    initialQuestions[0]?.question_id ?? null,
+    () => params.get('sel') ?? initialQuestions[0]?.question_id ?? null,
   );
-  const [tab, setTab] = useState<Tab>('questions');
+  const [filters, setFilters] = useState<GridFilters>(() => ({
+    query: params.get('q') ?? '',
+    department: (params.get('dept') as Department | 'all') ?? EMPTY_FILTERS.department,
+    state: (params.get('state') as StateKey | 'all') ?? EMPTY_FILTERS.state,
+  }));
+
+  const showQueue = view === 'queue';
+  const showExport = view === 'export';
+
+  useEffect(() => {
+    const next = new URLSearchParams();
+    if (filters.query) next.set('q', filters.query);
+    if (filters.department !== 'all') next.set('dept', filters.department);
+    if (filters.state !== 'all') next.set('state', filters.state);
+    if (view !== 'answer') next.set('view', view);
+    if (selected) next.set('sel', selected);
+    const query = next.toString();
+    const url = query ? `${window.location.pathname}?${query}` : window.location.pathname;
+    if (url !== window.location.pathname + window.location.search) {
+      window.history.replaceState(null, '', url);
+    }
+  }, [filters, view, selected]);
 
   const [health, setHealth] = useState<StreamHealth>('closed');
   const [healthDetail, setHealthDetail] = useState('Not watching.');
@@ -104,9 +156,9 @@ export function ReviewWorkspace({
   const [gaps, setGaps] = useState(0);
   const [polling, setPolling] = useState(false);
   const [refreshError, setRefreshError] = useState<string | null>(null);
-  // Rendered as monospace metadata: the count of events observed against the count of reads they
-  // caused. It is the coalescing being visible rather than asserted, and on a 949-event run it is
-  // the difference between ~1,900 reads and a few dozen.
+  // Rendered as monospace metadata: the count of events observed against the count of reads
+  // they caused. It is the coalescing being visible rather than asserted, and on a 949-event
+  // run it is the difference between ~1,900 reads and a few dozen.
   const [observed, setObserved] = useState(0);
   const [reads, setReads] = useState(0);
 
@@ -175,9 +227,9 @@ export function ReviewWorkspace({
         });
     };
 
-    // Already queued, or one is in the air: this burst is covered. A trailing edge rather than a
-    // leading one, so the read that lands is the read after the last event rather than one taken
-    // before the burst finished writing.
+    // Already queued, or one is in the air: this burst is covered. A trailing edge rather than
+    // a leading one, so the read that lands is the read after the last event rather than one
+    // taken before the burst finished writing.
     if (timer.current !== null) return;
     const since = Date.now() - lastRun.current;
     if (inFlight.current || since < MIN_REFETCH_INTERVAL_MS) {
@@ -223,7 +275,7 @@ export function ReviewWorkspace({
       onGap: (from, to) => {
         setGaps((count) => count + (to - from - 1));
         // A gap means events were missed; only a full read can say what they were. Not
-        // coalesced — a gap is rare and is the one case where being current matters more than
+        // coalesced -- a gap is rare and is the one case where being current matters more than
         // being sparing.
         void refetch().catch(() => {});
       },
@@ -253,131 +305,157 @@ export function ReviewWorkspace({
 
   const selectedQuestion = questions.find((q) => q.question_id === selected) ?? null;
 
+  /**
+   * `a` in the grid. Opens the queue on the selected row rather than approving it outright.
+   *
+   * A keystroke that fires an irreversible decision with no confirmation is a keystroke that
+   * will eventually fire on the wrong row. The shortcut takes you to where the answer, its
+   * citations and the approve control are all on screen together — which is the point at
+   * which a person can actually be said to have approved something.
+   */
+  const onApprove = useCallback(() => {
+    const answer = selected ? answerIndex.get(selected) : undefined;
+    if (answer?.status !== 'needs_human') return;
+    setView('queue');
+  }, [selected, answerIndex]);
+
   if (loadError !== null) {
     return (
-      <div className="p-5">
-        <ErrorState
-          title="This round could not be read."
-          detail={loadError}
-          action={<Button onClick={() => window.location.reload()}>Try again</Button>}
-        />
+      <div className="p-4">
+        <Failure what="This round could not be read." detail={loadError} />
       </div>
     );
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-3 p-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <StateLegend keys={STATE_ORDER} />
-        <div className="flex items-center gap-3">
-          {runId === null ? (
-            <span className="text-xs text-muted">
-              No active run. This round is not currently being worked.
-            </span>
-          ) : (
-            <StreamIndicator
-              health={health}
-              detail={healthDetail}
-              polling={polling}
-              lastSeq={lastSeq}
-              gaps={gaps}
-              observed={observed}
-              reads={reads}
-            />
-          )}
-          <Button variant="quiet" onClick={() => poller.now()}>
-            Refresh
-          </Button>
-        </div>
+    <div className="flex h-full min-h-0 flex-col">
+      {/* The band. Live counters, which engines are drafting, and the orchestrator's own
+          decisions -- the component that makes autonomy legible rather than asserted. */}
+      <div className="shrink-0 border-b border-subtle px-4 py-3">
+        <FleetActivity
+          questions={questions}
+          answers={answerIndex}
+          events={judgements}
+          total={questions.length}
+        />
       </div>
 
       {refreshError !== null ? (
-        <ErrorState
-          title="The last refresh failed."
-          detail={refreshError}
-          action={
-            <span className="text-xs text-secondary">
-              What is on screen is the last good read, not an empty result.
-            </span>
-          }
-        />
+        <div className="shrink-0 px-4 pt-3">
+          <Failure what="The last refresh failed." detail={refreshError} />
+        </div>
       ) : null}
 
-      <Card>
-        <div className="px-4 py-3">
-          <FleetActivity
+      <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(0,4fr)_minmax(0,6fr)]">
+        {/* Pane two: the list. Owns its own scrolling and its own keyboard. */}
+        <div className="flex min-h-0 flex-col border-r border-subtle">
+          <QuestionGrid
             questions={questions}
             answers={answerIndex}
-            events={judgements}
-            total={questions.length}
+            selectedId={selected}
+            onSelect={setSelected}
+            filters={filters}
+            onFilters={setFilters}
+            onApprove={onApprove}
           />
         </div>
-      </Card>
 
-      <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,5fr)_minmax(0,7fr)] gap-3">
-        <Card className="flex min-h-0 flex-col overflow-hidden">
-          <Tabs
-            tabs={[
-              { id: 'questions', label: 'Questions', count: questions.length },
-              { id: 'approvals', label: 'Needs a human', count: pending.length },
-              { id: 'export', label: 'Export' },
-            ]}
-            active={tab}
-            onChange={setTab}
-          />
-          {tab === 'questions' ? (
-            <QuestionGrid
-              questions={questions}
-              answers={answerIndex}
-              selectedId={selected}
-              onSelect={setSelected}
+        {/* Pane three: the answer, its evidence, and the two things a person does with it. */}
+        <div className="flex min-h-0 min-w-detail flex-col">
+          <nav className="flex shrink-0 items-center gap-1 border-b border-subtle px-4 py-2">
+            <ViewTab
+              label="Answer"
+              active={!showQueue && !showExport}
+              onClick={() => setView('answer')}
             />
-          ) : tab === 'approvals' ? (
-            <div className="min-h-0 flex-1 overflow-y-auto">
-              <ApprovalQueue pending={pending} onResolved={() => poller.now()} />
+            <ViewTab
+              label="Needs a human"
+              count={pending.length}
+              active={showQueue}
+              onClick={() => setView('queue')}
+            />
+            <ViewTab
+              label="Export"
+              active={showExport}
+              onClick={() => setView('export')}
+            />
+            <div className="ml-auto flex items-center gap-2">
+              {runId === null ? (
+                <span className="text-xs text-muted">No active run</span>
+              ) : (
+                <StreamIndicator
+                  health={health}
+                  detail={healthDetail}
+                  polling={polling}
+                  lastSeq={lastSeq}
+                  gaps={gaps}
+                  observed={observed}
+                  reads={reads}
+                />
+              )}
+              <Button tone="ghost" small onClick={() => poller.now()}>
+                Refresh
+              </Button>
             </div>
-          ) : (
-            <div className="min-h-0 flex-1 overflow-y-auto">
+          </nav>
+
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            {showQueue ? (
+              <ApprovalQueue
+                pending={pending}
+                focus={selected}
+                onResolved={() => poller.now()}
+              />
+            ) : showExport ? (
               <ExportPanel reviewId={reviewId} roundId={roundId} />
-            </div>
-          )}
-        </Card>
-
-        <div className="min-h-0 overflow-y-auto">
-          {selectedQuestion === null ? (
-            <Card>
-              <div className="flex flex-col items-start gap-2 px-4 py-10">
-                <div className="w-full border-t border-dashed border-line" />
-                <h3 className="pt-3 text-sm font-medium text-primary">No question selected</h3>
-                <p className="max-w-prose text-sm text-secondary">
-                  Choose a question on the left to see its answer, the passages behind it, and how
-                  its confidence was computed. Nothing here is asked of a model — every figure is
-                  measured.
-                </p>
+            ) : selectedQuestion === null ? (
+              <Empty
+                title="No question selected"
+                hint={
+                  questions.length === 0
+                    ? 'Intake has not finished. Questions appear here as the questionnaire is parsed — there is nothing to show yet, and nothing has failed.'
+                    : 'Press j or k to move through the list. The pane shows the answer, the passages behind it, and how its confidence was computed — every figure measured, none asked of a model.'
+                }
+              />
+            ) : (
+              <div className="p-4">
+                <AnswerCard
+                  question={selectedQuestion}
+                  answer={answerIndex.get(selectedQuestion.question_id) ?? null}
+                />
               </div>
-            </Card>
-          ) : (
-            <AnswerCard
-              question={selectedQuestion}
-              answer={answerIndex.get(selectedQuestion.question_id) ?? null}
-            />
-          )}
+            )}
+          </div>
         </div>
       </div>
-
-      <p className="text-xs text-muted">
-        Review <span className="font-mono">{reviewId}</span> · round{' '}
-        <span className="font-mono">{roundId}</span>
-        {runId !== null ? (
-          <>
-            {' '}
-            · run <span className="font-mono">{runId}</span>
-          </>
-        ) : null}
-      </p>
     </div>
   );
 }
 
-/** Kept in step with `FleetActivity`'s own set, which is the one that renders them. */
-const JUDGEMENT_KINDS = new Set(['plan_selected', 'retry_decided', 'run_completed']);
+function ViewTab({
+  label,
+  count,
+  active,
+  onClick,
+}: {
+  label: string;
+  count?: number;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      aria-current={active ? 'true' : undefined}
+      className={cx(
+        'inline-flex items-center gap-2 rounded-sm px-2 py-1 text-sm transition-colors',
+        active ? 'bg-active font-medium text-primary' : 'text-secondary hover:bg-hover',
+      )}
+    >
+      {label}
+      {typeof count === 'number' && count > 0 ? (
+        <span className="font-mono text-xs tabular-nums text-muted">{count}</span>
+      ) : null}
+    </button>
+  );
+}

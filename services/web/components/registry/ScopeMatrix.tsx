@@ -72,7 +72,7 @@ export function ScopeMatrix({ agents }: { agents: RegistryAgent[] }) {
                   <td key={corpus} className="px-4 py-2">
                     {scoped && department === corpus ? (
                       <span className="inline-flex items-center gap-2">
-                        <span aria-hidden className="inline-block h-2 w-2 rounded-full bg-cited" />
+                        <span aria-hidden className="inline-block h-2 w-2 rounded-sm bg-cited" />
                         <span className="text-xs text-secondary">read</span>
                       </span>
                     ) : scoped ? (

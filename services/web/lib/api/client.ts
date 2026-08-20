@@ -117,6 +117,15 @@ export const api = {
   listRegistry: () => call<RegistryAgent[]>('/registry'),
 
   /**
+   * Whether the watched mailbox is actually being watched.
+   *
+   * Rendered on the fleet page because a lapsed Gmail watch is invisible from outside: it
+   * expires after seven days without warning, and a mailbox that has stopped notifying
+   * looks exactly like a mailbox nobody has emailed.
+   */
+  inbox: () => call<InboxStatus>('/inbox'),
+
+  /**
    * Approve or edit one answer.
    *
    * The control plane **publishes** this rather than applying it, so the dispatcher applies
@@ -202,6 +211,20 @@ export type ReviewRow = {
   current_round: number;
   state: ReviewState;
   blocked_from: ReviewState | null;
+  /** Out of the working set. Hidden by default, behind a control that names the count. */
+  archived: boolean;
+};
+
+/** `GET /inbox`. Firestore only -- the control plane holds no Gmail credential. */
+export type InboxStatus = {
+  watching: boolean;
+  address: string;
+  topic: string;
+  history_id: string;
+  registered_at: string;
+  expires_at: string;
+  expires_in_hours: number | null;
+  expired: boolean;
 };
 
 export type RoundRow = {
@@ -266,6 +289,8 @@ export type AuditEvent = {
   round_id?: string | null;
   question_id?: string | null;
   recorded_at?: string;
+  /** Stamped by `AuditEventRepository.append`. Present on every event the API returns. */
+  occurred_at?: string;
   detail?: Record<string, unknown> | null;
 };
 

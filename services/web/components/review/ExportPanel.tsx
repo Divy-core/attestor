@@ -119,7 +119,7 @@ export function ExportPanel({ reviewId, roundId }: Props) {
 
       <p className="max-w-prose text-sm text-secondary">{manifest.release_rule}</p>
 
-      <ul className="flex flex-col gap-0.5">
+      <ul className="flex flex-col gap-1">
         {Object.entries(manifest.by_release_state)
           .sort((a, b) => b[1] - a[1])
           .map(([state, count]) => (
@@ -136,7 +136,7 @@ export function ExportPanel({ reviewId, roundId }: Props) {
         {manifest.workbook_available ? (
           <a
             href={href('xlsx')}
-            className="inline-flex items-center rounded-sm border border-primary bg-primary px-2.5 py-1 text-sm text-inverse no-underline transition-colors hover:opacity-90"
+            className="inline-flex items-center rounded-sm border border-primary bg-primary px-3 py-1 text-sm text-inverse no-underline transition-colors hover:opacity-90"
           >
             Download the completed workbook
           </a>
@@ -148,11 +148,11 @@ export function ExportPanel({ reviewId, roundId }: Props) {
         )}
         <a
           href={href('pdf')}
-          className="inline-flex items-center rounded-sm border border-line bg-surface px-2.5 py-1 text-sm text-primary no-underline transition-colors hover:bg-hover"
+          className="inline-flex items-center rounded-sm shadow-line-strong bg-surface px-3 py-1 text-sm text-primary no-underline transition-colors hover:bg-hover"
         >
           Download the evidence pack
         </a>
-        <Button variant="quiet" onClick={() => void load()}>
+        <Button tone="ghost" onClick={() => void load()}>
           Refresh counts
         </Button>
       </div>
@@ -166,7 +166,7 @@ export function ExportPanel({ reviewId, roundId }: Props) {
 
 function Figure({ label, value }: { label: string; value: number }) {
   return (
-    <div className="flex flex-col gap-0.5">
+    <div className="flex flex-col gap-1">
       <span className="text-xs uppercase tracking-wide text-muted">{label}</span>
       <span className="font-mono text-lg tabular-nums text-primary">{value}</span>
     </div>

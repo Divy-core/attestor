@@ -22,7 +22,7 @@ export function AnswerCard({
   const state = stateFor(answer?.status ?? null, answer?.citations.length ?? 0);
 
   return (
-    <article className="flex flex-col gap-4 rounded border border-subtle bg-surface">
+    <article className="flex flex-col gap-4 rounded shadow-line bg-surface">
       <header className="flex flex-col gap-2 border-b border-subtle px-4 py-3">
         <div className="flex items-start justify-between gap-4">
           <p className="min-w-0 text-md text-primary">{question.text}</p>

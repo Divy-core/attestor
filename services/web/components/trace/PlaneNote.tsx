@@ -1,4 +1,4 @@
-import { Card, CardHeader, Mono } from '@/components/ui/primitives';
+import { Panel, PanelHeader, Mono } from '@/components/ui/primitives';
 
 /**
  * The two observability planes, labelled, with the asymmetry stated rather than smoothed over.
@@ -28,8 +28,8 @@ invoke_workflow security_agent
 export function PlaneNote({ eventCount }: { eventCount: number }) {
   return (
     <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-      <Card>
-        <CardHeader
+      <Panel>
+        <PanelHeader
           title="Compliance plane"
           meta={<>Firestore <Mono dim>audit_events</Mono></>}
         />
@@ -49,16 +49,16 @@ export function PlaneNote({ eventCount }: { eventCount: number }) {
             240 milliseconds.
           </p>
         </div>
-      </Card>
+      </Panel>
 
-      <Card>
-        <CardHeader title="Engineering plane" meta="Cloud Trace, via OpenTelemetry" />
+      <Panel>
+        <PanelHeader title="Engineering plane" meta="Cloud Trace, via OpenTelemetry" />
         <div className="flex flex-col gap-2 px-4 py-3">
           <p className="text-sm text-secondary">
             Latency, token cost, tool spans. Answers &ldquo;what was slow&rdquo;. Real, and
             organised by span parentage rather than by subject.
           </p>
-          <pre className="overflow-x-auto rounded border border-subtle bg-code px-3 py-2 font-mono text-xs text-secondary">
+          <pre className="overflow-x-auto rounded shadow-line bg-code px-3 py-2 font-mono text-xs text-secondary">
             {SPAN_TREE}
           </pre>
           <p className="border-t border-subtle pt-2 text-sm text-secondary">
@@ -70,7 +70,7 @@ export function PlaneNote({ eventCount }: { eventCount: number }) {
             else. The engineering plane is inherited; the compliance plane is built.
           </p>
         </div>
-      </Card>
+      </Panel>
     </div>
   );
 }

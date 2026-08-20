@@ -55,7 +55,7 @@ export function CitationList({
               onClick={() => setOpen(expanded ? null : index)}
               aria-expanded={expanded}
               className={cx(
-                'flex w-full items-baseline gap-3 py-1.5 pl-3 pr-2 text-left',
+                'flex w-full items-baseline gap-3 py-2 pl-3 pr-2 text-left',
                 'transition-colors hover:bg-hover',
                 dense ? 'text-xs' : 'text-sm',
               )}
@@ -75,7 +75,7 @@ export function CitationList({
             </button>
 
             {expanded ? (
-              <div className="ml-3 mb-2 mr-2 rounded border border-subtle bg-sunken p-3">
+              <div className="ml-3 mb-2 mr-2 rounded shadow-line bg-sunken p-3">
                 {/* The passage as the retriever saw it. This is the whole point: the reader
                     checks the claim against the text that was scored, not against a summary
                     of it. */}
