@@ -3682,6 +3682,54 @@ One bug found while writing the test for it: `send_reply` passed `threadId: ""` 
 internal notification, which has no thread. Gmail rejects an empty string, so the field is
 omitted rather than sent blank.
 
+### The approval, clicked through in a browser at last
+
+Phase 6.5 left this at PARTIAL: the endpoint was proven three ways and the queue was wired,
+but nobody had pressed the button. It is now done, on the deployed stack, against
+`rev-556261438508` — the review parked at `awaiting_human` with 43 held answers.
+
+The whole chain, observed rather than inferred:
+
+| Step | Observed |
+|---|---|
+| Click in the browser | `POST /api/attestor/rounds/rev-556261438508-r1/answers/069f2677425aef30/approval` — through the Next.js proxy, which adds the write token server-side |
+| On screen | *"Approved. Published to Pub/Sub. The dispatcher applies it."* with dedup key `542b817100a4de2c` |
+| Queue | 43 Approve controls → 42 |
+| Firestore | that answer's status is `approved`; the round is now 92 drafted, 42 needs_human, 172 no-evidence, 5 quarantined, **1 approved** |
+| Audit trail | one `human_decision` event, `approved: true`, against that question id |
+
+The review correctly stayed at `awaiting_human`: approving one of forty-three does not resume
+a round, which is the durable pause behaving as designed.
+
+**And the click found something.** The audit event recorded `actor: "console-operator"` — a
+constant, sent by the UI, under a source comment reading *"A real name, not `system`. An
+audit trail whose actor field says `ui` cannot answer 'who approved this' in six months,
+which is the question it exists for."* The comment was right and the code did not do it.
+Every approval in this project's history is attributed to a string a developer typed.
+
+The queue now asks the reviewer for their name, remembers it for the session, and leaves
+Approve and Reject disabled until it is filled in — the same shape as the send control, and
+the control plane rejects a whitespace-only value at the edge (`422`, measured). It is not
+authentication and claims not to be; nothing verifies it, exactly as nothing verifies the
+demo token. But an attribution a person typed is strictly better than a constant a developer
+typed, and the difference is the whole point of the field.
+
+### The outbound guards, measured against the deployed service
+
+The send itself cannot be exercised without the Gmail consent. Its gates can, and were:
+
+| Request | Result |
+|---|---|
+| `POST /reviews/{id}/deliver` with no token | **401** |
+| with a valid token, on a review that never arrived by email | **409**, naming the reason and pointing at the export |
+| with `approved_by: "   "` | **422** — the `Actor` constraint, at the edge |
+| `GET /reviews/{id}/artifacts` | **200 `[]`** — genuinely empty, and the panel renders "nothing produced yet" rather than an error |
+
+The 409 is worth its own line. A review started from the browser has no thread to reply on,
+and the interface renders that as an absent button with the reason rather than a button that
+fails when pressed — verified on the running page, where the send control was replaced by
+*"This review did not arrive by email, so there is no thread to reply on."*
+
 ### What Divy has to do, exactly, before an email can start a review
 
 Everything on the Attestor side is deployed and wired. What is missing is **consent**, and it

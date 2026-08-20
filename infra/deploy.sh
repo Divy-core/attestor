@@ -402,6 +402,19 @@ printf '\n  dispatcher    : %s\n' "$DISPATCHER_URL"
 printf '  control plane : %s\n' "$CONTROL_URL"
 printf '  web           : %s\n' "${WEB_URL:-not deployed}"
 
+# The console URL, applied after the services exist because the dispatcher needs the WEB
+# service's address and Cloud Run injects a service's own URL, never another's. It goes into
+# the approval-request email as a deep link into the queue -- without it the link is
+# relative, which is unhelpful in an inbox. `--update-env-vars` MERGES, unlike the
+# `--set-env-vars` used above, so this cannot wipe the engine names.
+if [[ -n "${WEB_URL:-}" ]]; then
+    gcloud run services update attestor-dispatcher \
+        --project "$PROJECT_ID" --region "$REGION" \
+        --update-env-vars "ATTESTOR_CONSOLE_URL=${WEB_URL}" \
+        --quiet --format=none
+    printf '  dispatcher -> ATTESTOR_CONSOLE_URL=%s\n' "$WEB_URL"
+fi
+
 if (( SERVICES_ONLY )); then
     printf '\n%sservices deployed; skipping subscription wiring%s\n' "$B" "$R"
     exit 0

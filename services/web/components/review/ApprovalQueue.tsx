@@ -1,8 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
-import { Button, Mono, cx } from '@/components/ui/primitives';
+import { Button, Label, Mono, cx } from '@/components/ui/primitives';
 import type { AnswerRow, QuestionRow } from '@/lib/api/client';
 
 /**
@@ -37,6 +37,8 @@ export function ApprovalQueue({
    */
   focus?: string | null;
 }) {
+  const [operator, setOperator] = useOperator();
+
   const ordered =
     focus == null
       ? pending
@@ -59,26 +61,78 @@ export function ApprovalQueue({
   }
 
   return (
-    <ul className="flex flex-col">
-      {ordered.map(({ question, answer }) => (
-        <ApprovalRow
-          key={question.question_id}
-          question={question}
-          answer={answer}
-          onResolved={onResolved}
+    <>
+      <label className="flex flex-col gap-2 border-b border-subtle px-4 py-3">
+        <Label>your name, recorded against every decision you make here</Label>
+        <input
+          value={operator}
+          onChange={(event) => setOperator(event.target.value)}
+          placeholder="who is reviewing"
+          className="h-row w-full max-w-list rounded-sm bg-sunken px-2 text-sm text-primary shadow-line outline-none placeholder:text-muted"
         />
-      ))}
-    </ul>
+        {operator.trim() ? null : (
+          <span className="text-xs text-muted">
+            Approve and Reject stay disabled until this is filled in. An audit trail whose
+            actor is a constant cannot answer &ldquo;who approved this&rdquo;, which is the
+            question it exists for.
+          </span>
+        )}
+      </label>
+      <ul className="flex flex-col">
+        {ordered.map(({ question, answer }) => (
+          <ApprovalRow
+            key={question.question_id}
+            question={question}
+            answer={answer}
+            operator={operator}
+            onResolved={onResolved}
+          />
+        ))}
+      </ul>
+    </>
   );
 }
+
+/**
+ * The reviewer's name, remembered for the session.
+ *
+ * Until Phase 7 this was the literal string `console-operator`, under a comment saying "a
+ * real name, not `system`" -- a comment asserting something the code did not do. The audit
+ * trail therefore recorded every approval against a constant, which cannot answer "who
+ * approved this" and is the one question the trail exists for.
+ *
+ * `localStorage`, so it is asked once rather than per answer -- a reviewer working through
+ * forty held answers must not retype their name forty times. It is not authentication and
+ * makes no claim to be: nothing verifies it, the same way nothing verifies the token in
+ * `guard.py`. It is an attribution, and an attribution a person typed is strictly better
+ * than a constant a developer typed.
+ */
+function useOperator(): [string, (next: string) => void] {
+  const [operator, setOperator] = useState('');
+
+  useEffect(() => {
+    setOperator(window.localStorage.getItem(OPERATOR_KEY) ?? '');
+  }, []);
+
+  const update = useCallback((next: string) => {
+    setOperator(next);
+    window.localStorage.setItem(OPERATOR_KEY, next);
+  }, []);
+
+  return [operator, update];
+}
+
+const OPERATOR_KEY = 'attestor-operator';
 
 function ApprovalRow({
   question,
   answer,
+  operator,
   onResolved,
 }: {
   question: QuestionRow;
   answer: AnswerRow;
+  operator: string;
   onResolved: () => void;
 }) {
   const [editing, setEditing] = useState(false);
@@ -101,9 +155,10 @@ function ApprovalRow({
             question_id: question.question_id,
             approved,
             edited_text: editing && text !== answer.text ? text : null,
-            // A real name, not "system". An audit trail whose actor field says `ui` cannot
-            // answer "who approved this" in six months, which is the question it exists for.
-            resolved_by: 'console-operator',
+            // The name the reviewer typed. The control plane rejects whitespace-only
+            // values, so a blank one fails at the edge rather than landing in the trail
+            // looking populated.
+            resolved_by: operator.trim(),
           }),
         },
       );
@@ -171,13 +226,23 @@ function ApprovalRow({
         </div>
       ) : (
         <div className="flex items-center gap-2">
-          <Button tone="primary" onClick={() => submit(true)} disabled={busy}>
+          <Button
+            tone="primary"
+            onClick={() => submit(true)}
+            disabled={busy || !operator.trim()}
+            title={operator.trim() ? undefined : "Enter your name above first"}
+          >
             {busy ? 'Publishing' : editing ? 'Save and approve' : 'Approve'}
           </Button>
           <Button onClick={() => setEditing(!editing)} disabled={busy}>
             {editing ? 'Cancel edit' : 'Edit'}
           </Button>
-          <Button tone="ghost" onClick={() => submit(false)} disabled={busy}>
+          <Button
+            tone="ghost"
+            onClick={() => submit(false)}
+            disabled={busy || !operator.trim()}
+            title={operator.trim() ? undefined : "Enter your name above first"}
+          >
             Reject
           </Button>
         </div>
