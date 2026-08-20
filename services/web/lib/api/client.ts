@@ -125,6 +125,10 @@ export const api = {
    */
   inbox: () => call<InboxStatus>('/inbox'),
 
+  /** Every file this review produced, and where it went. */
+  listArtifacts: (reviewId: string) =>
+    call<ArtifactRow[]>(`/reviews/${encodeURIComponent(reviewId)}/artifacts`),
+
   /**
    * Approve or edit one answer.
    *
@@ -213,6 +217,21 @@ export type ReviewRow = {
   blocked_from: ReviewState | null;
   /** Out of the working set. Hidden by default, behind a control that names the count. */
   archived: boolean;
+};
+
+/** One file the review produced. Drive ids and links are not secrets: the files are shared
+ *  with nobody, so a link somebody cannot open is a string. */
+export type ArtifactRow = {
+  review_id: string;
+  round_id: string;
+  kind: string;
+  file_id: string;
+  name: string;
+  mime_type: string;
+  link: string;
+  size_bytes: number;
+  produced_by: string;
+  produced_at: string;
 };
 
 /** `GET /inbox`. Firestore only -- the control plane holds no Gmail credential. */

@@ -89,7 +89,13 @@ class HistoryPage:
     restarted: bool = False
 
 
-def _oauth_payload() -> dict[str, Any]:
+def oauth_payload() -> dict[str, Any]:
+    """The consent document, from Secret Manager.
+
+    Shared with the Drive client rather than duplicated: one consent, one refresh token, one
+    set of scopes. Two copies of this would eventually be two different scope lists, and the
+    narrowness of `drive.file` is a claim this project makes out loud.
+    """
     raw = read_secret(OAUTH_SECRET)
     try:
         data = json.loads(raw)
@@ -104,6 +110,28 @@ def _oauth_payload() -> dict[str, Any]:
             f"secret {OAUTH_SECRET} is missing {missing}; re-run tools/gmail_authorize.py"
         )
     return dict(data)
+
+
+def authorized_session() -> Any:
+    """An `AuthorizedSession` for the consented mailbox. One credential, both APIs."""
+    from google.auth.transport.requests import AuthorizedSession
+    from google.oauth2.credentials import Credentials
+
+    payload = oauth_payload()
+    # google-auth ships `py.typed` but leaves these two constructors unannotated, so
+    # --strict reads them as untyped calls. Ignored at the call site rather than by relaxing
+    # the rule for `google.*` across the codebase, which would also silence it for the
+    # clients that ARE annotated.
+    return AuthorizedSession(  # type: ignore[no-untyped-call]
+        Credentials(  # type: ignore[no-untyped-call]
+            token=None,
+            refresh_token=payload["refresh_token"],
+            client_id=payload["client_id"],
+            client_secret=payload["client_secret"],
+            token_uri=TOKEN_URI,
+            scopes=list(SCOPES),
+        )
+    )
 
 
 class GmailClient:
@@ -122,31 +150,14 @@ class GmailClient:
     def address(self) -> str:
         """The watched mailbox, from the token document. For logs and the reply's `From`."""
         if not self._address:
-            self._address = str(_oauth_payload().get("email", "")) or "unknown"
+            self._address = str(oauth_payload().get("email", "")) or "unknown"
         return self._address
 
     @property
     def session(self) -> Any:
         if self._session is None:
-            from google.auth.transport.requests import AuthorizedSession
-            from google.oauth2.credentials import Credentials
-
-            payload = _oauth_payload()
-            # google-auth ships `py.typed` but leaves these two constructors unannotated,
-            # so --strict reads them as untyped calls. Ignored at the two call sites rather
-            # than by relaxing the rule for `google.*` across the codebase, which would also
-            # silence it for the clients that ARE annotated.
-            self._session = AuthorizedSession(  # type: ignore[no-untyped-call]
-                Credentials(  # type: ignore[no-untyped-call]
-                    token=None,
-                    refresh_token=payload["refresh_token"],
-                    client_id=payload["client_id"],
-                    client_secret=payload["client_secret"],
-                    token_uri=TOKEN_URI,
-                    scopes=list(SCOPES),
-                )
-            )
-            self._address = str(payload.get("email", "")) or self._address
+            self._session = authorized_session()
+            self._address = str(oauth_payload().get("email", "")) or self._address
         return self._session
 
     # -- plumbing ----------------------------------------------------------------------
@@ -289,7 +300,13 @@ class GmailClient:
                 filename=filename,
             )
         raw = base64.urlsafe_b64encode(message.as_bytes()).decode("ascii")
-        sent = self._call("POST", "/messages/send", json={"raw": raw, "threadId": thread_id})
+        # `threadId` is omitted rather than sent empty when there is no thread. Gmail rejects
+        # an empty string, and the caller with no thread is the internal approval request --
+        # a genuinely new message to ourselves, not a reply to anybody.
+        request: dict[str, Any] = {"raw": raw}
+        if thread_id:
+            request["threadId"] = thread_id
+        sent = self._call("POST", "/messages/send", json=request)
         return str(sent.get("id") or "")
 
     def ensure_label(self, name: str) -> str:

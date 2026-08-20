@@ -410,3 +410,63 @@ class InboxStateRepository(_Repository):
         for doc in query.stream(timeout=self._timeout):
             return dict(doc.to_dict() or {})
         return None
+
+
+class ArtifactRepository(_Repository):
+    """Every file a review produced, and where it went.
+
+    ## Why a collection and not a field on `Review`
+
+    Same reasoning as `RoundSourceRepository`: `Review` is a strict model that the type
+    generator emits into the browser's contract, and a growing list of Drive file ids is
+    bookkeeping the services need rather than domain vocabulary. The dispatcher already
+    learned this in the other direction, when `drafted_partitions` on the round document made
+    every read fail with `extra_forbidden`.
+
+    ## Append-only in practice, and deliberately not enforced as such
+
+    Unlike the audit repositories, this one has no structural guarantee against rewriting a
+    row -- and that is honest rather than lax. An artifact record is a *pointer*, and a
+    pointer to a file that has been replaced should be updated, not duplicated. What must
+    never be edited is the audit event that says the pack was sent, which lives in the
+    append-only collection where it cannot be.
+    """
+
+    _collection = "artifacts"
+
+    def _doc_id(self, review_id: str, kind: str, round_id: str) -> str:
+        return f"{review_id}__{round_id}__{kind}"
+
+    def put(
+        self,
+        review_id: str,
+        round_id: str,
+        kind: str,
+        *,
+        file_id: str,
+        name: str,
+        mime_type: str,
+        link: str,
+        size_bytes: int = 0,
+        produced_by: str = "Dispatcher",
+    ) -> None:
+        self._db.collection(self._collection).document(self._doc_id(review_id, kind, round_id)).set(
+            {
+                "review_id": review_id,
+                "round_id": round_id,
+                "kind": kind,
+                "file_id": file_id,
+                "name": name,
+                "mime_type": mime_type,
+                "link": link,
+                "size_bytes": size_bytes,
+                "produced_by": produced_by,
+                "produced_at": datetime.now(UTC).isoformat(),
+            },
+            timeout=self._timeout,
+        )
+
+    def for_review(self, review_id: str) -> list[dict[str, Any]]:
+        query = self._db.collection(self._collection).where("review_id", "==", review_id)
+        rows = [dict(d.to_dict() or {}) for d in query.stream(timeout=self._timeout)]
+        return sorted(rows, key=lambda r: str(r.get("produced_at") or ""))

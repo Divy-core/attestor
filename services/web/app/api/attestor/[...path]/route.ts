@@ -48,11 +48,21 @@ const ALLOWED: ReadonlyArray<{ method: 'GET' | 'POST'; pattern: RegExp }> = [
   { method: 'GET', pattern: /^rounds\/[^/]+\/questions$/ },
   { method: 'GET', pattern: /^rounds\/[^/]+\/answers$/ },
   { method: 'GET', pattern: /^registry$/ },
+  { method: 'GET', pattern: /^reviews\/[^/]+\/artifacts$/ },
+  { method: 'GET', pattern: /^inbox$/ },
   { method: 'POST', pattern: /^rounds\/[^/]+\/answers\/[^/]+\/approval$/ },
   // The entrance. In the order the New review flow calls them.
   { method: 'POST', pattern: /^uploads$/ },
   { method: 'POST', pattern: /^reviews$/ },
   { method: 'POST', pattern: /^reviews\/[^/]+\/rounds$/ },
+  // Archiving. A write, and a reversible one -- it hides a review from the working set and
+  // changes nothing about the review itself.
+  { method: 'POST', pattern: /^reviews\/[^/]+\/archive$/ },
+  // The way out, and the only allowlisted path whose effect leaves the building. It is on
+  // the list because the person who authorises a send does it from this interface; the
+  // control plane still requires the token, the protocol still requires a named human on the
+  // envelope, and the dispatcher still does the sending.
+  { method: 'POST', pattern: /^reviews\/[^/]+\/deliver$/ },
 ];
 
 /**

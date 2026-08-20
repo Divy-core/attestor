@@ -13,12 +13,18 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Annotated, Any
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, ValidationError
 
 from attestor_core.domain.ids import make_dedup_key
 from attestor_core.errors import ContractViolation
 
 ContentId = Annotated[str, Field(pattern=r"^[0-9a-f]{16}$")]
+
+#: A human, named. Stripped before it is measured, because `min_length=1` on a bare `str`
+#: accepts three spaces -- which then lands in the audit trail as `actor: "   "`, looking
+#: populated and identifying nobody. That is worse than an empty field, which at least reads
+#: as missing. Found by a test that passed whitespace where a name should be.
+Actor = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)]
 
 
 class WorkKind(StrEnum):
@@ -88,7 +94,9 @@ class ResumeAfterHumanPayload(_Payload):
     """A human answered an approval request; resume the paused run."""
 
     approved: bool
-    resolved_by: str
+    #: Who decided. The whole point of the human-in-the-loop gate is that this is answerable
+    #: afterwards, so it is constrained rather than merely present.
+    resolved_by: Actor
     #: Present when the human edited the text before approving.
     edited_text: str | None = None
 
@@ -119,7 +127,7 @@ class DeliverPackPayload(_Payload):
     published without that field is a structural gate rather than a policy sentence.
     """
 
-    approved_by: str = Field(min_length=1)
+    approved_by: Actor
     #: What the human was shown when they approved. Recorded so the audit trail holds the
     #: decision and its basis, not just the outcome.
     note: str = ""

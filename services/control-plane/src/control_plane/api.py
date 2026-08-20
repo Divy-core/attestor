@@ -52,7 +52,7 @@ from pydantic import BaseModel, Field
 from attestor_core.domain import Review, Round
 from attestor_core.domain.enums import Framework, Residency, ReviewState
 from attestor_core.errors import AttestorError, IllegalTransition
-from attestor_core.protocol import WorkEnvelope, WorkKind
+from attestor_core.protocol import Actor, WorkEnvelope, WorkKind
 from attestor_core.state import transition
 from attestor_platform.export import (
     RELEASE_RULE,
@@ -63,6 +63,7 @@ from attestor_platform.export import (
 from attestor_platform.firestore import (
     AnswerRepository,
     ArmorEventRepository,
+    ArtifactRepository,
     AuditEventRepository,
     InboxStateRepository,
     QuestionRepository,
@@ -108,7 +109,9 @@ class CreateRoundRequest(BaseModel):
 
 class ApprovalRequest(BaseModel):
     approved: bool
-    resolved_by: str = Field(min_length=1, max_length=200)
+    #: `Actor` rather than `str` with a length: a bare `min_length=1` accepts three spaces,
+    #: which reaches the audit trail looking like a name and identifying nobody.
+    resolved_by: Actor
     edited_text: str | None = None
 
 
@@ -163,6 +166,10 @@ def round_sources() -> RoundSourceRepository:
 
 def inbox_state() -> InboxStateRepository:
     return _get("inbox_state", InboxStateRepository)  # type: ignore[no-any-return]
+
+
+def artifacts() -> ArtifactRepository:
+    return _get("artifacts", ArtifactRepository)  # type: ignore[no-any-return]
 
 
 # ---------------------------------------------------------------------------------
@@ -692,6 +699,100 @@ def inbox_status() -> dict[str, Any]:
         ),
         "expired": bool(expires_at and expires_at < datetime.now(UTC)),
     }
+
+
+class DeliverRequest(BaseModel):
+    """Who is authorising the send, and what they want said.
+
+    `approved_by` has no default and cannot be blank. This endpoint is the only one in the
+    service whose effect leaves the building, and a default actor -- even one as honest as
+    "operator" -- would mean an unattributed email to a customer was one omitted field away.
+    """
+
+    approved_by: Actor
+    note: str = Field(default="", max_length=2000)
+
+
+@router.post("/reviews/{review_id}/deliver", status_code=status.HTTP_202_ACCEPTED)
+def deliver(review_id: str, body: DeliverRequest, request: Request) -> dict[str, Any]:
+    """Send the finished pack back to the customer, in the thread it arrived on.
+
+    **202, and the work is done by the dispatcher.** Not because this could not build a
+    workbook -- it does, for `GET /export` -- but because sending is irreversible and
+    everything irreversible in this system goes through the durable transport, where it has
+    a claim, a lease, a retry policy and a dead-letter path. An email sent inline from a
+    request handler has none of those, and a timeout on the client would leave nobody able
+    to say whether it went.
+
+    The human gate is in the protocol rather than here: `DeliverPackPayload.approved_by` is
+    `min_length=1`, so an envelope without a named person cannot be constructed. This
+    endpoint's job is to refuse to make one up.
+    """
+    require_write_token(request)
+    review = reviews().get(review_id)
+    if review is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"no review {review_id!r}")
+
+    available = rounds().for_review(review_id)
+    if not available:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"review {review_id!r} has no rounds")
+    target = available[-1]
+
+    thread = inbox_state().thread_for_review(review_id)
+    if not thread or not thread.get("thread_id"):
+        # Refused here as well as in the handler, because a 409 a person can read is better
+        # than a dead letter they have to go looking for -- and this is the one case the UI
+        # can render before the button is pressed.
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"review {review_id!r} did not arrive by email, so there is no thread to reply "
+            "on. Download the pack from the export instead.",
+        )
+
+    run_id = f"deliver-{int(time.time())}-{uuid.uuid4().hex[:6]}"
+    envelope = WorkEnvelope.for_work(
+        message_id=f"{run_id}-{review_id}",
+        review_id=review_id,
+        run_id=run_id,
+        round_id=target.round_id,
+        kind=WorkKind.DELIVER_PACK,
+        payload={"approved_by": body.approved_by, "note": body.note},
+    )
+    publisher().publish(envelope)
+    audit().append_safe(
+        {
+            "kind": "delivery_authorised",
+            "review_id": review_id,
+            "run_id": run_id,
+            "actor": body.approved_by,
+            "detail": {
+                "round_id": target.round_id,
+                "thread_id": thread["thread_id"],
+                "to": thread.get("sender"),
+                "note": body.note,
+                "dedup_key": envelope.dedup_key,
+            },
+        }
+    )
+    return {
+        "accepted": True,
+        "review_id": review_id,
+        "round_id": target.round_id,
+        "run_id": run_id,
+        "dedup_key": envelope.dedup_key,
+        "to": thread.get("sender"),
+    }
+
+
+@router.get("/reviews/{review_id}/artifacts")
+def list_artifacts(review_id: str) -> list[dict[str, Any]]:
+    """Every file this review produced, and where it went.
+
+    A read, so it is open like the other reads. It exposes Drive file ids and links, which
+    are not secrets -- the files themselves are not shared with anyone, and a link nobody has
+    access to is a string.
+    """
+    return artifacts().for_review(review_id)
 
 
 @router.get("/registry")

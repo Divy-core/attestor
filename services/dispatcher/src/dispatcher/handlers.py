@@ -39,6 +39,7 @@ from attestor_core.domain import Department, Question, Review, Round
 from attestor_core.domain.enums import Residency, ReviewState
 from attestor_core.errors import ContractViolation
 from attestor_core.protocol import (
+    DeliverPackPayload,
     InboxMessagePayload,
     IntakeDocumentPayload,
     OpenFollowUpPayload,
@@ -51,6 +52,7 @@ from attestor_core.state import transition
 from attestor_platform.config import max_active_reviews, max_questions_per_round
 from attestor_platform.firestore import (
     AnswerRepository,
+    ArtifactRepository,
     AuditEventRepository,
     InboxStateRepository,
     QuestionRepository,
@@ -72,6 +74,58 @@ logger = logging.getLogger(__name__)
 
 def _utcnow() -> datetime:
     return datetime.now(UTC)
+
+
+XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+
+def _console_url() -> str:
+    """Where a person goes to act on this. Configured, because the dispatcher has no way to
+    know the web service's URL -- it is a different Cloud Run service and nothing injects it.
+    An unset value produces a relative link rather than a broken absolute one."""
+    return os.environ.get("ATTESTOR_CONSOLE_URL", "").rstrip("/")
+
+
+def _origin() -> str:
+    """Which deployment produced a file. Built from Cloud Run's own variables, so it cannot
+    claim to be a revision it is not."""
+    service = os.environ.get("K_SERVICE")
+    if not service:
+        return "attestor (local)"
+    return (
+        f"{service} {os.environ.get('K_REVISION', 'unknown-revision')} · "
+        f"{os.environ.get('PROJECT_ID', 'unknown-project')} · "
+        f"{os.environ.get('REGION', 'unknown-region')}"
+    )
+
+
+def _covering_note(review: Review, bundle: Any, note: str) -> str:
+    """What the customer reads before opening the attachment.
+
+    States what was answered, what was held, and what is outstanding -- in that order and in
+    numbers, because a covering note that says "please find attached" makes the recipient
+    open a 312-row spreadsheet to discover that 43 rows need a conversation.
+    """
+    held = len(bundle.rows) - bundle.sendable
+    lines = [
+        f"Attached is our completed response for {review.customer}.",
+        "",
+        f"  {bundle.sendable} of {len(bundle.rows)} questions are answered and sendable.",
+        f"  {bundle.human_approved} were reviewed and approved by a named person.",
+    ]
+    if held:
+        lines.append(
+            f"  {held} are not included as answers: they are held for review, unsupported by "
+            "our evidence, or blocked by our guardrail. Each one says which, in the workbook."
+        )
+    lines += [
+        "",
+        "Every answer carries the documents and sections it is based on, with a relevance "
+        "score, in the evidence pack. Nothing is asserted without them.",
+    ]
+    if note.strip():
+        lines += ["", note.strip()]
+    return "\n".join(lines)
 
 
 #: Gmail labels the fleet applies, so the mailbox itself shows what happened to a thread.
@@ -202,6 +256,8 @@ class HandlerRegistry:
         inbox_state: InboxStateRepository | None = None,
         gmail: GmailClient | None = None,
         round_sources: RoundSourceRepository | None = None,
+        artifacts: ArtifactRepository | None = None,
+        drive: Any | None = None,
     ) -> None:
         self._reviews = reviews
         self._rounds = rounds
@@ -214,6 +270,8 @@ class HandlerRegistry:
         self._inbox_state = inbox_state
         self._gmail = gmail
         self._round_sources = round_sources
+        self._artifacts = artifacts
+        self._drive = drive
         self._table: dict[WorkKind, Callable[[WorkEnvelope], HandlerResult]] = {
             WorkKind.INTAKE_DOCUMENT: self.intake_document,
             WorkKind.TRIAGE_QUESTIONS: self.triage_questions,
@@ -223,6 +281,7 @@ class HandlerRegistry:
             WorkKind.OPEN_FOLLOW_UP: self.open_follow_up,
             WorkKind.RESUME_AFTER_HUMAN: self.resume_after_human,
             WorkKind.INBOX_MESSAGE: self.inbox_message,
+            WorkKind.DELIVER_PACK: self.deliver_pack,
         }
 
     # -- lazy dependencies -------------------------------------------------------------
@@ -281,6 +340,20 @@ class HandlerRegistry:
         if self._gmail is None:
             self._gmail = GmailClient()
         return self._gmail
+
+    @property
+    def artifacts(self) -> ArtifactRepository:
+        if self._artifacts is None:
+            self._artifacts = ArtifactRepository()
+        return self._artifacts
+
+    @property
+    def drive(self) -> Any:
+        if self._drive is None:
+            from attestor_platform.drive import DriveClient
+
+            self._drive = DriveClient()
+        return self._drive
 
     @property
     def round_sources(self) -> RoundSourceRepository:
@@ -599,6 +672,7 @@ class HandlerRegistry:
                 "first_question_id": pending[0].question_id,
             }
             self._audit_stage(envelope, detail)
+            self._notify_human(review, round_, len(pending), envelope.run_id)
             # No publish. The run genuinely stops here until a human acts -- that is the
             # point of a durable pause rather than a poll loop.
             return HandlerResult(state=state, published=[], detail=detail)
@@ -739,6 +813,206 @@ class HandlerRegistry:
         ]
         self._audit_stage(envelope, detail)
         return HandlerResult(state=state, published=published, detail=detail)
+
+    def _notify_human(self, review: Review, round_: Round, pending: int, run_id: str) -> None:
+        """Tell the compliance owner the round is waiting on them, where they already are.
+
+        A durable pause is only a feature if somebody finds out about it. Until this, a review
+        stopped at `awaiting_human` and stayed there until a person happened to open the
+        console — which is exactly the "nobody logs into a dashboard to check whether their
+        questionnaire is done" problem the phase brief opens with, reproduced inside our own
+        product.
+
+        Sent to the watched mailbox itself, not to the customer. That is the compliance
+        owner's inbox in this deployment, and mailing the *customer* to say their
+        questionnaire needs internal review would be a different and much worse email.
+
+        Never fatal. A round that has legitimately paused must not be failed because a
+        notification could not be sent; the pause is durable and the console still shows it.
+        """
+        link = f"{_console_url()}/reviews/{review.review_id}?view=queue"
+        body = "\n".join(
+            [
+                f"{pending} answer(s) in the {review.customer} review need a person.",
+                "",
+                "They were held because the evidence is thin, a prior-round commitment may be "
+                "contradicted, the guardrail blocked something, or a separate agent could not "
+                "find the claim in the passages it cites. Each one says which.",
+                "",
+                f"  {link}",
+                "",
+                f"Round {round_.ordinal} · run {run_id}",
+                "Nothing is sent to the customer until somebody authorises it by name.",
+            ]
+        )
+        try:
+            self.gmail.send_reply(
+                thread_id="",
+                to=self.gmail.address,
+                subject=f"{pending} answer(s) need review — {review.customer}",
+                body=body,
+            )
+            logger.info("approval request sent for %s (%d pending)", review.review_id, pending)
+        except Exception as exc:
+            logger.warning("could not send the approval request for %s: %s", review.review_id, exc)
+            return
+        self.audit.append_safe(
+            {
+                "kind": "approval_requested",
+                "review_id": review.review_id,
+                "run_id": run_id,
+                "actor": "AssemblerAgent",
+                "detail": {
+                    "pending": pending,
+                    "round_id": round_.round_id,
+                    "to": self.gmail.address,
+                    "link": link,
+                },
+            }
+        )
+
+    # -- the way out --------------------------------------------------------------------
+
+    def deliver_pack(self, envelope: WorkEnvelope) -> HandlerResult:
+        """Put the finished pack in Drive and reply to the customer with it attached.
+
+        **The only handler whose effect leaves the system and cannot be taken back.** Every
+        other stage writes to Firestore, publishes a message, or calls a model; this one
+        sends an email to a person outside the company. That difference shapes all of it.
+
+        ## The gate is structural, not procedural
+
+        `DeliverPackPayload.approved_by` is `Field(min_length=1)`, so the protocol itself
+        refuses to carry an unapproved send — the same reasoning that put the citation
+        requirement in `Answer`'s validator rather than in a prompt. There is no code path
+        in which this handler runs without a named human on the envelope, because there is
+        no envelope without one.
+
+        ## Drive first, then the email
+
+        Deliberately ordered. If the upload fails, nothing has been sent and the message is
+        retried; if the send fails after the upload, the retry re-uploads to the *same*
+        object name and re-sends. The reverse order has a state in which a customer has the
+        pack and we have no record of what we sent them, which is the one outcome a
+        compliance system may not have.
+
+        ## What it refuses
+
+        A review with no thread — one started from the browser rather than by email — has
+        nowhere to reply to, and this says so rather than inventing a recipient. That is a
+        `ContractViolation`, which dead-letters: no retry will conjure a thread.
+        """
+        payload = parse_payload(envelope)
+        assert isinstance(payload, DeliverPackPayload)  # noqa: S101 - narrowed by kind
+
+        review = self._require_review(envelope.review_id)
+        round_ = self._require_round(envelope)
+        thread = self.inbox_state.thread_for_review(review.review_id)
+        if not thread or not thread.get("thread_id"):
+            raise ContractViolation(
+                f"review {review.review_id!r} has no email thread to reply on; it was not "
+                "started from the mailbox, so there is no customer to send to",
+                review_id=review.review_id,
+                run_id=envelope.run_id,
+            )
+
+        bundle, workbook, evidence = self._build_pack(review, round_)
+        folder = self.drive.folder_for_customer(review.customer)
+        stored = []
+        for kind, name, data, mime in (
+            ("workbook", bundle.filename("xlsx"), workbook, XLSX_MIME),
+            ("evidence_pack", bundle.filename("pdf"), evidence, "application/pdf"),
+        ):
+            if data is None:
+                continue
+            file = self.drive.upload(name, data, mime, parent=folder)
+            self.artifacts.put(
+                review.review_id,
+                round_.round_id,
+                kind,
+                file_id=file.file_id,
+                name=file.name,
+                mime_type=file.mime_type,
+                link=file.web_view_link,
+                size_bytes=file.size_bytes,
+                produced_by=payload.approved_by,
+            )
+            stored.append(file)
+
+        attachments: list[tuple[str, str, bytes]] = []
+        if workbook is not None:
+            attachments.append((bundle.filename("xlsx"), XLSX_MIME, workbook))
+        attachments.append((bundle.filename("pdf"), "application/pdf", evidence))
+
+        sent_id = self.gmail.send_reply(
+            thread_id=str(thread["thread_id"]),
+            to=str(thread.get("sender") or ""),
+            subject=f"Re: security review — {review.customer}",
+            body=_covering_note(review, bundle, payload.note),
+            attachments=tuple(attachments),
+        )
+
+        detail: dict[str, Any] = {
+            "round_id": round_.round_id,
+            "approved_by": payload.approved_by,
+            "thread_id": thread["thread_id"],
+            "to": thread.get("sender"),
+            "gmail_message_id": sent_id,
+            "questions": len(bundle.rows),
+            "sendable": bundle.sendable,
+            "human_approved": bundle.human_approved,
+            "artifacts": [f.as_detail() for f in stored],
+        }
+        self._audit_stage(envelope, detail)
+        # Its own event, in the append-only collection, with the actor being the person and
+        # not "Dispatcher". "Who authorised sending this to the customer, and when" is the
+        # single most audit-relevant fact this system produces, and it must not be reachable
+        # only by parsing a stage record whose actor is a service.
+        self.audit.append_safe(
+            {
+                "kind": "pack_delivered",
+                "review_id": review.review_id,
+                "run_id": envelope.run_id,
+                "actor": payload.approved_by,
+                "detail": detail,
+            }
+        )
+        logger.info(
+            "pack delivered for %s by %s (thread %s)",
+            review.review_id,
+            payload.approved_by,
+            thread["thread_id"],
+        )
+        return HandlerResult(published=[], detail=detail)
+
+    def _build_pack(self, review: Review, round_: Round) -> tuple[Any, bytes | None, bytes]:
+        """The same two files the export endpoint serves, built here.
+
+        The workbook can legitimately be absent: it needs the customer's own uploaded file,
+        and a review whose upload has expired can still produce its evidence pack. `None`
+        rather than an empty `bytes`, so a caller cannot attach a zero-length spreadsheet and
+        call it a deliverable.
+        """
+        from attestor_platform.export import build_bundle, build_evidence_pack, fill_workbook
+        from attestor_platform.storage.gcs import download_to_temp
+
+        bundle = build_bundle(
+            review,
+            round_,
+            self.questions.for_round(round_.round_id),
+            self.answers.for_round(round_.round_id),
+            origin=_origin(),
+        )
+        evidence = build_evidence_pack(bundle)
+
+        workbook: bytes | None = None
+        source = self.round_sources.get(round_.round_id)
+        if source:
+            try:
+                workbook = fill_workbook(download_to_temp(source), bundle)
+            except Exception as exc:
+                logger.warning("could not fill the customer workbook for %s: %s", source, exc)
+        return bundle, workbook, evidence
 
     # -- the front door ----------------------------------------------------------------
 

@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { AnswerCard } from '@/components/review/AnswerCard';
 import { ApprovalQueue } from '@/components/review/ApprovalQueue';
+import { ArtifactsPanel } from '@/components/review/ArtifactsPanel';
 import { ExportPanel } from '@/components/review/ExportPanel';
 import { FleetActivity } from '@/components/review/FleetActivity';
 import { EMPTY_FILTERS, QuestionGrid, type GridFilters } from '@/components/review/QuestionGrid';
@@ -83,6 +84,12 @@ type Props = {
   initialJudgements: AuditEvent[];
   /** Set when the server-side read failed. The page renders the error rather than an empty grid. */
   loadError: string | null;
+  /**
+   * Whether this review came in on an email thread. A review started from the browser has
+   * nowhere to reply to, and the send control says so rather than offering a button that
+   * 409s when pressed.
+   */
+  arrivedByEmail: boolean;
 };
 
 /**
@@ -105,6 +112,7 @@ export function ReviewWorkspace({
   initialAnswers,
   initialJudgements,
   loadError,
+  arrivedByEmail,
 }: Props) {
   const params = useSearchParams();
 
@@ -120,9 +128,11 @@ export function ReviewWorkspace({
   //
   // So navigation is local state, and `history.replaceState` writes the shareable URL
   // afterwards. Same link, no round trip, and the grid responds at the speed of a keypress.
-  const [view, setView] = useState<'answer' | 'queue' | 'export'>(() => {
+  const [view, setView] = useState<'answer' | 'queue' | 'export' | 'artifacts'>(() => {
     const initial = params.get('view');
-    return initial === 'queue' || initial === 'export' ? initial : 'answer';
+    return initial === 'queue' || initial === 'export' || initial === 'artifacts'
+      ? initial
+      : 'answer';
   });
   const [selected, setSelected] = useState<string | null>(
     () => params.get('sel') ?? initialQuestions[0]?.question_id ?? null,
@@ -135,6 +145,7 @@ export function ReviewWorkspace({
 
   const showQueue = view === 'queue';
   const showExport = view === 'export';
+  const showArtifacts = view === 'artifacts';
 
   useEffect(() => {
     const next = new URLSearchParams();
@@ -374,10 +385,11 @@ export function ReviewWorkspace({
               active={showQueue}
               onClick={() => setView('queue')}
             />
+            <ViewTab label="Export" active={showExport} onClick={() => setView('export')} />
             <ViewTab
-              label="Export"
-              active={showExport}
-              onClick={() => setView('export')}
+              label="Artifacts"
+              active={showArtifacts}
+              onClick={() => setView('artifacts')}
             />
             <div className="ml-auto flex items-center gap-2">
               {runId === null ? (
@@ -408,6 +420,8 @@ export function ReviewWorkspace({
               />
             ) : showExport ? (
               <ExportPanel reviewId={reviewId} roundId={roundId} />
+            ) : showArtifacts ? (
+              <ArtifactsPanel reviewId={reviewId} canDeliver={arrivedByEmail} />
             ) : selectedQuestion === null ? (
               <Empty
                 title="No question selected"

@@ -20,6 +20,7 @@ from attestor_core.protocol.dto import (
 )
 from attestor_core.protocol.envelope import (
     PAYLOAD_MODELS,
+    Actor,
     DeliverPackPayload,
     EmptyPayload,
     InboxMessagePayload,
@@ -53,6 +54,7 @@ from attestor_core.protocol.events import (
 
 __all__ = [
     "PAYLOAD_MODELS",
+    "Actor",
     "AnswerDrafted",
     "AnswerDto",
     "ApprovalRequest",

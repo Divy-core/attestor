@@ -40,6 +40,7 @@ export default async function ReviewPage({
   let answers: AnswerRow[] = [];
   let loadError: string | null = null;
   let runId: string | null = null;
+  let arrivedByEmail = false;
   let judgements: AuditEvent[] = [];
 
   try {
@@ -62,6 +63,14 @@ export default async function ReviewPage({
       // pick four out on the client would put half a megabyte of JSON into the HTML.
       const audit = await api.listAudit(reviewId, 1000);
       runId = audit.find((event) => event.run_id)?.run_id ?? null;
+      // Whether this review arrived by email, read from the trail rather than from a second
+      // query. Only a review with a thread can be replied to, and the send control has to
+      // know before it renders -- a button that 409s when pressed is worse than one that
+      // explains why it is absent.
+      arrivedByEmail = audit.some(
+        (event) =>
+          event.kind === 'review_started_by_email' || event.kind === 'follow_up_started_by_email',
+      );
       judgements = audit
         .filter((event) => JUDGEMENT_KINDS.has(event.kind))
         // `for_review` applies no ordering -- Firestore returns documents in id order, which for
@@ -141,6 +150,7 @@ export default async function ReviewPage({
             initialAnswers={answers}
             initialJudgements={judgements}
             loadError={loadError}
+            arrivedByEmail={arrivedByEmail}
           />
         </div>
       </div>

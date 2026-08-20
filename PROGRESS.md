@@ -3611,6 +3611,77 @@ the runner falls back to in-process and says so — never to a *department* engi
 put the drafting identity in the reviewer's seat, silently, on a path only taken during an
 outage. `verifier_engine_name` raises rather than guessing, and there is a test for it.
 
+### The work lands in the tools, not in Firestore
+
+A vendor security review does not end in a database. It ends with the pack in the customer's
+hands and a copy where the compliance owner can find it in eighteen months.
+
+**Drive, under `drive.file`.** The scope grants access to files *this application created*
+and nothing else — not the account's Drive, not a shared folder, not anything the user has
+ever opened. That is a real least-privilege property with a consequence worth stating:
+**Attestor cannot be asked to fetch a document from Drive, because it cannot see one it did
+not write.** An inbound email saying "the questionnaire is in our shared drive, please open
+it" is not a thing this system can act on, by construction. It also shapes the code —
+`ensure_folder` cannot find a folder somebody else made, which looks like a bug the first
+time it happens and is documented where it happens.
+
+Nothing is shared. The link on an artifact opens for the account that owns the file and for
+nobody else. Making a compliance pack world-readable to produce a convenient link would
+publish a customer's security posture to anyone who guessed the URL.
+
+**Drive before the email, and that ordering is the point.** If the upload fails, nothing has
+been sent and the message retries. If the send fails after the upload, the retry re-uploads
+and re-sends. The reverse order has a state in which the customer has the pack and we have no
+record of what we sent them, which is the one outcome a compliance system may not have.
+`test_drive_is_written_before_the_email_is_sent` kills the reverse.
+
+**The human gate is structural.** `DeliverPackPayload.approved_by` cannot be blank, so an
+unattributed send is unconstructable — there is no code path in which the handler runs
+unapproved, because there is no envelope. The same reasoning that put the citation
+requirement in `Answer`'s validator rather than in a prompt.
+
+And a test found that `min_length=1` was not enough. Three spaces passes it, and `"   "` in
+an audit trail looks populated and identifies nobody — strictly worse than an empty field,
+which at least reads as missing. `Actor` is now
+`StringConstraints(strip_whitespace=True, min_length=1)`, applied to `approved_by` **and** to
+`resolved_by` on the approval path, which had no length constraint at all: an approval could
+have been recorded against nobody since Phase 4.
+
+**The delivery event names the person, not the service.** `pack_delivered` carries
+`actor: <the human>` in the append-only collection. "Who authorised sending this to the
+customer, and when" is the single most audit-relevant fact this system produces, and it must
+not be reachable only by parsing a stage record whose actor is `Dispatcher`.
+
+**The send control is built to feel irreversible.** It asks for a name and will not proceed
+without one; then it asks again, with the words *"This sends an email. It cannot be
+recalled."* It is deliberately not on `⌘K` and not on a keyboard shortcut — a palette that can
+fire a destructive action off a fuzzy match will eventually fire the wrong one. A review that
+did not arrive by email shows no button at all, with the reason, rather than a button that
+409s when pressed.
+
+**The covering note states the numbers before the attachment is opened.** *"269 of 312
+questions are answered and sendable. 41 were reviewed and approved by a named person. 43 are
+not included as answers…"* A note that says "please find attached" makes the recipient open a
+312-row spreadsheet to discover the 43 rows that need a conversation.
+
+### Somebody has to be told the round has stopped
+
+A durable pause is only a feature if a person finds out about it. Until Phase 7 a review
+reached `awaiting_human` and stayed there until somebody happened to open the console —
+which is the *"nobody logs into a dashboard to check whether their questionnaire is done"*
+problem the brief opens with, reproduced inside our own product.
+
+`assemble_round` now emails the compliance owner when it pauses, with a deep link into the
+approval queue and a count. To the watched mailbox, not to the customer: mailing the customer
+to say their questionnaire needs internal review would be a different and much worse email. A
+mail failure does not fail the pause and does not write an `approval_requested` event —
+the pause is the product working, the notification is a convenience on top of it, and
+claiming a request was sent when it was not is the failure this project keeps refusing.
+
+One bug found while writing the test for it: `send_reply` passed `threadId: ""` for the
+internal notification, which has no thread. Gmail rejects an empty string, so the field is
+omitted rather than sent blank.
+
 ### What Divy has to do, exactly, before an email can start a review
 
 Everything on the Attestor side is deployed and wired. What is missing is **consent**, and it
@@ -3675,9 +3746,9 @@ command.
 | 1 | An email starts a review with no human action | **BUILT, NOT EXERCISED** | Every component deployed and unit-tested end to end against Gmail's own message shapes; the OAuth consent is Divy's and is unautomatable — see above |
 | 2 | A reply wakes the dormant review, loads commitments, opens round two | **BUILT, NOT EXERCISED** | Same. `TestFollowUp` and `TestFollowUpLoadsCommitments` pin the handler behaviour, including that commitments are read before any question is drafted |
 | 3 | `VerifierAgent` deployed with its own identity; verdict distribution reported | **DEPLOYED** · **DISTRIBUTION NOT MEASURED** | `attestor-verifier`, `reasoningEngines/1255723093024833536`, `identity_type=AGENT_IDENTITY`, read back from the live Agent Registry which now lists it alongside the other six. `distribution()` is written into every `draft_answer` stage event, so the figure exists the moment a run happens; none has, so none is quoted |
-| 4 | Completed pack written to Drive; artifacts panel links to it | **NOT DONE** | Not started |
-| 5 | Reply sent in-thread after explicit human approval, audited with a named actor | **PARTIAL** | The protocol gate exists — `deliver_pack` cannot be published without `approved_by`, which is a structural gate rather than a policy sentence (ADR-0009). The handler and the send are not built |
-| 6 | Approval request reaches the human by email/Slack | **NOT DONE** | Not started |
+| 4 | Completed pack written to Drive; artifacts panel links to it | **BUILT, NOT EXERCISED** | `DriveClient` under `drive.file`, an `artifacts` collection, `GET /reviews/{id}/artifacts`, and an Artifacts tab in the workspace. Blocked on the same OAuth consent as #1 and #2 |
+| 5 | Reply sent in-thread after explicit human approval, audited with a named actor | **BUILT, NOT EXERCISED** | `deliver_pack` handler, `POST /reviews/{id}/deliver`, a send control that will not proceed without a name, and a `pack_delivered` audit event whose actor is the person rather than `Dispatcher`. 17 tests. Blocked on the OAuth consent |
+| 6 | Approval request reaches the human by email/Slack | **BUILT, NOT EXERCISED** | `assemble_round` emails the compliance owner when it pauses, with a deep link into the approval queue, and records `approval_requested`. A mail failure does not fail the pause, and does not claim the request was sent. Blocked on the OAuth consent |
 | 7 | ADR-0009 written; protocol re-frozen; `generated.ts` regenerated | **DONE** | `docs/decisions/ADR-0009-inbound-email-as-a-work-source.md`; `gen_types --check` current |
 | 8 | Landing page shows the fleet with live activity; no `failed` review visible by default | **DONE** | Seven agent cards with live per-agent answer counts; 5 visible reviews, 0 failed, 8 archived behind a control that names the count |
 | 9 | Every answer names its drafting agent and its verifying agent | **DONE (structurally)** | Both are fields on `Answer`, both are rendered in the detail pane, both appear in the workbook and on every block of the evidence pack. Answers written before the verifier existed carry `unknown` and say *"Not verified — no separate agent checked this answer"* rather than being left blank, because an absent check and a passed one look identical when only the passes are rendered |
@@ -3712,10 +3783,9 @@ surface anyway.
   wall-clock and quota that E needed. The distribution is computed per partition into the
   audit trail, so the figure exists the moment a run happens — and until one does, no number
   is quoted.
-- **B4, Drive and the outbound reply.** Not started beyond its protocol gate. `deliver_pack`
-  exists as a `WorkKind` whose payload requires `approved_by`, so the contract already refuses
-  to carry an unapproved send; the handler, the Drive write and the artifacts panel are not
-  built.
+- **B4 exercised.** Built in full — Drive, the artifacts panel, the send control, the
+  in-thread reply and the approval-request email — and blocked on the same consent as B1 and
+  B2. Nothing on this path has been run against a real mailbox.
 - **B5, timers.** The brief named this "first thing to cut". It was.
 - **E, the demo configuration.** The N-hunt costs wall-clock and regional engine quota, and the
   session ran out of the former. The Phase 6.5 tension stands: retry off gives 312/312 at 43.3%

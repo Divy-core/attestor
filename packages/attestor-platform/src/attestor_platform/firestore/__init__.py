@@ -9,6 +9,7 @@ from attestor_platform.firestore.claims import (
 from attestor_platform.firestore.repositories import (
     AnswerRepository,
     ArmorEventRepository,
+    ArtifactRepository,
     AuditEventRepository,
     CommitmentRepository,
     InboxStateRepository,
@@ -21,6 +22,7 @@ from attestor_platform.firestore.repositories import (
 __all__ = [
     "AnswerRepository",
     "ArmorEventRepository",
+    "ArtifactRepository",
     "AuditEventRepository",
     "Claim",
     "ClaimOutcome",
