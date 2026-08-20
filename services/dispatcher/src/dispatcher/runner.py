@@ -133,20 +133,22 @@ class PipelineFleetRunner:
         return self._commitments
 
     def _build_verifier(self) -> Any:
-        """The agent that checks the work, bound to the identity it verifies under.
+        """The agent that checks the work, running wherever it honestly runs.
 
-        `ATTESTOR_VERIFIER_IDENTITY` names the deployed verifier engine. When it is unset
-        the verifier still runs and still refuses to review its own department's work --
-        `assert_separation` compares against the drafting agent's name either way -- but the
-        identity recorded on the audit event says `VerifierAgent (in-process)` rather than
-        naming an engine. That distinction is the difference between "a separate component
-        checked this" and "a separate credential checked this", and only one of those is a
-        control an auditor would accept, so the trail must not blur them.
+        In-process here. `AgentRuntimeFleetRunner` overrides this to return one bound to the
+        deployed verifier engine, and the identity string follows the execution rather than
+        being configured beside it -- so there is no setting in which the audit trail names
+        an engine that did not do the work.
+
+        The separation still holds either way: `assert_separation` compares against the
+        drafting agent's name, and an in-process verifier is still not the security agent.
+        What changes is whether "a separate component checked this" or "a separate
+        credential checked this" is the true sentence, and only one of those is a control an
+        auditor accepts.
         """
         from attestor_fleet.agents.verifier import VerifierAgent
 
-        identity = os.environ.get("ATTESTOR_VERIFIER_IDENTITY", "").strip()
-        return VerifierAgent(identity=identity or "VerifierAgent (in-process)")
+        return VerifierAgent(identity="VerifierAgent (in-process)")
 
     def _pipeline(self, review_id: str, run_id: str, round_id: str | None = None) -> Any:
         from attestor_fleet.callbacks.audit import FirestoreAuditSink
@@ -330,6 +332,23 @@ class AgentRuntimeFleetRunner(PipelineFleetRunner):
     idle. With drafting on the engines it describes the production path, and the object
     surface is defended in depth *where the work happens*.
     """
+
+    def _build_verifier(self) -> Any:
+        """The verifier on its own engine, or an honest refusal to claim one.
+
+        A verifier that cannot reach its engine falls back to running in-process and says
+        so in its identity. It does not fall back to a *department* engine and it does not
+        pretend: routing verification to an agent that drafts is the exact failure this
+        component exists to prevent, and `verifier_engine_name` raises rather than guessing.
+        """
+        from dispatcher.remote import RemoteVerifierAgent, verifier_engine_name
+
+        try:
+            name = verifier_engine_name()
+        except Exception as exc:
+            logger.warning("no deployed verifier engine (%s); verifying in-process", exc)
+            return super()._build_verifier()
+        return RemoteVerifierAgent(identity=name)
 
     def _pipeline(self, review_id: str, run_id: str, round_id: str | None = None) -> Any:
         from attestor_fleet.callbacks.audit import FirestoreAuditSink

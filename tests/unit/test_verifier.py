@@ -18,6 +18,7 @@ worse than no verifier, because the objection is what a human is asked to act on
 
 from __future__ import annotations
 
+import pathlib
 from typing import Any
 
 import pytest
@@ -327,3 +328,91 @@ def test_the_distribution_counts_unknown_rather_than_dropping_it() -> None:
         "unknown": 1,
     }
     assert sum(counts.values()) == len(results)
+
+
+class TestTheEngineSeam:
+    """Where the verification actually runs, and what the audit trail is allowed to say.
+
+    `VerifierAgent` alone runs in the dispatcher, under the dispatcher's service account.
+    That is a separate *component* checking the work, which is worth something and is not
+    what an auditor means by separation of duties. The distinction has to survive into the
+    record, so the identity follows the execution rather than being configured beside it.
+    """
+
+    def test_the_in_process_verifier_says_it_is_in_process(self) -> None:
+        from dispatcher.runner import PipelineFleetRunner
+
+        agent = PipelineFleetRunner()._build_verifier()
+        assert agent.identity == "VerifierAgent (in-process)"
+
+    def test_an_absent_engine_falls_back_in_process_and_never_to_a_drafter(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The one fallback that must not exist is the tempting one.
+
+        Routing verification to a department engine when the verifier is unreachable would
+        put the drafting identity in the reviewer's seat -- the exact failure this component
+        exists to prevent -- and it would do it silently, on a path only taken during an
+        outage.
+        """
+        from dispatcher.runner import AgentRuntimeFleetRunner
+
+        monkeypatch.setenv("ATTESTOR_VERIFIER_ENGINE", "")
+        monkeypatch.setattr(
+            "dispatcher.remote.DEPLOYMENT", pathlib.Path("does-not-exist.json"), raising=False
+        )
+        agent = AgentRuntimeFleetRunner()._build_verifier()
+        assert agent.identity == "VerifierAgent (in-process)"
+        assert "security" not in agent.identity.lower()
+
+    def test_a_configured_engine_becomes_the_recorded_identity(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from dispatcher.runner import AgentRuntimeFleetRunner
+
+        resource = "projects/9/locations/us-central1/reasoningEngines/1255723093024833536"
+        monkeypatch.setenv("ATTESTOR_VERIFIER_ENGINE", resource)
+        agent = AgentRuntimeFleetRunner()._build_verifier()
+        assert agent.identity == resource
+
+    def test_the_remote_verifier_joins_the_engine_stream(self) -> None:
+        from dispatcher.remote import RemoteVerifierAgent
+
+        class _Engine:
+            def __init__(self) -> None:
+                self.messages: list[str] = []
+
+            def stream_query(self, *, message: str, user_id: str) -> list[dict[str, Any]]:
+                del user_id
+                self.messages.append(message)
+                return [
+                    {"content": {"parts": [{"text": '{"verdict": "supported",'}]}},
+                    {"content": {"parts": [{"text": ' "unsupported_claims": [],'}]}},
+                    {"content": {"parts": [{"text": ' "reason": "All claims cited."}'}]}},
+                ]
+
+        engine = _Engine()
+        agent = RemoteVerifierAgent(identity="reasoningEngines/1255", engine=engine)
+        result = agent.verify(
+            question="Do you encrypt at rest?",
+            answer=ANSWER,
+            citations=[_citation()],
+            drafted_by="SecurityAgent",
+        )
+        assert result.verdict is SupportVerdict.SUPPORTED
+        assert result.verified_by == "reasoningEngines/1255"
+        assert "must not rewrite" in engine.messages[0]
+
+    def test_the_remote_verifier_degrades_rather_than_failing_the_answer(self) -> None:
+        from dispatcher.remote import RemoteVerifierAgent
+
+        class _DeadEngine:
+            def stream_query(self, *, message: str, user_id: str) -> list[dict[str, Any]]:
+                del message, user_id
+                raise RuntimeError("engine unreachable")
+
+        agent = RemoteVerifierAgent(identity="reasoningEngines/1255", engine=_DeadEngine())
+        result = agent.verify(
+            question="q", answer=ANSWER, citations=[_citation()], drafted_by="SecurityAgent"
+        )
+        assert result.verdict is SupportVerdict.UNKNOWN

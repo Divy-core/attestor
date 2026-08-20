@@ -206,6 +206,21 @@ class VerifierAgent:
             self._client = genai_client()
         return self._client
 
+    def generate(self, prompt: str) -> str:
+        """Run the prompt. The one seam a deployed verifier overrides.
+
+        In this class the call is a direct `generate_content`, which means the work runs
+        wherever this object does -- in the dispatcher, under the dispatcher's service
+        account. `dispatcher.remote.RemoteVerifierAgent` overrides exactly this method to
+        route the call through the deployed verifier engine, and only then does the identity
+        recorded on the audit event name a credential that actually did the work.
+
+        The seam is one method rather than a configuration flag, so there is no setting in
+        which this object claims an engine identity it is not using.
+        """
+        response = self.client.models.generate_content(model=self.model, contents=prompt)
+        return str(response.text or "")
+
     def verify(
         self,
         *,
@@ -239,8 +254,7 @@ class VerifierAgent:
             passages=_render_passages(citations),
         )
         try:
-            response = self.client.models.generate_content(model=self.model, contents=prompt)
-            text = (response.text or "").strip()
+            text = self.generate(prompt).strip()
         except Exception as exc:
             logger.warning("verifier call failed: %s", exc)
             return VerificationResult(

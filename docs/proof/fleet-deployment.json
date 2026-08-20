@@ -34,6 +34,13 @@
       "resource_name": "projects/906988347581/locations/us-central1/reasoningEngines/9024538003355205632",
       "role": "evidence",
       "seconds": 240.3
+    },
+    {
+      "created": true,
+      "display_name": "attestor-verifier",
+      "resource_name": "projects/906988347581/locations/us-central1/reasoningEngines/1255723093024833536",
+      "role": "verifier",
+      "seconds": 188.4
     }
   ],
   "identity_type": "AGENT_IDENTITY",

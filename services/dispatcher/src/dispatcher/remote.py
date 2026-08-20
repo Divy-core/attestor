@@ -90,6 +90,7 @@ from attestor_core.domain import (
     Question,
 )
 from attestor_core.errors import AttestorError
+from attestor_fleet.agents.verifier import VerifierAgent
 from attestor_fleet.callbacks.guard import enforce_tool_policy
 from attestor_fleet.pipeline import ReviewPipeline
 from attestor_platform.retry import TRANSIENT_MARKERS, is_transient
@@ -601,3 +602,86 @@ class RemoteDraftingPipeline(ReviewPipeline):
             self._local.drafted = None
             return str(drafted)
         return str(super()._generate(model, prompt))
+
+
+# ---------------------------------------------------------------------------------
+# The verifier, on its own engine
+# ---------------------------------------------------------------------------------
+
+#: Where the deployed verifier lives. Read from the environment first so a deploy can point
+#: at a specific engine, then from the proof file the fleet deployment wrote.
+VERIFIER_ENGINE_ENV = "ATTESTOR_VERIFIER_ENGINE"
+
+
+def verifier_engine_name() -> str:
+    """Resolve the verifier engine's resource name.
+
+    Raises:
+        EngineUnavailable: when none is configured. Loud rather than falling back to a
+            department engine -- routing verification to the agent that drafts is the exact
+            thing this component exists to prevent, and a silent fallback would do it.
+    """
+    configured = os.environ.get(VERIFIER_ENGINE_ENV, "").strip()
+    if configured:
+        return configured
+    if DEPLOYMENT.exists():
+        record = json.loads(DEPLOYMENT.read_text(encoding="utf-8"))
+        for engine in record.get("engines", []):
+            if engine.get("role") == "verifier":
+                return str(engine["resource_name"])
+    raise EngineUnavailable(
+        f"no deployed verifier engine configured; set {VERIFIER_ENGINE_ENV} or run "
+        "services/runtime/deploy_fleet.py --role verifier"
+    )
+
+
+class RemoteVerifierAgent(VerifierAgent):
+    """The verifier, executed on its own deployed engine under its own Agent Identity.
+
+    This subclass is what makes the separation-of-duties claim true rather than
+    architectural. `VerifierAgent` on its own runs in the dispatcher, under the dispatcher's
+    service account — a separate *component* checking the work, which is worth something but
+    is not what an auditor means. Here the call goes to `attestor-verifier`, whose identity is
+    distinct from every department engine's and which holds no corpus binding at all.
+
+    One override, `generate`, for the same reason `RemoteDraftingPipeline` has three: the
+    judgement, the JSON parsing, the verbatim-quote check and the degradation rules are
+    inherited unchanged, so a difference between these verdicts and the in-process ones is
+    attributable to where the work ran rather than to a second implementation of it.
+    """
+
+    def __init__(self, *args: Any, engine: Any | None = None, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self._engine = engine
+        self._engine_lock = threading.Lock()
+
+    @property
+    def engine(self) -> Any:
+        with self._engine_lock:
+            if self._engine is None:
+                import agentplatform
+
+                client = agentplatform.Client(
+                    project=os.environ.get("PROJECT_ID"), location=LOCATION
+                )
+                self._engine = client.agent_engines.get(name=verifier_engine_name())
+            return self._engine
+
+    def generate(self, prompt: str) -> str:
+        """One `stream_query` against the verifier engine, joined into its text.
+
+        No retry loop of its own. A failed verification degrades to `UNKNOWN`, which caps
+        confidence and is recorded — whereas a failed *draft* loses the answer, which is why
+        that path retries and this one does not. Spending four attempts and a backoff on a
+        check whose failure is already handled would add latency to every question in a round
+        to avoid an outcome the design already accepts.
+        """
+        events = list(self.engine.stream_query(message=prompt, user_id=f"verifier:{self.identity}"))
+        chunks: list[str] = []
+        for event in events:
+            payload = event if isinstance(event, dict) else {}
+            for part in (payload.get("content") or {}).get("parts") or []:
+                text = part.get("text")
+                if isinstance(text, str) and text.strip():
+                    chunks.append(text)
+        return "\n".join(chunks)

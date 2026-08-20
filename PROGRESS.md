@@ -3506,6 +3506,88 @@ on the landing page rather than buried in settings, for one reason: a lapsed wat
 from outside. It expires after seven days, Gmail does not warn, and a mailbox that has stopped
 notifying looks exactly like a mailbox nobody has emailed.
 
+### The agent that checks the work is not the agent that did it
+
+The strongest governance sentence available in this project, and it is enforced by a
+credential rather than by a paragraph.
+
+**Retrieval scores do not already answer this question.** A relevance score is a property of
+the *retrieval* — how well a passage matched the question. Groundedness is a property of the
+*prose* — whether the sentences the drafting agent wrote are carried by the passages it
+cited. The gap between the two is where a confident, well-cited, wrong answer lives: five
+passages at 0.95 about the encryption policy, and a drafted answer that also asserts
+customer-managed keys. Every existing signal is green and the key-management claim came from
+the model.
+
+`assert_separation` raises `PolicyViolation` when the verifying identity equals the drafting
+one. An exception, not a downgrade to `UNKNOWN`, because a self-review that reports "could
+not check" looks like the control ran and found nothing — the worst of the three outcomes.
+
+Three things it deliberately cannot do:
+
+- **It has no corpus tool.** Handing it retrieval would let it go and find a *better*
+  citation, which is a different and much weaker question, and would make it an author again.
+  It sees the passages the drafting agent chose to stand behind, and nothing else.
+- **It never rewrites.** A verifier that fixes what it finds is an author on the first
+  correction.
+- **It may not return `UNKNOWN`.** That value means "our infrastructure did not run the
+  check", which is a fact about us rather than a judgement. Letting the model reach for it
+  would give it a way to abstain and have the abstention counted as an outage.
+
+Every failure path — unreachable engine, unparseable reply, a model abstaining, zero
+citations — lands on `UNKNOWN` and never on `SUPPORTED`. That is the ninth instance of the
+failure-impersonating-empty family, and the first one designed against before it happened.
+
+**One asymmetry, and it is deliberate.** `contradiction`'s `UNKNOWN` is LOW; support's
+`UNKNOWN` caps at MEDIUM. The failures differ: an unrun consistency check means round two
+might contradict round one in front of the customer, which is unrecoverable. An unrun
+groundedness check leaves citations, retrieval scores and a contradiction verdict all still
+measured. Dropping to LOW would escalate every answer in a round the moment the verifier
+engine blinked — a fail-closed that stops the product rather than protecting it.
+
+The default is `UNKNOWN`, never `SUPPORTED`, so nothing written before this existed reads as
+verified. Two Phase 3 policy tests had to start passing `support=SUPPORTED` to still return
+HIGH, and that edit is the point: **HIGH now requires that somebody who did not write the
+answer confirmed it is grounded.**
+
+In the deliverable: a *Verified by* column in the workbook, both agents named on every block
+of the evidence pack, and a new `UNGROUNDED` release state that is not sendable. A human's
+approval outranks the verdict — a named person has taken responsibility, and the verdict is
+*why* the queue put it in front of them.
+
+A finding the verifier cannot quote verbatim from the answer is dropped. A fabricated
+objection on the one surface whose purpose is provenance is worse than a missed one, because
+the objection is what a human is asked to act on.
+
+**The engine.** `attestor-verifier`, `reasoningEngines/1255723093024833536`, with
+`identity_type=AGENT_IDENTITY` and no corpus binding of any kind — read back from the live
+registry, which now lists it alongside the other six.
+
+The first deploy attempt failed: `RemoteDisconnected` inside `_upload_agent_engine` while
+pushing the bundle to GCS. It succeeded on a retry, in 188s. Worth recording for a reason
+beyond the flake — **this file said "Deployed as `attestor-verifier`" before the registry had
+been queried, and it was not true when it was written.** It was corrected by querying, then
+corrected again when the retry landed. The discipline this repository runs on is that a claim
+is written after the check, and this is the instance where that order was got wrong and
+caught.
+
+**Where it runs is where it says it runs.** `RemoteVerifierAgent` overrides one method —
+`generate` — to `stream_query` the deployed engine; everything else, the judgement, the JSON
+parsing, the verbatim-quote check and the degradation rules, is inherited, so a difference
+between remote and in-process verdicts is attributable to where the work ran rather than to a
+second implementation of it.
+
+The identity string **follows the execution** rather than being configured beside it. There
+is deliberately no `ATTESTOR_VERIFIER_IDENTITY` variable: a setting that names an engine
+independently of the code path is a setting in which the audit trail can name a credential
+that did not do the work. In-process, the identity is literally
+`VerifierAgent (in-process)`; on the engine, it is the resource name.
+
+And the one fallback that must not exist does not. When the verifier engine is unreachable,
+the runner falls back to in-process and says so — never to a *department* engine, which would
+put the drafting identity in the reviewer's seat, silently, on a path only taken during an
+outage. `verifier_engine_name` raises rather than guessing, and there is a test for it.
+
 ### What Divy has to do, exactly, before an email can start a review
 
 Everything on the Attestor side is deployed and wired. What is missing is **consent**, and it
@@ -3569,13 +3651,13 @@ command.
 |---|---|---|---|
 | 1 | An email starts a review with no human action | **BUILT, NOT EXERCISED** | Every component deployed and unit-tested end to end against Gmail's own message shapes; the OAuth consent is Divy's and is unautomatable — see above |
 | 2 | A reply wakes the dormant review, loads commitments, opens round two | **BUILT, NOT EXERCISED** | Same. `TestFollowUp` and `TestFollowUpLoadsCommitments` pin the handler behaviour, including that commitments are read before any question is drafted |
-| 3 | `VerifierAgent` deployed with its own identity; verdict distribution reported | **NOT DONE** | Not started. See below |
+| 3 | `VerifierAgent` deployed with its own identity; verdict distribution reported | **DEPLOYED** · **DISTRIBUTION NOT MEASURED** | `attestor-verifier`, `reasoningEngines/1255723093024833536`, `identity_type=AGENT_IDENTITY`, read back from the live Agent Registry which now lists it alongside the other six. `distribution()` is written into every `draft_answer` stage event, so the figure exists the moment a run happens; none has, so none is quoted |
 | 4 | Completed pack written to Drive; artifacts panel links to it | **NOT DONE** | Not started |
 | 5 | Reply sent in-thread after explicit human approval, audited with a named actor | **PARTIAL** | The protocol gate exists — `deliver_pack` cannot be published without `approved_by`, which is a structural gate rather than a policy sentence (ADR-0009). The handler and the send are not built |
 | 6 | Approval request reaches the human by email/Slack | **NOT DONE** | Not started |
 | 7 | ADR-0009 written; protocol re-frozen; `generated.ts` regenerated | **DONE** | `docs/decisions/ADR-0009-inbound-email-as-a-work-source.md`; `gen_types --check` current |
 | 8 | Landing page shows the fleet with live activity; no `failed` review visible by default | **DONE** | Seven agent cards with live per-agent answer counts; 5 visible reviews, 0 failed, 8 archived behind a control that names the count |
-| 9 | Every answer names its drafting agent and its verifying agent | **PARTIAL** | The drafting agent is named on every answer (`authored_by`, rendered in the detail pane — verified live showing `EngineeringAgent`). There is no verifying agent, because #3 was not done |
+| 9 | Every answer names its drafting agent and its verifying agent | **DONE (structurally)** | Both are fields on `Answer`, both are rendered in the detail pane, both appear in the workbook and on every block of the evidence pack. Answers written before the verifier existed carry `unknown` and say *"Not verified — no separate agent checked this answer"* rather than being left blank, because an absent check and a passed one look identical when only the passes are rendered |
 | 10 | Neutral ramp at zero chroma; Geist Sans + Mono; spacing/radius/accent per D2 | **DONE** | `check-tokens` proves R=G=B on every grey step arithmetically and that the two dark blocks agree; fonts confirmed on the rendered page as `GeistSans` / `GeistMono`; spacing and radius scales replaced rather than extended |
 | 11 | Three-pane workspace; command palette; keyboard navigation; URL filters | **DONE** | Exercised on the running page at 1920×1080: `j`/`k` move the selection, `/` focuses the filter, `a` opens the approval, `⌘K` opens the palette and `Escape` closes it, and the URL mirrors every step |
 | 12 | Both themes read end to end at 1080p, **with screenshots** | **PARTIAL** | Measured on the rendered page in both themes at 1920×1080, table above, with four failures found and corrected. **No screenshot**: the browser pane in this environment does not composite frames, so `computer{action:"screenshot"}` times out. Third session running. Marked PARTIAL rather than claimed |
@@ -3601,9 +3683,12 @@ said **"If the phase runs long, protect B1, B2 and D in that order."** It ran lo
 is D5, B1, B2, D and C — the four protected items plus fleet visibility, which is part of D's
 surface anyway.
 
-- **B3, the Verifier.** Not started. It is the strongest governance story available — the agent
-  that checks the work cannot be the agent that did it, enforced by distinct Agent Identities
-  rather than by policy text — and it is the largest single thing outstanding.
+- **B3's engine, and its verdict distribution.** The Verifier is built, wired into the
+  drafting path, reflected in the export and tested; the *engine* is not deployed, because the
+  bundle upload failed. And no run has been made with it in place, which is the same
+  wall-clock and quota that E needed. The distribution is computed per partition into the
+  audit trail, so the figure exists the moment a run happens — and until one does, no number
+  is quoted.
 - **B4, Drive and the outbound reply.** Not started beyond its protocol gate. `deliver_pack`
   exists as a `WorkKind` whose payload requires `approved_by`, so the contract already refuses
   to carry an unapproved send; the handler, the Drive write and the artifacts panel are not
