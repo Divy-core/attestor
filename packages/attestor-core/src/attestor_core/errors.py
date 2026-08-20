@@ -98,6 +98,18 @@ class ContractViolation(AttestorError):
     """A wire contract was violated -- a malformed envelope or unknown event type."""
 
 
+class ConfigurationError(AttestorError):
+    """The deployment is missing something it needs, and no retry will supply it.
+
+    Distinct from `ContextUnavailable`, which is a read that could not be performed.
+    This is a read that was never going to be possible: an unset environment variable,
+    an absent secret, a service account without the binding. Separated because the two
+    demand opposite handling -- a `ContextUnavailable` is worth retrying and a missing
+    secret is worth dead-lettering, and conflating them means either burning attempts on
+    a misconfiguration or discarding work because of a blip.
+    """
+
+
 class ContextUnavailable(AttestorError):
     """A read that would otherwise return "nothing" could not be performed at all.
 

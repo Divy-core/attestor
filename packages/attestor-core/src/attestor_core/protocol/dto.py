@@ -84,6 +84,7 @@ class ReviewSummary(_Dto):
     question_count: int = Field(default=0, ge=0)
     answered_count: int = Field(default=0, ge=0)
     flagged_count: int = Field(default=0, ge=0)
+    archived: bool = False
 
 
 class CitationDto(_Dto):

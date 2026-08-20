@@ -27,16 +27,19 @@ from __future__ import annotations
 
 import logging
 import os
+import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from typing import Any
 
 from google.cloud import firestore
 
 from attestor_core.domain import Department, Question, Review, Round
-from attestor_core.domain.enums import ReviewState
+from attestor_core.domain.enums import Residency, ReviewState
 from attestor_core.errors import ContractViolation
 from attestor_core.protocol import (
+    InboxMessagePayload,
     IntakeDocumentPayload,
     OpenFollowUpPayload,
     ResumeAfterHumanPayload,
@@ -45,18 +48,37 @@ from attestor_core.protocol import (
     parse_payload,
 )
 from attestor_core.state import transition
-from attestor_platform.config import max_questions_per_round
+from attestor_platform.config import max_active_reviews, max_questions_per_round
 from attestor_platform.firestore import (
     AnswerRepository,
     AuditEventRepository,
+    InboxStateRepository,
     QuestionRepository,
     ReviewRepository,
     RoundRepository,
+    RoundSourceRepository,
+)
+from attestor_platform.gmail import (
+    GmailClient,
+    InboundMessage,
+    stage_attachment,
+    stage_body_questions,
 )
 from attestor_platform.pubsub import WorkPublisher
 from dispatcher.runner import FleetRunner, build_fleet_runner
 
 logger = logging.getLogger(__name__)
+
+
+def _utcnow() -> datetime:
+    return datetime.now(UTC)
+
+
+#: Gmail labels the fleet applies, so the mailbox itself shows what happened to a thread.
+LABEL_STARTED = "Attestor/Review started"
+LABEL_FOLLOW_UP = "Attestor/Follow-up"
+LABEL_IGNORED = "Attestor/Not a review"
+LABEL_HELD = "Attestor/Held"
 
 #: Drafting partitions. Every department that can own a question, so the join is complete
 #: exactly when all of them have reported.
@@ -177,6 +199,9 @@ class HandlerRegistry:
         publisher: WorkPublisher | None = None,
         fleet: FleetRunner | None = None,
         db: firestore.Client | None = None,
+        inbox_state: InboxStateRepository | None = None,
+        gmail: GmailClient | None = None,
+        round_sources: RoundSourceRepository | None = None,
     ) -> None:
         self._reviews = reviews
         self._rounds = rounds
@@ -186,6 +211,9 @@ class HandlerRegistry:
         self._publisher = publisher
         self._fleet = fleet
         self._db = db
+        self._inbox_state = inbox_state
+        self._gmail = gmail
+        self._round_sources = round_sources
         self._table: dict[WorkKind, Callable[[WorkEnvelope], HandlerResult]] = {
             WorkKind.INTAKE_DOCUMENT: self.intake_document,
             WorkKind.TRIAGE_QUESTIONS: self.triage_questions,
@@ -194,6 +222,7 @@ class HandlerRegistry:
             WorkKind.CLOSE_ROUND: self.close_round,
             WorkKind.OPEN_FOLLOW_UP: self.open_follow_up,
             WorkKind.RESUME_AFTER_HUMAN: self.resume_after_human,
+            WorkKind.INBOX_MESSAGE: self.inbox_message,
         }
 
     # -- lazy dependencies -------------------------------------------------------------
@@ -240,6 +269,24 @@ class HandlerRegistry:
         if self._fleet is None:
             self._fleet = build_fleet_runner()
         return self._fleet
+
+    @property
+    def inbox_state(self) -> InboxStateRepository:
+        if self._inbox_state is None:
+            self._inbox_state = InboxStateRepository()
+        return self._inbox_state
+
+    @property
+    def gmail(self) -> GmailClient:
+        if self._gmail is None:
+            self._gmail = GmailClient()
+        return self._gmail
+
+    @property
+    def round_sources(self) -> RoundSourceRepository:
+        if self._round_sources is None:
+            self._round_sources = RoundSourceRepository()
+        return self._round_sources
 
     @property
     def db(self) -> firestore.Client:
@@ -611,6 +658,15 @@ class HandlerRegistry:
         commitments = self.fleet.load_commitments(envelope.review_id)
 
         state = self._move(self._require_review(envelope.review_id), ReviewState.TRIAGING)
+        # The review has to remember which round it is on, and until Phase 7 nothing wrote
+        # this back: `current_round` stayed 1 through every follow-up. It did not show
+        # because rounds were opened by a tool that named the ordinal explicitly. The
+        # inbound path derives the next ordinal from `current_round`, so a second follow-up
+        # would have computed 2 again, collided with the round already there, and quietly
+        # overwritten it. A unit test caught it before it was deployed.
+        advanced = self._require_review(envelope.review_id)
+        if advanced.current_round != payload.round_ordinal:
+            self.reviews.put(advanced.model_copy(update={"current_round": payload.round_ordinal}))
         published = [
             self._emit(
                 WorkEnvelope.for_work(
@@ -683,6 +739,282 @@ class HandlerRegistry:
         ]
         self._audit_stage(envelope, detail)
         return HandlerResult(state=state, published=published, detail=detail)
+
+    # -- the front door ----------------------------------------------------------------
+
+    def inbox_message(self, envelope: WorkEnvelope) -> HandlerResult:
+        """An email arrived. Decide what it is and, if it is work, start it.
+
+        This is the stage that closes the loop on "runs in the background without being
+        asked". Everything downstream has been autonomous since Phase 4; what stood in
+        front of it was a person filling in a form. Now a customer emails the watched
+        address and a `WorkEnvelope` appears on the same bus the browser would have put
+        one on.
+
+        Four outcomes, and each of them is recorded rather than inferred:
+
+        1. **Not a review.** Labelled and left. The mailbox is a real inbox and most of
+           what lands in it is not a questionnaire.
+        2. **A follow-up on a thread we own.** `open_follow_up`, which loads the prior
+           commitments -- so a reply three weeks later is checked against what was promised
+           in the first round, with nobody involved.
+        3. **A new review.** A `Review`, a round, and `intake_document`.
+        4. **Refused.** At capacity, or nothing parseable to work from.
+
+        ## Why the capacity check is here and not only in the control plane
+
+        `guard.require_capacity` protects the *browser* path. This path is reachable by
+        anyone who knows an email address, which is a strictly larger set than anyone who
+        knows the web URL, and a stranger must not be able to start unbounded 312-question
+        runs by sending mail. The ceiling is the same one, read from the same config, and
+        being refused is answered with a labelled thread rather than silence.
+        """
+        payload = parse_payload(envelope)
+        assert isinstance(payload, InboxMessagePayload)  # noqa: S101 - narrowed by kind
+
+        message = self.gmail.get_message(payload.gmail_message_id)
+        if message.sender and message.sender == self.gmail.address:
+            # Our own outbound reply, echoed back into the thread. Answering our own email
+            # would open a round per reply, forever.
+            return self._inbox_stop(envelope, message, "own_message", "Sent by this mailbox.")
+
+        known_review_id = self.inbox_state.review_for_thread(message.thread_id)
+        verdict = self.fleet.classify_inbound(message, known_thread=bool(known_review_id))
+        detail: dict[str, Any] = {
+            "gmail_message_id": message.message_id,
+            "gmail_thread_id": message.thread_id,
+            "sender": message.sender,
+            "subject": message.subject[:200],
+            "attachments": [a.filename for a in message.attachments],
+            **verdict.as_detail(),
+        }
+
+        if not verdict.is_security_review and not known_review_id:
+            return self._inbox_stop(envelope, message, "not_a_review", verdict.reason, detail)
+
+        if known_review_id is None:
+            active = [
+                r.review_id
+                for r in self.reviews.list_all(limit=200)
+                if r.state not in {ReviewState.DELIVERED, ReviewState.FAILED} and not r.archived
+            ]
+            if len(active) >= max_active_reviews():
+                detail["in_flight"] = sorted(active)
+                return self._inbox_stop(
+                    envelope,
+                    message,
+                    "at_capacity",
+                    f"{len(active)} reviews are in flight and this deployment allows "
+                    f"{max_active_reviews()}.",
+                    detail,
+                )
+
+        gcs_uri, origin = self._stage_questionnaire(message, verdict.body_questions)
+        if gcs_uri is None:
+            return self._inbox_stop(
+                envelope,
+                message,
+                "nothing_to_answer",
+                "No questionnaire attachment and no questions in the body.",
+                detail,
+            )
+        detail["gcs_uri"] = gcs_uri
+        detail["questionnaire_origin"] = origin
+
+        if known_review_id is not None:
+            return self._open_round_from_email(envelope, message, known_review_id, gcs_uri, detail)
+        return self._create_review_from_email(envelope, message, verdict, gcs_uri, detail)
+
+    def _stage_questionnaire(
+        self, message: InboundMessage, body_questions: tuple[str, ...]
+    ) -> tuple[str | None, str]:
+        """Get this email's questions into GCS, whichever form they arrived in.
+
+        The attachment wins when there is one. A customer who attaches a workbook *and*
+        writes two questions in the covering note is asking about the workbook, and the
+        export has to hand their own file back -- synthesising a replacement from the note
+        would silently substitute a document Attestor wrote for one they sent.
+        """
+        for attachment in message.questionnaires:
+            if attachment.inline_data is not None:
+                payload = attachment.inline_data
+            elif attachment.attachment_id:
+                payload = self.gmail.attachment_bytes(message.message_id, attachment.attachment_id)
+            else:  # pragma: no cover - Gmail always gives one or the other
+                continue
+            if payload:
+                return stage_attachment(message, attachment, payload), "attachment"
+        if body_questions:
+            return stage_body_questions(message, body_questions), "email body"
+        return None, "none"
+
+    def _create_review_from_email(
+        self,
+        envelope: WorkEnvelope,
+        message: InboundMessage,
+        verdict: Any,
+        gcs_uri: str,
+        detail: dict[str, Any],
+    ) -> HandlerResult:
+        """First contact: a review that nobody created by hand."""
+        review_id = f"rev-{uuid.uuid4().hex[:12]}"
+        review = Review(
+            review_id=review_id,
+            customer=verdict.customer,
+            framework=verdict.framework,
+            residency=Residency.US,
+            current_round=1,
+            state=ReviewState.INTAKE,
+        )
+        self.reviews.put(review)
+        # Bound before the work is published, not after. A reply that arrives while round
+        # one is still drafting has to find this review, and a binding written afterwards
+        # is a window in which it would not.
+        self.inbox_state.bind_thread(
+            message.thread_id, review_id, customer=verdict.customer, sender=message.sender
+        )
+
+        round_id = f"{review_id}-r1"
+        self.rounds.put(
+            Round(round_id=round_id, review_id=review_id, ordinal=1, state=ReviewState.INTAKE)
+        )
+        self.round_sources.put(round_id, gcs_uri)
+
+        published = [
+            self._emit(
+                WorkEnvelope.for_work(
+                    message_id=f"{envelope.run_id}-intake",
+                    review_id=review_id,
+                    run_id=envelope.run_id,
+                    round_id=round_id,
+                    kind=WorkKind.INTAKE_DOCUMENT,
+                    payload={
+                        "gcs_uri": gcs_uri,
+                        "original_filename": gcs_uri.rsplit("/", 1)[-1],
+                    },
+                )
+            )
+        ]
+        detail.update({"outcome": "review_created", "review_id": review_id, "round_id": round_id})
+        self._audit_stage(envelope, detail)
+        # Written a second time against the REAL review id. The stage event above is keyed
+        # to the synthetic `inbox-...` id, because that is what the envelope carried and the
+        # envelope is what the dedup key was derived from; without this line the new review
+        # would have an audit trail that begins at intake with no record of where it came
+        # from, and "an email started this" is the claim the whole phase rests on.
+        self.audit.append_safe(
+            {
+                "kind": "review_started_by_email",
+                "review_id": review_id,
+                "run_id": envelope.run_id,
+                "actor": "InboxAgent",
+                "detail": detail,
+            }
+        )
+        self._label(message, LABEL_STARTED)
+        logger.info("email from %s started review %s", message.sender, review_id)
+        return HandlerResult(state=ReviewState.INTAKE, published=published, detail=detail)
+
+    def _open_round_from_email(
+        self,
+        envelope: WorkEnvelope,
+        message: InboundMessage,
+        review_id: str,
+        gcs_uri: str,
+        detail: dict[str, Any],
+    ) -> HandlerResult:
+        """A reply on a thread Attestor owns. Wake the review and open the next round.
+
+        The demonstration this exists for: a review delivered in July, dormant for weeks,
+        wakes because an email arrived. `open_follow_up` then loads the commitments made in
+        round one from Memory Bank, and the consistency check refuses to contradict them.
+        No human is involved at any point in that sentence.
+        """
+        review = self._require_review(review_id)
+        if review.archived:
+            return self._inbox_stop(
+                envelope,
+                message,
+                "archived",
+                f"Review {review_id} is archived; a reply does not un-archive it.",
+                detail,
+            )
+        ordinal = review.current_round + 1
+        round_id = f"{review_id}-r{ordinal}"
+        self.round_sources.put(round_id, gcs_uri)
+        published = [
+            self._emit(
+                WorkEnvelope.for_work(
+                    message_id=f"{envelope.run_id}-followup-r{ordinal}",
+                    review_id=review_id,
+                    run_id=envelope.run_id,
+                    round_id=round_id,
+                    kind=WorkKind.OPEN_FOLLOW_UP,
+                    payload={"gcs_uri": gcs_uri, "round_ordinal": ordinal},
+                )
+            )
+        ]
+        detail.update(
+            {
+                "outcome": "follow_up_opened",
+                "review_id": review_id,
+                "round_id": round_id,
+                "ordinal": ordinal,
+                "dormant_days": round((_utcnow() - review.created_at).total_seconds() / 86400, 1),
+            }
+        )
+        self._audit_stage(envelope, detail)
+        self.audit.append_safe(
+            {
+                "kind": "follow_up_started_by_email",
+                "review_id": review_id,
+                "run_id": envelope.run_id,
+                "actor": "InboxAgent",
+                "detail": detail,
+            }
+        )
+        self._label(message, LABEL_FOLLOW_UP)
+        logger.info("email from %s woke review %s for round %d", message.sender, review_id, ordinal)
+        return HandlerResult(published=published, detail=detail)
+
+    def _inbox_stop(
+        self,
+        envelope: WorkEnvelope,
+        message: InboundMessage,
+        outcome: str,
+        reason: str,
+        detail: dict[str, Any] | None = None,
+    ) -> HandlerResult:
+        """Record a decision not to start work, and say why.
+
+        A `HandlerResult` with nothing published, which acks the message: the decision is
+        final and redelivering it would re-run the classifier at cost to reach the same
+        conclusion. Every one of these is in the audit trail with the reason attached,
+        because "the fleet ignored my questionnaire" has to be answerable.
+        """
+        full = {
+            **(detail or {}),
+            "outcome": outcome,
+            "reason": reason,
+            "gmail_message_id": message.message_id,
+        }
+        self._audit_stage(envelope, full)
+        self._label(message, LABEL_IGNORED if outcome == "not_a_review" else LABEL_HELD)
+        logger.info("inbound %s: %s (%s)", message.message_id, outcome, reason)
+        return HandlerResult(published=[], detail=full)
+
+    def _label(self, message: InboundMessage, label: str) -> None:
+        """Mark the thread in the mailbox. Never fatal.
+
+        The label is how a person looking at the inbox can see what the fleet did without
+        opening Attestor at all, which is the point of working inside the tools people
+        already use. It is also the least important thing on this path, so a mailbox that
+        refuses the write must not fail a review that has already started.
+        """
+        try:
+            self.gmail.label_message(message.message_id, add=(self.gmail.ensure_label(label),))
+        except Exception as exc:
+            logger.warning("could not apply label %r: %s", label, exc)
 
     def _continue_partition(
         self,

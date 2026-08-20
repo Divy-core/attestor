@@ -318,3 +318,95 @@ class RoundSourceRepository(_Repository):
             return None
         uri = (snap.to_dict() or {}).get("gcs_uri")
         return str(uri) if uri else None
+
+
+class InboxStateRepository(_Repository):
+    """Where the mailbox watch got to, and which thread belongs to which review.
+
+    Two facts, one collection, because both are singleton-ish bookkeeping about one
+    mailbox and neither belongs in the domain vocabulary -- same reasoning as
+    `RoundSourceRepository`.
+
+    ## The history cursor
+
+    A Gmail notification says only "this mailbox changed, and here is the new history id".
+    Getting from that to "these messages arrived" requires the *previous* id, so it is
+    stored. Advanced only after the messages of a delta have been published, so a crash
+    between the two redelivers them -- at-least-once, which the dedup key already handles,
+    rather than at-most-once, which would lose an email silently.
+
+    ## The thread index
+
+    A reply on a thread Attestor already knows is a follow-up round on an existing review,
+    and `threadId` is the only durable link between the two. Without this a customer's
+    reply three weeks later would create a second, unrelated review and the commitments
+    from round one would never be loaded -- which is precisely the cross-round consistency
+    guarantee, defeated at the front door.
+    """
+
+    _collection = "gmail_state"
+    _cursor_doc = "watch"
+
+    def cursor(self) -> dict[str, Any]:
+        snap = (
+            self._db.collection(self._collection)
+            .document(self._cursor_doc)
+            .get(timeout=self._timeout)
+        )
+        return dict(snap.to_dict() or {}) if snap.exists else {}
+
+    def record_watch(
+        self, history_id: str, expiration_ms: int, topic: str, address: str = ""
+    ) -> None:
+        """Record a registration. `address` is stored so the control plane can name the
+        watched mailbox without holding the Gmail credential itself -- a read-only service
+        that has to read a refresh token to render a status line is a worse trade than a
+        string in Firestore."""
+        self._db.collection(self._collection).document(self._cursor_doc).set(
+            {
+                "history_id": history_id,
+                "expiration_ms": expiration_ms,
+                "topic": topic,
+                "address": address,
+                "registered_at": datetime.now(UTC).isoformat(),
+            },
+            merge=True,
+        )
+
+    def advance(self, history_id: str) -> None:
+        self._db.collection(self._collection).document(self._cursor_doc).set(
+            {"history_id": history_id, "advanced_at": datetime.now(UTC).isoformat()},
+            merge=True,
+        )
+
+    def review_for_thread(self, thread_id: str) -> str | None:
+        snap = (
+            self._db.collection(self._collection)
+            .document(f"thread-{thread_id}")
+            .get(timeout=self._timeout)
+        )
+        if not snap.exists:
+            return None
+        review_id = (snap.to_dict() or {}).get("review_id")
+        return str(review_id) if review_id else None
+
+    def bind_thread(
+        self, thread_id: str, review_id: str, *, customer: str = "", sender: str = ""
+    ) -> None:
+        self._db.collection(self._collection).document(f"thread-{thread_id}").set(
+            {
+                "thread_id": thread_id,
+                "review_id": review_id,
+                "customer": customer,
+                "sender": sender,
+                "bound_at": datetime.now(UTC).isoformat(),
+            },
+            timeout=self._timeout,
+        )
+
+    def thread_for_review(self, review_id: str) -> dict[str, Any] | None:
+        """The reverse lookup, for replying to the thread a review came in on."""
+        query = self._db.collection(self._collection).where("review_id", "==", review_id).limit(1)
+        for doc in query.stream(timeout=self._timeout):
+            return dict(doc.to_dict() or {})
+        return None

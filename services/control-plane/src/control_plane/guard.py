@@ -85,8 +85,18 @@ def require_write_token(request: Request) -> None:
 
 
 def active_reviews(reviews: ReviewRepository, limit: int = 200) -> list[str]:
-    """Which reviews are currently consuming fleet capacity."""
-    return [r.review_id for r in reviews.list_all(limit=limit) if r.state not in _SETTLED]
+    """Which reviews are currently consuming fleet capacity.
+
+    Archived reviews do not count, and that is not a cosmetic exemption. An archived
+    review is one an operator has declared finished with; a dead run stuck in `drafting`
+    holds its state forever, and eight of them would have consumed the ceiling three
+    times over and refused every new review with a 429 that named the wrong problem.
+    """
+    return [
+        r.review_id
+        for r in reviews.list_all(limit=limit)
+        if r.state not in _SETTLED and not r.archived
+    ]
 
 
 def require_capacity(reviews: ReviewRepository, *, starting: str | None = None) -> list[str]:

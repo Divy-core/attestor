@@ -44,9 +44,21 @@ from fastapi import FastAPI, Request, Response, status
 
 from attestor_core.errors import ContractViolation, IllegalTransition
 from attestor_core.protocol import WorkEnvelope
-from attestor_platform.firestore import ClaimOutcome, WorkClaimRepository
+from attestor_platform.firestore import (
+    AuditEventRepository,
+    ClaimOutcome,
+    InboxStateRepository,
+    WorkClaimRepository,
+)
+from attestor_platform.gmail import GmailClient
+from attestor_platform.pubsub import WorkPublisher
 from dispatcher.deadletter import DeadLetterSink
 from dispatcher.handlers import HandlerRegistry, HandlerResult
+from dispatcher.inbox import (
+    MAX_MESSAGES_PER_NOTIFICATION,
+    envelope_for,
+    parse_notification,
+)
 from dispatcher.lease import LeaseKeeper
 from dispatcher.push import PushMessage, parse_push
 
@@ -69,6 +81,10 @@ app = FastAPI(title="Attestor Dispatcher", version=VERSION, docs_url=None, redoc
 _claims: WorkClaimRepository | None = None
 _handlers: HandlerRegistry | None = None
 _deadletter: DeadLetterSink | None = None
+_inbox_state: InboxStateRepository | None = None
+_gmail: GmailClient | None = None
+_publisher: WorkPublisher | None = None
+_audit: AuditEventRepository | None = None
 
 
 def claims() -> WorkClaimRepository:
@@ -90,6 +106,34 @@ def deadletter() -> DeadLetterSink:
     if _deadletter is None:
         _deadletter = DeadLetterSink()
     return _deadletter
+
+
+def inbox_state() -> InboxStateRepository:
+    global _inbox_state
+    if _inbox_state is None:
+        _inbox_state = InboxStateRepository()
+    return _inbox_state
+
+
+def gmail() -> GmailClient:
+    global _gmail
+    if _gmail is None:
+        _gmail = GmailClient()
+    return _gmail
+
+
+def work_publisher() -> WorkPublisher:
+    global _publisher
+    if _publisher is None:
+        _publisher = WorkPublisher()
+    return _publisher
+
+
+def audit() -> AuditEventRepository:
+    global _audit
+    if _audit is None:
+        _audit = AuditEventRepository()
+    return _audit
 
 
 @app.get("/healthz")
@@ -119,6 +163,99 @@ async def push(request: Request, response: Response) -> dict[str, Any]:
         return {"result": "dead_lettered", "reason": str(exc)}
 
     return _dispatch(message, response)
+
+
+@app.post("/gmail/push")
+async def gmail_push(request: Request, response: Response) -> dict[str, Any]:
+    """Gmail said the mailbox changed. Work out what arrived and publish it.
+
+    Thin on purpose. It performs no classification, creates no review, and calls no model:
+    it resolves a history delta into message ids and publishes one envelope each. Every
+    judgement about what those emails *are* happens in the `inbox_message` handler, under
+    the claim, the lease, and the dead-letter path -- so a classification that fails is
+    retried and audited like any other stage rather than lost inside an HTTP handler that
+    Gmail will not call again.
+
+    Ack decisions follow the same table as `/pubsub/push`: a shape error is permanent and
+    acked, a Gmail or Pub/Sub failure is transient and nacked, and the cursor is advanced
+    only after the work is on the bus.
+    """
+    try:
+        body = await request.json()
+    except Exception as exc:
+        logger.error("gmail push body is not JSON: %s", exc)
+        response.status_code = status.HTTP_200_OK
+        return {"result": "discarded", "reason": "body is not JSON"}
+
+    try:
+        notification = parse_notification(body)
+    except ContractViolation as exc:
+        logger.error("gmail push is not a notification: %s", exc)
+        response.status_code = status.HTTP_200_OK
+        return {"result": "discarded", "reason": str(exc)}
+
+    cursor = inbox_state().cursor()
+    start = str(cursor.get("history_id") or "")
+    if not start:
+        # No previous point means no delta can be computed -- Gmail's history is relative.
+        # Recording this notification's id and stopping is the only correct move, and it is
+        # said out loud rather than looking like an empty mailbox.
+        inbox_state().advance(notification.history_id)
+        logger.warning(
+            "no history cursor; adopting %s. Run tools/gmail_watch.py to register a watch.",
+            notification.history_id,
+        )
+        response.status_code = status.HTTP_200_OK
+        return {"result": "cursor_adopted", "history_id": notification.history_id}
+
+    try:
+        page = gmail().history_since(start, limit=MAX_MESSAGES_PER_NOTIFICATION)
+    except Exception as exc:
+        logger.warning("gmail history read failed, asking for redelivery: %s", exc)
+        response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+        return {"result": "retry", "reason": str(exc)}
+
+    if page.restarted:
+        # The window expired. Real emails may have been missed, and saying "0 new messages"
+        # would be a false statement about a mailbox rather than a true one about a gap.
+        audit().append_safe(
+            {
+                "kind": "inbox_history_gap",
+                "review_id": "-",
+                "run_id": "-",
+                "actor": "Dispatcher",
+                "detail": {
+                    "requested_from": start,
+                    "resumed_at": page.history_id,
+                    "reason": "Gmail expired the history window; messages in it are lost.",
+                },
+            }
+        )
+
+    published: list[str] = []
+    for gmail_message_id, thread_id in page.messages:
+        envelope = envelope_for(gmail_message_id, thread_id, notification.history_id)
+        work_publisher().publish(envelope)
+        published.append(envelope.dedup_key)
+
+    # After the publish, never before: a crash here redelivers the same delta, and the
+    # dedup key makes that a no-op. Advancing first would silently lose the email.
+    inbox_state().advance(page.history_id)
+
+    logger.info(
+        "gmail notification: %d message(s) published",
+        len(published),
+        extra={"history_from": start, "history_to": page.history_id},
+    )
+    response.status_code = status.HTTP_200_OK
+    return {
+        "result": "ok",
+        "messages": len(published),
+        "dedup_keys": published,
+        "history_from": start,
+        "history_to": page.history_id,
+        "gap": page.restarted,
+    }
 
 
 def _dispatch(message: PushMessage, response: Response) -> dict[str, Any]:

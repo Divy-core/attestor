@@ -233,3 +233,14 @@ class Review(_Mutable):
     state: ReviewState
     #: Set when state == BLOCKED, so the machine can return to where it came from.
     blocked_from: ReviewState | None = None
+    #: Hidden from the default listing, and not counted against fleet capacity.
+    #:
+    #: A property of the review rather than a row in a side collection, unlike
+    #: `round_sources`: whether a review is still part of the working set is a fact about
+    #: the review itself, the state machine has no state that means it (`failed` is
+    #: terminal but still real history), and the UI filters on it. Defaulted, so every
+    #: document written before this field existed still validates.
+    #:
+    #: Deliberately not deletion. Eight dead runs from the quota work are referenced by
+    #: `docs/proof/`; removing them would break artefacts that are the measured record.
+    archived: bool = False

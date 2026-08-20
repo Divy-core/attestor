@@ -42,6 +42,7 @@ import logging
 import os
 import time
 import uuid
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request, status
@@ -63,6 +64,7 @@ from attestor_platform.firestore import (
     AnswerRepository,
     ArmorEventRepository,
     AuditEventRepository,
+    InboxStateRepository,
     QuestionRepository,
     ReviewRepository,
     RoundRepository,
@@ -157,6 +159,10 @@ def storage() -> StorageClient:
 
 def round_sources() -> RoundSourceRepository:
     return _get("round_sources", RoundSourceRepository)  # type: ignore[no-any-return]
+
+
+def inbox_state() -> InboxStateRepository:
+    return _get("inbox_state", InboxStateRepository)  # type: ignore[no-any-return]
 
 
 # ---------------------------------------------------------------------------------
@@ -362,8 +368,52 @@ def approve(
 
 
 @router.get("/reviews")
-def list_reviews(limit: int = 50) -> list[dict[str, Any]]:
-    return [r.model_dump(mode="json") for r in reviews().list_all(limit=min(limit, MAX_ROWS))]
+def list_reviews(limit: int = 50, include_archived: bool = True) -> list[dict[str, Any]]:
+    """Every review, archived ones included by default.
+
+    The default is `True` and the filtering happens in the browser, deliberately. The
+    landing page has to render "Show archived (8)" with a real count, and a server that
+    had already filtered them out could not supply one without a second call. The flag
+    exists for callers that genuinely only want the working set — the capacity check reads
+    `guard.active_reviews`, not this.
+    """
+    rows = reviews().list_all(limit=min(limit, MAX_ROWS))
+    if not include_archived:
+        rows = [r for r in rows if not r.archived]
+    return [r.model_dump(mode="json") for r in rows]
+
+
+class ArchiveRequest(BaseModel):
+    archived: bool = True
+    #: Why, recorded on the audit trail. Not stored on the review: the review carries the
+    #: flag, the immutable log carries the justification and who gave it.
+    reason: str = Field(default="", max_length=500)
+    actor: str = Field(default="operator", min_length=1, max_length=200)
+
+
+@router.post("/reviews/{review_id}/archive")
+def archive_review(review_id: str, body: ArchiveRequest, request: Request) -> dict[str, Any]:
+    """Take a review out of the working set, or put it back.
+
+    Not a delete, and not a state transition. `failed` is a terminal *state* and remains
+    true of the eight dead runs from the quota work; archiving is an assertion about
+    attention, which is a different thing and does not go through `core.state.transition`
+    for exactly that reason — there is no legal move from `failed` and there should not be.
+    """
+    require_write_token(request)
+    review = reviews().get(review_id)
+    if review is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"no review {review_id!r}")
+    reviews().put(review.model_copy(update={"archived": body.archived}))
+    audit().append_safe(
+        {
+            "kind": "review_archived" if body.archived else "review_unarchived",
+            "review_id": review_id,
+            "actor": body.actor,
+            "detail": {"reason": body.reason, "state_at_archive": review.state.value},
+        }
+    )
+    return {"review_id": review_id, "archived": body.archived, "state": review.state.value}
 
 
 @router.get("/reviews/{review_id}")
@@ -607,6 +657,40 @@ def export_manifest(review_id: str, round_id: str | None = None) -> dict[str, An
         "workbook_available": workbook_available,
         "source": provenance,
         "release_rule": RELEASE_RULE,
+    }
+
+
+@router.get("/inbox")
+def inbox_status() -> dict[str, Any]:
+    """Whether the mailbox is actually being watched, and how recently work arrived.
+
+    Rendered on the fleet page because a lapsed watch is invisible from the outside: Gmail
+    expires `users.watch` after seven days without warning, and a mailbox that has stopped
+    notifying looks exactly like a mailbox nobody has emailed. `expires_in_hours` going
+    negative is the only signal there is, so it is on screen rather than in a log.
+
+    Reads Firestore only. The control plane deliberately holds no Gmail credential -- the
+    watched address is recorded at registration time by `tools/gmail_watch.py` precisely so
+    that a read-only service does not need one.
+    """
+    cursor = inbox_state().cursor()
+    expiration_ms = int(cursor.get("expiration_ms") or 0)
+    expires_at = (
+        datetime.fromtimestamp(expiration_ms / 1000, tz=UTC) if expiration_ms else None
+    )
+    return {
+        "watching": bool(expiration_ms),
+        "address": cursor.get("address") or "",
+        "topic": cursor.get("topic") or "",
+        "history_id": cursor.get("history_id") or "",
+        "registered_at": cursor.get("registered_at") or "",
+        "expires_at": expires_at.isoformat() if expires_at else "",
+        "expires_in_hours": (
+            round((expires_at - datetime.now(UTC)).total_seconds() / 3600, 1)
+            if expires_at
+            else None
+        ),
+        "expired": bool(expires_at and expires_at < datetime.now(UTC)),
     }
 
 

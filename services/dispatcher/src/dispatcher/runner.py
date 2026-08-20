@@ -29,8 +29,10 @@ from typing import Any, Protocol
 
 from attestor_core.domain import Answer, AnswerStatus, Commitment, Department, Question
 from attestor_core.domain.ids import make_dedup_key
+from attestor_fleet.agents.inbox import InboxAgent, InboxVerdict
 from attestor_platform.config import memory_bank_engine_id
 from attestor_platform.firestore import AnswerRepository, CommitmentRepository
+from attestor_platform.gmail import InboundMessage
 from attestor_platform.memory import MemoryBankCommitments
 
 logger = logging.getLogger(__name__)
@@ -64,6 +66,10 @@ class FleetRunner(Protocol):
         on_answer: Callable[[Answer], None] | None = None,
         budget_seconds: float | None = None,
     ) -> list[Answer]: ...
+
+    def classify_inbound(
+        self, message: InboundMessage, *, known_thread: bool = False
+    ) -> InboxVerdict: ...
 
     def load_commitments(self, review_id: str) -> list[tuple[str, str]]: ...
 
@@ -100,6 +106,7 @@ class PipelineFleetRunner:
         self._commitments = commitments
         self._engine_id = engine_id
         self._pipelines: dict[tuple[str, str, str], Any] = {}
+        self._inbox: InboxAgent | None = None
         #: What the last `draft` call measured. Read by the handler so the figures end up
         #: in the audit trail rather than only in a log line nobody correlates.
         self.last_draft_stats: dict[str, Any] = {}
@@ -216,6 +223,22 @@ class PipelineFleetRunner:
             "empty_retrievals_confirmed": getattr(pipeline, "empty_retrievals_confirmed", 0),
         }
         return [o.answer for o in outcomes if o.answer is not None]
+
+    def classify_inbound(
+        self, message: InboundMessage, *, known_thread: bool = False
+    ) -> InboxVerdict:
+        """Classify one inbound email.
+
+        On the runner rather than called directly from the handler for the same reason
+        every other fleet call is: the handler owns the state machine and knows nothing
+        about which model runs where. `AgentRuntimeFleetRunner` inherits this unchanged
+        because triage of an *email* is a single cheap call with no corpus access, so
+        there is nothing for a department engine's identity to scope -- and saying that
+        here is better than moving it onto an engine to look symmetrical.
+        """
+        if self._inbox is None:
+            self._inbox = InboxAgent()
+        return self._inbox.classify(message, known_thread=known_thread)
 
     def load_commitments(self, review_id: str) -> list[tuple[str, str]]:
         """Prior commitments from Memory Bank — canonical, and raising when unreachable."""

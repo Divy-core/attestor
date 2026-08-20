@@ -118,6 +118,25 @@ class StorageClient:
         blob.upload_from_string(text, content_type="text/markdown", timeout=self._timeout)
         return f"gs://{bucket_name(self.project, bucket_suffix)}/{object_name}"
 
+    def upload_bytes(
+        self,
+        object_name: str,
+        payload: bytes,
+        content_type: str = "application/octet-stream",
+        bucket_suffix: str = "uploads",
+    ) -> str:
+        """Stage bytes we already hold in memory.
+
+        Defaults to the uploads bucket rather than the corpus one, because the caller is
+        the inbound-email path: an attachment from a stranger is a questionnaire to be
+        parsed, never a document to be retrieved from. Writing it into the corpus bucket
+        would put attacker-supplied text one indexing job away from being cited as
+        evidence about our own controls.
+        """
+        blob = self._bucket(bucket_suffix).blob(object_name)
+        blob.upload_from_string(payload, content_type=content_type, timeout=self._timeout)
+        return f"gs://{bucket_name(self.project, bucket_suffix)}/{object_name}"
+
     def upload_file(self, object_name: str, path: str, bucket_suffix: str = "corpus") -> str:
         blob = self._bucket(bucket_suffix).blob(object_name)
         blob.upload_from_filename(path, timeout=self._timeout)

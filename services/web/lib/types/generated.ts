@@ -9,7 +9,7 @@
 
 
 /** What a worker is being asked to do. */
-export type WorkKind = "intake_document" | "triage_questions" | "draft_answer" | "gather_evidence" | "assemble_round" | "close_round" | "open_follow_up" | "resume_after_human" | "timer_fired";
+export type WorkKind = "intake_document" | "triage_questions" | "draft_answer" | "gather_evidence" | "assemble_round" | "close_round" | "open_follow_up" | "resume_after_human" | "timer_fired" | "inbox_message" | "deliver_pack";
 
 export type WorkEnvelope = {
   message_id: string;
@@ -269,6 +269,7 @@ export type ReviewSummary = {
   question_count?: number;
   answered_count?: number;
   flagged_count?: number;
+  archived?: boolean;
 };
 
 export type AnswerDto = {

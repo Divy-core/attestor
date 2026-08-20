@@ -39,6 +39,10 @@ class WorkKind(StrEnum):
     RESUME_AFTER_HUMAN = "resume_after_human"
     #: SLA / follow-up timer fired.
     TIMER_FIRED = "timer_fired"
+    #: An email landed in the watched mailbox. ADDED IN PHASE 7 (ADR-0009).
+    INBOX_MESSAGE = "inbox_message"
+    #: A human approved sending the finished pack back to the customer. ADR-0009.
+    DELIVER_PACK = "deliver_pack"
 
 
 # ---------------------------------------------------------------------------------
@@ -89,6 +93,38 @@ class ResumeAfterHumanPayload(_Payload):
     edited_text: str | None = None
 
 
+class InboxMessagePayload(_Payload):
+    """One message from the watched mailbox, to be classified and acted on.
+
+    Deliberately carries **ids only, never content**. The message body is attacker-
+    controlled and can be megabytes; putting it on the bus would mean an untrusted payload
+    replayed on every redelivery and a Pub/Sub message that can exceed the 10MB limit
+    because someone pasted a spreadsheet inline. The handler fetches the message from
+    Gmail, which is also the only way a redelivery sees the message as it is *now*.
+    """
+
+    gmail_message_id: str = Field(min_length=1)
+    gmail_thread_id: str = Field(min_length=1)
+    #: The mailbox history point this was discovered at. Diagnostic; the handler does not
+    #: need it to do its work.
+    history_id: str = ""
+
+
+class DeliverPackPayload(_Payload):
+    """Send the completed pack back to the customer, in the thread it arrived on.
+
+    The only work kind in the protocol whose effect leaves the system irreversibly, which
+    is why it exists as its own kind rather than as a branch of `close_round`. A human
+    approved this specific act, `approved_by` names them, and a kind that cannot be
+    published without that field is a structural gate rather than a policy sentence.
+    """
+
+    approved_by: str = Field(min_length=1)
+    #: What the human was shown when they approved. Recorded so the audit trail holds the
+    #: decision and its basis, not just the outcome.
+    note: str = ""
+
+
 class TimerFiredPayload(_Payload):
     """An SLA or follow-up timer elapsed."""
 
@@ -109,14 +145,22 @@ PAYLOAD_MODELS: dict[WorkKind, type[BaseModel]] = {
     WorkKind.OPEN_FOLLOW_UP: OpenFollowUpPayload,
     WorkKind.RESUME_AFTER_HUMAN: ResumeAfterHumanPayload,
     WorkKind.TIMER_FIRED: TimerFiredPayload,
+    WorkKind.INBOX_MESSAGE: InboxMessagePayload,
+    WorkKind.DELIVER_PACK: DeliverPackPayload,
 }
 
 
 class WorkEnvelope(BaseModel):
     """The wire contract for a unit of asynchronous work.
 
-    FROZEN after Phase 1, amended once in Phase 4 (`partition`, ADR-0005), re-frozen.
-    Both the dispatcher and the control plane depend on it.
+    FROZEN after Phase 1, amended in Phase 4 (`partition`, ADR-0005) and again in Phase 7
+    (two new kinds, ADR-0009), re-frozen each time. Both the dispatcher and the control
+    plane depend on it.
+
+    The Phase 7 amendment adds `kind` values and their payload models and changes no
+    existing field, so a producer on an older revision is unaffected and a consumer on an
+    older revision rejects the new kinds with `ContractViolation` -- loudly, at the edge,
+    which is the failure mode a frozen protocol is supposed to have.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
