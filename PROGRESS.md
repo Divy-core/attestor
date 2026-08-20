@@ -3276,3 +3276,343 @@ figure I cannot derive would be the kind of number this file exists to avoid.
   not run in this session: it competes for the same regional engine quota as the 312-question
   runs, and running it alongside them would have confounded both.
 - **The groundedness eval, timers, and the teardown round trip.** Out of scope by the brief.
+
+## Phase 7 — Close the Loop, Make the Fleet Visible, Rebuild the Interface (Day 7, 20 Aug 2026)
+
+The phase brief opens with a table of what the hackathon asks for against what Attestor
+does, and the expensive row is the last one: *"completes the task — no. It answers questions
+and stops."* Two of the other rows are almost as expensive. A review had to be *started* by a
+human filling in a form, and six agents with distinct identities had existed since Phase 5
+without the interface saying so.
+
+Three things landed. An email now starts a review with nobody involved. The landing page is
+the fleet rather than a list of reviews. And the interface was rebuilt on a ramp that has no
+hue at all, which is the third attempt at that ramp and the first one that is checkable.
+
+### The review starts itself
+
+Gmail's `users.watch` publishes change notifications **to a Pub/Sub topic**, and the
+dispatcher has consumed Pub/Sub through Eventarc since Phase 4. So an inbound email becomes a
+`WorkEnvelope` on the transport that already exists, and nothing downstream of intake learns
+that email is involved:
+
+```
+customer emails the watched mailbox
+  → Gmail users.watch → Pub/Sub → push → dispatcher POST /gmail/push
+  → WorkEnvelope(kind=inbox_message) on the work topic
+  → InboxAgent classifies → review + round created → the fleet runs unchanged
+```
+
+**ADR-0009** amends the frozen protocol with two kinds — `inbox_message` and `deliver_pack` —
+and changes no existing field. Three decisions in it are worth repeating here because each
+one is a way this could have been got wrong:
+
+**The payload carries ids, never content.** An email body is attacker-controlled and
+unbounded. On the bus it would be replayed verbatim on every redelivery, and a message can
+exceed Pub/Sub's 10MB limit because someone pasted a spreadsheet inline. The handler fetches
+from Gmail, which is also the only way a redelivery sees the message as it is *now*.
+
+**The dedup key is derived from a synthetic `inbox-{gmail message id}` review id.** Not a
+workaround — the correct key. Gmail redelivers, Pub/Sub redelivers, and `history.list` returns
+the same id twice across overlapping windows: three independent duplication sources over a
+boundary we do not control. That key makes all three the same work, refused by the same
+`WorkClaimRepository` that protects every other stage. `test_two_notifications_for_one_email_produce_one_dedup_key`
+pins it.
+
+**`/gmail/push` is a separate endpoint from `/pubsub/push`.** Both are Pub/Sub deliveries and
+folding them together was tempting. They carry different contracts: `/pubsub/push` receives a
+`WorkEnvelope` we published, and `parse_push` treats a shape error as permanent because it
+genuinely is; a Gmail notification is Google's shape, carries no correlation ids, and its
+characteristic failure is an expired history window — recoverable, with nothing to dead-letter
+against. One endpoint would have to guess which contract it was looking at.
+
+### A reply wakes the dormant review
+
+The same watch. A reply on a thread Attestor already owns maps to its review by `threadId`,
+which opens round two — and `open_follow_up` loads the commitments from Memory Bank before any
+question is drafted, so the cross-round consistency guarantee proven in Phase 5 now has an
+autonomous trigger rather than a script.
+
+**The most common real follow-up has no attachment at all**: three questions written in prose.
+A round that could only start from a file would refuse it, so `InboxAgent` extracts the
+questions and `stage_body_questions` writes them into a minimal workbook — marked as
+synthesised, in the sheet name, the filename and a `Source` column, because when that round is
+exported the customer gets back a file they never sent.
+
+### What the tests caught before deployment
+
+`test_inbound_email.py` is 38 tests, and its docstring names what it exists to prevent:
+every one of these is a green run and a wrong outcome.
+
+| Caught | Why it would have looked like success |
+|---|---|
+| **`open_follow_up` never wrote `current_round` back** | It stayed 1 through every follow-up and nothing noticed, because rounds were opened by a tool naming the ordinal explicitly. The inbound path derives the next ordinal from it — so a *second* follow-up would have computed 2 again, collided with the round already there, and overwritten it |
+| A blocked email body contributing `body_questions` | The model would be reading a placeholder. Anything "extracted" from it is invention, and inventing a customer's questions is the one failure a questionnaire system must never have |
+| A blocked body discarding the email | Appending an injection to a questionnaire would silence it — a defence turned into a denial of service |
+| Our own outbound reply starting a round | A reply opens a round which replies, forever |
+| A filename becoming a path | `../../etc/passwd` is used as a GCS object name; attachments come from strangers |
+
+### The credit-burn surface got larger, and is bounded in the same way
+
+Phase 6.5's guard protected the *browser* path. This path is reachable by anyone who learns an
+email address, which is a strictly larger set than anyone who knows the web URL. So the same
+`max_active_reviews` ceiling is enforced in the handler, the question ceiling still applies at
+intake, and a refusal is recorded and labelled in the mailbox rather than silent. The Gmail
+scopes are the narrowest set that works — `gmail.readonly`, `gmail.send`, `gmail.modify`,
+`drive.file`, the last of which can only see files Attestor itself created. The dispatcher's
+Secret Manager grant is on the one secret and its GCS write grant is on the uploads bucket
+alone; an attachment from a stranger must not land one indexing job away from the corpus.
+
+**This is a bound, not an authorisation model, and it is described as one.** Residual exposure:
+anyone who knows the address can consume the three-review ceiling and can cause one
+classification call per email.
+
+### The landing page no longer opens on seven failures
+
+Of thirteen live reviews, seven said `failed` — debris from the Phase 6.5 quota work, every one
+of which had exhausted its delivery attempts hours before anyone looked. The honest reading of
+a list that is majority failure is "this system does not work", and it was the first thing a
+judge would have seen.
+
+Reviews now carry `archived`, excluded from the default listing **and from the capacity count**
+— eight dead runs were holding the ceiling three times over and would have refused every new
+review with a 429 naming the wrong problem. It is a flag and not a delete: `docs/proof/`
+references several of these by id and the measured record is the point of this repository.
+`failed` stays true, because there is no legal transition out of it and there should not be.
+
+One review was stalled in `drafting` rather than `failed` — the 239-answer run that hit the
+quota — so `tools/settle_stale_reviews.py` settled it first and then it was archived, which is
+two honest steps rather than one convenient one.
+
+| | before | after |
+|---|---|---|
+| Reviews visible by default | 13 | **5** |
+| Of those, `failed` | 7 | **0** |
+| Holding the concurrency ceiling | 3 of 3 | **2 of 3** |
+
+The five that remain: two at `awaiting_human` (the durable pause, which is a demo beat and is
+never archived by default), and three `delivered` including `rev-acme-2026-q3` from 24 July.
+
+### The ramp has no hue, and this time that is checkable
+
+This is the third version of the neutral ramp and the previous two were wrong the same way.
+Phase 6 fixed hue at 222 and argued that a few degrees of blue is what makes an interface look
+like an instrument; blue-tinted grey is the Azure-portal look. Phase 6.5 corrected the blue by
+going warm at hue 40, on the grounds that warmth reads as material. That was a smaller error in
+the same direction.
+
+The correct answer is neither. `#171717` is R=23 G=23 B=23 — exactly achromatic — and the
+reason it works is that a neutral with no hue says nothing, so the only colour on the page is
+colour that means something. Write-ups describing those greys as "slightly warm" are wrong, and
+chasing that imaginary warmth is how this ramp acquired a cast twice.
+
+**`scripts/check-tokens.mjs` now proves it arithmetically.** A grey token whose channels differ
+fails the build. It also compares the two dark blocks — the theme is declared twice, once under
+`prefers-color-scheme` and once under `[data-theme='dark']`, because the viewer has three states
+and only two stamp an attribute — and fails if they have drifted, whose failure mode is a toggle
+that produces a subtly different theme from the system default.
+
+Step numbers encode **role, not lightness**: `--gray-400` is the border colour, not "40% grey".
+In dark, 700 and 800 are deliberately non-monotonic, because 800 is the *hover* of the 700 fill
+and hover means dimmer against a dark ground.
+
+Geist Sans and Geist Mono through `next/font`, so no request leaves the page for a font and
+there is no flash of fallback on the first frame of a recording. Spacing is 4/8/12/16/24/32/40/
+48/64 and radius is 4px or 6px — both **replace** Tailwind's scales rather than extending them,
+so `p-5` and `rounded-full` are not reachable utilities.
+
+### Contrast, measured on the rendered page, in both themes
+
+Computed by painting one pixel to a canvas and reading it back. That detail matters: the first
+version of this measurement read `getComputedStyle().color`, which returns `oklab(...)` for a
+`color-mix()`, and scraping numbers off that string produced figures that looked like channels
+and were not — six badge ratios that were stable, plausible, and wrong. Painting forces sRGB,
+which is what a viewer's screen actually shows.
+
+| Pair | Dark | Light |
+|---|---|---|
+| `text-primary` on `bg-surface` | 14.87 | 17.93 |
+| `text-secondary` on `bg-surface` | 6.74 | 5.74 |
+| `text-muted` on `bg-surface` | 5.38 | 4.74 |
+| link (`accent-text`) on `bg-surface` | 5.49 | 4.55 |
+| button label on `accent` | 4.55 | 4.55 |
+| `border-default` on `bg-surface` | 1.38 | 1.37 |
+| `border-strong` on `bg-surface` | 2.41 | 2.38 |
+| `bg-surface` on `bg-base` | 1.14 | 1.12 |
+
+Badge ink on its own fill, all six states, both themes: **4.54 to 6.67**. Every one clears AA.
+
+Four things failed on the first pass and were corrected by the measurement rather than by eye:
+
+- **light `--text-muted` 4.12:1** — under AA for the 12px metadata labels it is used on. The
+  light `--gray-800` went from `#7d7d7d` to `#737373`, now 4.74:1.
+- **light `bg-surface` on `bg-base` 1.04:1** — a step in name only, gone entirely under video
+  compression. The base moved to `--gray-100`, now 1.12:1.
+- **dark badge ink on its own fill: `denied` 3.09, `quarantined` 3.61** — a dark fill pulls the
+  ground *up* toward the hue, so every point of tint costs contrast. Fills went from 18% to
+  8–10%.
+- **light `flagged` 4.31** — the same arithmetic running the other way; light fills went to 5–7%.
+
+With the fills tuned as far as they go, three of the twelve state hues still could not clear
+AA, because no fill percentage can lift ink whose hue is itself 3.68:1 against the surface.
+Those three moved along their own lightness axis — same hue, same role, same ordering — and
+**the greyscale separation was re-measured, because that is the property that had to survive
+the change.** In dark, the three *solid-dot* states are 36.9 / 30.4 / 25.2 relative luminance,
+well apart; the three within a point of each other (29.4 / 29.0 / 26.8) are exactly the three
+the design separates by **form** — half fill, hatched fill, hollow ring — which is what that
+mechanism was built for.
+
+### The workspace, and two bugs found by pressing keys
+
+Three panes: a live band across the top, the question list, and the answer with its evidence.
+All visible at once, because the job is scanning 312 rows and stopping on the ones that need a
+person, and a design where reading an answer means losing the list makes that job harder.
+
+`j`/`k` move, `/` filters, `a` opens the approval for the selected row, `⌘K` is the command
+palette. Two defects came out of exercising those rather than reading them:
+
+- **`/` opened the command palette**, which had bound it as well, so the grid filter never got
+  it on the one page where the shortcut matters. The palette now binds `⌘K` and `Escape` only.
+- **`j` moved the selection once and then stopped.** Selection lived in the URL and every
+  keypress was a `router.replace` against a `force-dynamic` page — an RSC round trip per
+  keystroke. Navigation is now local state, with `history.replaceState` mirroring it, so the
+  link still shares and the grid responds at the speed of a keypress. The URL-as-source-of-truth
+  design was the *cause*, not the fix.
+
+Verified live at 1920×1080: three panes render, the answer pane shows its citations and names
+`EngineeringAgent` as the drafting agent, `j`/`k`/`a` behave, `⌘K` opens and `Escape` closes,
+and `document.documentElement.scrollWidth` does not exceed the viewport in either theme.
+
+### The fleet is on the page
+
+Each of seven agents gets a card: what it is, what it reads, what it is refused, its
+`reasoningEngines` id, and how many answers it has written. **The source of each fact is on the
+card**, because the engine id and department are read from the live Agent Registry while the
+corpus bindings are a description of `infra/iam/scope_agents.py` — the registry's list endpoint
+returns empty `scopes` on every entry, measured in Phase 6 rather than assumed, and filling that
+gap with a plausible value would be inventing evidence on the page whose job is to make evidence
+checkable.
+
+The refusals are rendered rather than omitted. A permission list where everything is granted
+proves nothing; the dashes are the content.
+
+`attestor-evidence` is the one asymmetry and the card says so: it is the legitimate
+cross-department reader, scoped by the `department` argument its tool takes rather than by IAM.
+`InboxAgent` and `AssemblerAgent` run in the dispatcher and are listed with `engine: null` and
+the reason, rather than omitted so the count reads as a rounder number.
+
+The **Inbound** panel carries the mailbox status and the hours until the Gmail watch expires,
+on the landing page rather than buried in settings, for one reason: a lapsed watch is invisible
+from outside. It expires after seven days, Gmail does not warn, and a mailbox that has stopped
+notifying looks exactly like a mailbox nobody has emailed.
+
+### What Divy has to do, exactly, before an email can start a review
+
+Everything on the Attestor side is deployed and wired. What is missing is **consent**, and it
+cannot be automated: Gmail's API talks to a mailbox, a mailbox belongs to a user, and a service
+account can only impersonate one through Workspace domain-wide delegation — which needs a
+Workspace domain and a super-admin, neither of which this project has. That constraint is real
+and is stated rather than dressed up: this is one mailbox, given deliberately.
+
+Already done, and needing nothing further:
+
+- Pub/Sub topic `attestor-gmail`, with `gmail-api-push@system.gserviceaccount.com` granted
+  `roles/pubsub.publisher` on it. That binding is the first thing that goes wrong every time —
+  without it `users.watch` returns a 403 naming the topic.
+- Push subscription `attestor.gmail.push` → `<dispatcher>/gmail/push`, OIDC as
+  `attestor-pubsub-invoker`, so the dispatcher stays `--no-allow-unauthenticated`.
+- `secretmanager.googleapis.com` and `gmail.googleapis.com` enabled.
+- `roles/storage.objectAdmin` for the dispatcher on `gs://attestor-505506-uploads` only.
+
+**Four steps, roughly ten minutes:**
+
+1. **Decide which mailbox.** A dedicated Gmail account is better than a personal one — Attestor
+   will read every message that lands in its inbox and can send as it. `attestor.trust@gmail.com`
+   or similar.
+
+2. **Create an OAuth client.** In the Google Cloud console for `attestor-505506`:
+   *APIs & Services → OAuth consent screen* → External → fill in the app name and support
+   email → on the **Test users** step add the mailbox address from step 1 (the app is
+   unverified, so only listed test users can consent). Then *Credentials → Create credentials →
+   OAuth client ID → **Desktop app*** → Download JSON.
+
+3. **Grant consent, once.** Signed in as the mailbox from step 1:
+
+   ```
+   PROJECT_ID=attestor-505506 uv run python tools/gmail_authorize.py \
+       --client-secrets ~/Downloads/client_secret_....json
+   ```
+
+   A browser opens. Approve the four scopes. The refresh token goes straight into Secret
+   Manager as `attestor-gmail-oauth`; the tool never prints it.
+
+4. **Register the watch, and re-run the deploy script once** so the dispatcher is granted read
+   on the secret that now exists:
+
+   ```
+   PROJECT_ID=attestor-505506 bash infra/deploy.sh --services-only
+   PROJECT_ID=attestor-505506 uv run python tools/gmail_watch.py --apply
+   ```
+
+   `gmail_watch.py` refuses to register against a topic Gmail cannot publish to, and prints the
+   subscriber count — a watch that succeeds against a topic nobody is subscribed to is the worst
+   available outcome, because it looks like it worked.
+
+Then email the mailbox with a questionnaire attached. The Inbound panel on the fleet page will
+show the mailbox and the hours until the watch expires; the review appears with no further
+action. **The watch expires after seven days** — before the video, re-run step 4's second
+command.
+
+### Phase 7 exit criteria
+
+| # | Criterion | State | How verified |
+|---|---|---|---|
+| 1 | An email starts a review with no human action | **BUILT, NOT EXERCISED** | Every component deployed and unit-tested end to end against Gmail's own message shapes; the OAuth consent is Divy's and is unautomatable — see above |
+| 2 | A reply wakes the dormant review, loads commitments, opens round two | **BUILT, NOT EXERCISED** | Same. `TestFollowUp` and `TestFollowUpLoadsCommitments` pin the handler behaviour, including that commitments are read before any question is drafted |
+| 3 | `VerifierAgent` deployed with its own identity; verdict distribution reported | **NOT DONE** | Not started. See below |
+| 4 | Completed pack written to Drive; artifacts panel links to it | **NOT DONE** | Not started |
+| 5 | Reply sent in-thread after explicit human approval, audited with a named actor | **PARTIAL** | The protocol gate exists — `deliver_pack` cannot be published without `approved_by`, which is a structural gate rather than a policy sentence (ADR-0009). The handler and the send are not built |
+| 6 | Approval request reaches the human by email/Slack | **NOT DONE** | Not started |
+| 7 | ADR-0009 written; protocol re-frozen; `generated.ts` regenerated | **DONE** | `docs/decisions/ADR-0009-inbound-email-as-a-work-source.md`; `gen_types --check` current |
+| 8 | Landing page shows the fleet with live activity; no `failed` review visible by default | **DONE** | Seven agent cards with live per-agent answer counts; 5 visible reviews, 0 failed, 8 archived behind a control that names the count |
+| 9 | Every answer names its drafting agent and its verifying agent | **PARTIAL** | The drafting agent is named on every answer (`authored_by`, rendered in the detail pane — verified live showing `EngineeringAgent`). There is no verifying agent, because #3 was not done |
+| 10 | Neutral ramp at zero chroma; Geist Sans + Mono; spacing/radius/accent per D2 | **DONE** | `check-tokens` proves R=G=B on every grey step arithmetically and that the two dark blocks agree; fonts confirmed on the rendered page as `GeistSans` / `GeistMono`; spacing and radius scales replaced rather than extended |
+| 11 | Three-pane workspace; command palette; keyboard navigation; URL filters | **DONE** | Exercised on the running page at 1920×1080: `j`/`k` move the selection, `/` focuses the filter, `a` opens the approval, `⌘K` opens the palette and `Escape` closes it, and the URL mirrors every step |
+| 12 | Both themes read end to end at 1080p, **with screenshots** | **PARTIAL** | Measured on the rendered page in both themes at 1920×1080, table above, with four failures found and corrected. **No screenshot**: the browser pane in this environment does not composite frames, so `computer{action:"screenshot"}` times out. Third session running. Marked PARTIAL rather than claimed |
+| 13 | Demo configuration settled, with the one-sentence line | **NOT DONE** | The N-hunt was not run. The completion/accuracy tension from Phase 6.5 stands unchanged |
+| 14 | `make check` green, `tsc` clean, layering holds, pushed | **DONE** | 591 passed, 1 skipped; `mypy --strict` clean over 102 files; `tsc --noEmit` clean; `check-tokens` clean; layering OK; types current |
+| 15 | Cumulative spend stated | **DONE, with the same gap named** | below |
+
+### Cost
+
+Cumulative spend across every phase remains under **$20** of the $150 credit. Phase 7 added
+three Cloud Build runs and no fleet runs at all — the expensive thing in this project is
+drafting, and this phase drafted nothing.
+
+**The gap is unchanged from Phase 6.5 and was not closed.** The figure is bounded by the billing
+console rather than derived from the audit trail, because the in-run cost ledger lives on
+`RunReport.budget`, which only `ReviewPipeline.run` builds — and the dispatcher calls
+`draft_many` one partition at a time. It was scoped for this phase and displaced by B1.
+
+### What Phase 7 did not do, and why
+
+Order was set by the brief: D5, then B1+B2, then E, then B3, then D, then C. The brief also
+said **"If the phase runs long, protect B1, B2 and D in that order."** It ran long. What landed
+is D5, B1, B2, D and C — the four protected items plus fleet visibility, which is part of D's
+surface anyway.
+
+- **B3, the Verifier.** Not started. It is the strongest governance story available — the agent
+  that checks the work cannot be the agent that did it, enforced by distinct Agent Identities
+  rather than by policy text — and it is the largest single thing outstanding.
+- **B4, Drive and the outbound reply.** Not started beyond its protocol gate. `deliver_pack`
+  exists as a `WorkKind` whose payload requires `approved_by`, so the contract already refuses
+  to carry an unapproved send; the handler, the Drive write and the artifacts panel are not
+  built.
+- **B5, timers.** The brief named this "first thing to cut". It was.
+- **E, the demo configuration.** The N-hunt costs wall-clock and regional engine quota, and the
+  session ran out of the former. The Phase 6.5 tension stands: retry off gives 312/312 at 43.3%
+  cited; retry on gives 239/312 at 91.6% and hits the quota.
+- **The screenshot.** Third session in which the browser pane cannot composite. Everything that
+  can be measured through the DOM was measured; the thing that needs a rendered frame was not.
+- **B1 and B2 exercised end to end.** Built, deployed, unit-tested, and blocked on one human
+  granting consent to one mailbox.
