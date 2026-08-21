@@ -3743,9 +3743,24 @@ Padding went from 16px to 24px inside every card, list rows from 8px to 16px, an
 a `max-w-page` measure of 1280px. Content that runs the full width of a 1920px monitor because
 it can is the difference between dense and cluttered.
 
-**Verified live at 1920×1080**: page background `rgb(0, 0, 0)`, card `rgb(10, 10, 10)`, card
-border `rgba(255, 255, 255, 0.14)` at 6px radius and 24px padding, no horizontal overflow, and
-every page scrolls.
+Two smaller passes finished it. The workspace filter bar was thirteen controls in three rows,
+which is what a filter bar looks like when every option gets a chip: departments became one
+select, and a state chip now appears only when the round has answers in that state — four
+rather than seven on the review in front of me, because `Denied 0` was a control that could
+not do anything sitting next to ones that could. And the last three rings went, in the trace
+tree's filters and on the modal, which used the heaviest border in the system around a dialog
+that already floats over a scrim.
+
+**Verified on the deployed site at 1920×1080**: page background `rgb(0, 0, 0)`, card
+`rgb(10, 10, 10)`, card border `rgba(255, 255, 255, 0.14)` at 6px radius and 24px padding, no
+horizontal overflow, and every page scrolls — registry to 600 of 2,465px, traces to its
+bottom, and the trace detail through its own 10,362px inner scroller.
+
+**The part worth recording.** `tsc`, `ruff`, `check-tokens` and the 640-test suite were green
+through all three wrong versions of this ramp — the blue one, the warm one, and the inverted
+one — and through three pages that could not be scrolled. Every one was found by a person
+opening the site. A token file that measures its own contrast still cannot tell you that the
+page is the wrong colour, and no check in this repository was ever going to.
 
 ### The approval, clicked through in a browser at last
 
