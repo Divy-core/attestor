@@ -120,10 +120,8 @@ export function TraceTree({ events }: { events: AuditEvent[] }) {
             onClick={() => setNotableOnly(!notableOnly)}
             aria-pressed={notableOnly}
             className={cx(
-              'rounded-sm border px-2 py-1 text-xs transition-colors',
-              notableOnly
-                ? 'border-strong bg-active text-primary'
-                : 'border-subtle text-muted hover:bg-hover',
+              'rounded-sm px-2 py-1 text-xs transition-colors',
+              notableOnly ? 'bg-active text-primary' : 'text-muted hover:bg-hover',
             )}
           >
             Refusals and blocks only

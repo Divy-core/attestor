@@ -56,7 +56,7 @@ export function Modal({
         aria-modal="true"
         aria-label={title}
         tabIndex={-1}
-        className="relative mt-16 w-full max-w-xl rounded border border-strong bg-surface outline-none"
+        className="relative mt-16 w-full max-w-xl rounded border border-line bg-surface shadow-overlay outline-none"
       >
         <header className="flex flex-col gap-1 border-b border-subtle px-4 py-3">
           <h2 className="text-md font-medium text-primary">{title}</h2>
