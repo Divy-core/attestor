@@ -50,11 +50,18 @@ export default async function ReviewsPage({
   }
 
   const archivedCount = all.filter((review) => review.archived).length;
-  const rows = all
-    .filter((review) => (showArchived ? true : !review.archived))
-    .filter((review) => (stateFilter ? review.state === stateFilter : true));
+  const visible = all.filter((review) => (showArchived ? true : !review.archived));
+  const rows = visible.filter((review) => (stateFilter ? review.state === stateFilter : true));
 
-  const states = [...new Set(all.map((review) => review.state))].sort();
+  // States present in what is CURRENTLY VISIBLE, plus whichever is active. Listing every
+  // state in the collection puts `failed` on screen while no failed review is shown, and
+  // clicking it finds nothing unless archived is also on -- the same defect as a filter chip
+  // reading `Denied 0`: a control that cannot do anything, beside ones that can.
+  const present = new Set<string>(visible.map((review) => review.state));
+  // The active filter stays listed even when it matches nothing, so the control that got you
+  // here is still there to clear.
+  if (stateFilter) present.add(stateFilter);
+  const states = [...present].sort();
 
   function href(next: Partial<Search>): string {
     const params = new URLSearchParams();
