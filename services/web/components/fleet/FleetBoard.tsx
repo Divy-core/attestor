@@ -1,6 +1,7 @@
 import Link from 'next/link';
+import type { ReactNode } from 'react';
 
-import { Label, Mono, Panel, StateDot, cx } from '@/components/ui/primitives';
+import { Label, Mono, cx } from '@/components/ui/primitives';
 import type { InboxStatus, ReviewRow } from '@/lib/api/client';
 import type { AgentActivity, FleetMember } from '@/lib/fleet';
 
@@ -8,26 +9,29 @@ import type { AgentActivity, FleetMember } from '@/lib/fleet';
  * The fleet, as the landing page.
  *
  * The page used to be a list of reviews, which is the least interesting true thing about
- * this system. Six agents exist, each with its own Agent Identity and its own corpus, and one
- * of them cannot read another's — that is the architecture, and until Phase 7 the interface
- * never said so. A judge who does not see it has no reason to believe it.
+ * this system. Seven agents exist, each with its own Agent Identity and its own corpus, and
+ * one of them cannot read another's — that is the architecture, and until Phase 7 the
+ * interface never said so. A judge who does not see it has no reason to believe it.
  *
- * Each card carries four things and keeps them visibly separate:
+ * ## Why this reads quietly
  *
- *   1. **What it is** — name, role, and the one-line job.
- *   2. **What it can reach** — the corpus it reads and the ones it is refused, with the
- *      refusals shown rather than omitted. A permission list where everything is granted
- *      proves nothing; the dashes are the content.
- *   3. **Its identity** — the `reasoningEngines` id, which is what the IAM bindings are
- *      written against and therefore the only value a reader can check anything with.
- *   4. **What it is doing** — answers written, how many of them cited, and whether it moved
- *      in the last three minutes.
+ * The first version of this board put a ring around every card, a rule under every heading,
+ * shouted every label in uppercase, and set three metadata rows inside a bordered list on
+ * each card. Seven of those on one page is a wall of boxes. What is on screen now is the
+ * same information with the boxes taken away: one hairline per card, generous padding inside
+ * it, and the metadata as a plain aligned list. Density comes from removing the space
+ * *between* things, not from cramping what is inside them.
  *
- * The source of each fact is on the card. The engine id and the department are read from the
- * live Agent Registry; the corpus bindings are a description of `infra/iam/scope_agents.py`,
- * because the registry's list endpoint returns empty scopes on every entry. Filling that gap
- * with a plausible value would be inventing evidence on the page whose entire job is to make
- * evidence checkable — a mistake this build made once, in Phase 6, and caught.
+ * ## The facts, and where each came from
+ *
+ * The engine id and the department are read from the **live** Agent Registry. The corpus
+ * bindings are a description of `infra/iam/scope_agents.py`, because the registry's list
+ * endpoint returns empty `scopes` on every entry — measured in Phase 6, not assumed. Filling
+ * that gap with a plausible value would be inventing evidence on the page whose entire job is
+ * to make evidence checkable, and this build did exactly that once and caught it.
+ *
+ * The refusals are rendered rather than omitted. A permission list where everything is
+ * granted proves nothing; the dashes are the content.
  */
 
 function Dot({ working }: { working: boolean }) {
@@ -42,78 +46,77 @@ function Dot({ working }: { working: boolean }) {
   );
 }
 
+/** One aligned metadata line. No rule, no chrome — the alignment is the structure. */
+function Fact({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="flex items-baseline justify-between gap-4">
+      <dt className="shrink-0">
+        <Label>{label}</Label>
+      </dt>
+      <dd className="min-w-0 truncate text-right">{children}</dd>
+    </div>
+  );
+}
+
 function AgentCard({ member, activity }: { member: FleetMember; activity: AgentActivity | null }) {
   const working = activity?.working ?? false;
+  const answers = activity?.answers ?? 0;
   return (
-    <article className="flex flex-col gap-3 rounded bg-surface p-4 shadow-line">
-      <header className="flex items-start justify-between gap-3">
-        <div className="flex min-w-0 flex-col gap-1">
+    <article className="flex flex-col gap-6 rounded border border-line bg-surface p-6">
+      <header className="flex items-start justify-between gap-4">
+        <div className="flex min-w-0 flex-col gap-2">
           <div className="flex items-center gap-2">
             <Dot working={working} />
-            <h3 className="truncate text-base font-semibold text-primary">{member.name}</h3>
+            <h3 className="truncate text-base text-primary">{member.name}</h3>
           </div>
           <Label>
             {member.role === 'department' ? `${member.department} department` : member.role}
           </Label>
         </div>
-        <div className="flex shrink-0 flex-col items-end gap-1">
-          <span className="text-md font-medium tabular-nums text-primary">
-            {activity?.answers ?? 0}
-          </span>
-          <Label>answers</Label>
+        <div className="flex shrink-0 flex-col items-end gap-2">
+          <span className="text-lg tabular-nums text-primary">{answers}</span>
+          <Label>{answers === 1 ? 'answer' : 'answers'}</Label>
         </div>
       </header>
 
-      <p className="text-sm text-secondary">{member.purpose}</p>
+      <p className="text-sm leading-relaxed text-secondary">{member.purpose}</p>
 
-      <dl className="flex flex-col gap-2 border-t border-subtle pt-3">
-        <div className="flex items-baseline justify-between gap-3">
-          <dt className="shrink-0">
-            <Label>reads</Label>
-          </dt>
-          <dd className="min-w-0 truncate text-right">
-            {member.reads.length === 0 ? (
-              <span className="text-xs text-muted">no corpus</span>
-            ) : (
-              <Mono title={member.scopeSource}>{member.reads.join(', ')}</Mono>
-            )}
-          </dd>
-        </div>
-        <div className="flex items-baseline justify-between gap-3">
-          <dt className="shrink-0">
-            <Label>refused</Label>
-          </dt>
-          <dd className="min-w-0 truncate text-right" title={member.scopeSource}>
-            {member.refused.length === 0 ? (
-              <span className="text-xs text-muted">nothing — see the note</span>
-            ) : (
-              <Mono dim>{member.refused.join(', ')}</Mono>
-            )}
-          </dd>
-        </div>
-        <div className="flex items-baseline justify-between gap-3">
-          <dt className="shrink-0">
-            <Label>identity</Label>
-          </dt>
-          <dd className="min-w-0 truncate text-right">
-            {member.engine === null ? (
-              <span className="text-xs text-muted" title={member.engineNote}>
-                in the dispatcher
-              </span>
-            ) : (
-              <Mono title="reasoningEngines id, from the Agent Registry URN">
-                {member.engine}
-              </Mono>
-            )}
-          </dd>
-        </div>
+      <dl className="flex flex-col gap-3">
+        <Fact label="reads">
+          {member.reads.length === 0 ? (
+            <span className="text-xs text-muted">no corpus</span>
+          ) : (
+            <Mono title={member.scopeSource}>{member.reads.join(', ')}</Mono>
+          )}
+        </Fact>
+        <Fact label="refused">
+          {member.refused.length === 0 ? (
+            <span className="text-xs text-muted" title={member.scopeSource}>
+              nothing — scoped by tool argument
+            </span>
+          ) : (
+            <Mono dim title={member.scopeSource}>
+              {member.refused.join(', ')}
+            </Mono>
+          )}
+        </Fact>
+        <Fact label="identity">
+          {member.engine === null ? (
+            <span className="text-xs text-muted" title={member.engineNote}>
+              in the dispatcher
+            </span>
+          ) : (
+            <Mono title="reasoningEngines id, from the Agent Registry URN">{member.engine}</Mono>
+          )}
+        </Fact>
+        {answers > 0 ? (
+          <Fact label="cited">
+            <Mono>
+              {activity?.cited ?? 0} of {answers}
+            </Mono>
+          </Fact>
+        ) : null}
       </dl>
-
-      {activity && activity.answers > 0 ? (
-        <p className="text-xs text-muted">
-          {activity.cited} of {activity.answers} carry a citation
-        </p>
-      ) : null}
     </article>
   );
 }
@@ -128,12 +131,9 @@ function AgentCard({ member, activity }: { member: FleetMember; activity: AgentA
  */
 function Inbound({ inbox, error }: { inbox: InboxStatus | null; error: string | null }) {
   return (
-    <Panel className="flex flex-col gap-3">
-      <div className="flex items-baseline justify-between gap-4">
-        <h2 className="text-md font-semibold text-primary">Inbound</h2>
-        <Label>how work arrives</Label>
-      </div>
-      <p className="max-w-prose text-sm text-secondary">
+    <section className="flex flex-col gap-4">
+      <h2 className="text-md text-primary">Inbound</h2>
+      <p className="max-w-prose text-sm leading-relaxed text-secondary">
         A customer emails the watched address. Gmail publishes a change notification to
         Pub/Sub, the dispatcher turns it into a unit of work, and the fleet answers it. A reply
         on a thread Attestor already owns wakes that review and opens the next round instead.
@@ -148,16 +148,16 @@ function Inbound({ inbox, error }: { inbox: InboxStatus | null; error: string | 
           <span className="font-mono text-xs">tools/gmail_watch.py --apply</span>.
         </p>
       ) : (
-        <dl className="flex flex-wrap items-baseline gap-6">
-          <div className="flex flex-col gap-1">
+        <dl className="flex flex-wrap items-baseline gap-10">
+          <div className="flex flex-col gap-2">
             <Label>watching</Label>
             <Mono>{inbox.address || 'unknown'}</Mono>
           </div>
-          <div className="flex flex-col gap-1">
+          <div className="flex flex-col gap-2">
             <Label>topic</Label>
             <Mono>{inbox.topic.split('/').pop()}</Mono>
           </div>
-          <div className="flex flex-col gap-1">
+          <div className="flex flex-col gap-2">
             <Label>watch expires</Label>
             <span
               className={cx(
@@ -165,14 +165,12 @@ function Inbound({ inbox, error }: { inbox: InboxStatus | null; error: string | 
                 inbox.expired ? 'text-denied' : 'text-secondary',
               )}
             >
-              {inbox.expired
-                ? 'EXPIRED — no email is arriving'
-                : `${inbox.expires_in_hours ?? 0}h`}
+              {inbox.expired ? 'EXPIRED — no email is arriving' : `${inbox.expires_in_hours ?? 0}h`}
             </span>
           </div>
         </dl>
       )}
-    </Panel>
+    </section>
   );
 }
 
@@ -200,12 +198,12 @@ export function FleetBoard({
   );
 
   return (
-    <div className="flex h-full flex-col gap-4 overflow-y-auto p-4">
+    <div className="mx-auto flex w-full max-w-page flex-col gap-12 px-6 py-8">
       <Inbound inbox={inbox} error={inboxError} />
 
-      <section className="flex flex-col gap-3">
-        <div className="flex flex-wrap items-baseline justify-between gap-3">
-          <h2 className="text-md font-semibold text-primary">
+      <section className="flex flex-col gap-4">
+        <div className="flex flex-wrap items-baseline justify-between gap-4">
+          <h2 className="text-md text-primary">
             {members.length} agents{working > 0 ? `, ${working} working now` : ''}
           </h2>
           <p className="text-sm text-muted">
@@ -214,17 +212,17 @@ export function FleetBoard({
         </div>
 
         {registryError !== null ? (
-          <Panel>
+          <div className="flex flex-col gap-3 rounded border border-line p-6">
             <p className="text-sm text-denied">
               The Agent Registry is unreachable, so the deployed engines cannot be listed.
             </p>
-            <p className="pt-2 font-mono text-xs text-secondary">{registryError}</p>
-            <p className="pt-2 text-sm text-muted">
+            <p className="font-mono text-xs text-secondary">{registryError}</p>
+            <p className="text-sm text-muted">
               An empty fleet would be a claim. This is a failed read, and it says so.
             </p>
-          </Panel>
+          </div>
         ) : (
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             {members.map((member) => (
               <AgentCard
                 key={member.id}
@@ -236,25 +234,24 @@ export function FleetBoard({
         )}
       </section>
 
-      <Panel flush>
-        <header className="flex items-baseline justify-between gap-4 border-b border-subtle px-4 py-3">
-          <h2 className="text-md font-semibold text-primary">Reviews</h2>
+      <section className="flex flex-col gap-4">
+        <div className="flex items-baseline justify-between gap-4">
+          <h2 className="text-md text-primary">Reviews</h2>
           <Link href="/reviews" className="text-sm">
-            All {archivedCount > 0 ? `· ${archivedCount} archived` : ''}
+            All{archivedCount > 0 ? ` · ${archivedCount} archived` : ''}
           </Link>
-        </header>
-        <ul>
+        </div>
+        <ul className="rounded border border-line bg-surface">
           {reviews.map((review) => (
             <li key={review.review_id}>
               <Link
                 href={`/reviews/${review.review_id}`}
-                className="flex items-center gap-3 border-b border-subtle px-4 py-3 no-underline last:border-0 hover:bg-hover hover:no-underline"
+                className="flex items-center gap-4 border-b border-subtle px-6 py-4 no-underline last:border-0 hover:bg-hover hover:no-underline"
               >
-                <StateDot form={review.state === 'awaiting_human' ? 'half' : 'solid'} />
-                <span className="min-w-0 flex-1 truncate text-sm font-medium text-primary">
+                <span className="min-w-0 flex-1 truncate text-sm text-primary">
                   {review.customer}
                 </span>
-                <span className="shrink-0 text-sm text-secondary">
+                <span className="shrink-0 text-sm text-muted">
                   {review.state.replace(/_/g, ' ')}
                 </span>
                 <Mono dim className="shrink-0">
@@ -264,7 +261,7 @@ export function FleetBoard({
             </li>
           ))}
         </ul>
-      </Panel>
+      </section>
     </div>
   );
 }

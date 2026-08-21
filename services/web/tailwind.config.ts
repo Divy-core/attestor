@@ -138,6 +138,9 @@ const config: Config = {
       height: {
         row: 'var(--row-height)',
         'row-dense': 'var(--row-height-dense)',
+        // The header. 56px is not on the spacing scale and should not be -- it is a chrome
+        // dimension, chosen against the rail's type, not a gap between two things.
+        header: '56px',
       },
       // Three layout widths, named for what they are. Not part of the spacing scale: the
       // rail is 200px because that is what four nav labels and a revision id need, and
@@ -152,6 +155,10 @@ const config: Config = {
       maxWidth: {
         prose: '68ch',
         list: '520px',
+        // A measure for full-width pages. Content that runs the whole width of a 1920px
+        // monitor is unreadable, and a console that fills every pixel because it can is the
+        // difference between dense and cluttered.
+        page: '1280px',
       },
       maxHeight: {
         list: '360px',

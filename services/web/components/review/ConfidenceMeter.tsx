@@ -64,9 +64,9 @@ export function ConfidenceMeter({ answer }: { answer: AnswerRow }) {
   const stretch = (value: number) => (value - FLOOR) / (CEILING - FLOOR);
 
   return (
-    <div className="flex flex-col gap-3 rounded shadow-line bg-sunken p-3">
+    <div className="flex flex-col gap-4 border-t border-subtle pt-4">
       <div className="flex items-baseline justify-between">
-        <span className="text-xs uppercase tracking-wide text-muted">Confidence</span>
+        <span className="text-xs text-muted">Confidence</span>
         <span className="text-sm font-medium text-primary">{answer.confidence}</span>
       </div>
 

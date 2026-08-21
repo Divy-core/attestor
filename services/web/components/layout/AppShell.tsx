@@ -29,11 +29,11 @@ function Rail({ pathname }: { pathname: string }) {
   return (
     <nav
       aria-label="Sections"
-      className="flex h-full w-rail shrink-0 flex-col gap-1 border-r border-subtle px-2 py-3"
+      className="flex h-full w-rail shrink-0 flex-col gap-1 border-r border-subtle px-3 py-4"
     >
       <Link
         href="/"
-        className="mb-4 px-2 text-md font-semibold tracking-tight text-primary no-underline hover:no-underline"
+        className="mb-6 px-2 text-md text-primary no-underline hover:no-underline"
       >
         Attestor
       </Link>
@@ -48,9 +48,7 @@ function Rail({ pathname }: { pathname: string }) {
             title={item.hint}
             className={cx(
               'rounded-sm px-2 py-2 text-sm no-underline transition-colors hover:no-underline',
-              active
-                ? 'bg-active font-medium text-primary'
-                : 'text-secondary hover:bg-hover hover:text-primary',
+              active ? 'bg-active text-primary' : 'text-muted hover:bg-hover hover:text-primary',
             )}
           >
             {item.label}
@@ -93,6 +91,7 @@ export function AppShell({
   meta,
   actions,
   reviews = [],
+  scroll = true,
 }: {
   children: ReactNode;
   pathname: string;
@@ -101,14 +100,23 @@ export function AppShell({
   actions?: ReactNode;
   /** What the palette can jump to. Empty is fine; it still navigates and still filters. */
   reviews?: ReadonlyArray<{ review_id: string; customer: string; state: string }>;
+  /**
+   * Whether the shell scrolls the page, or the page scrolls itself.
+   *
+   * Defaults to `true`, and it did not before -- `main` was `overflow-hidden` unconditionally
+   * because the review workspace manages its own three panes. Every other page inherited that
+   * and was simply clipped: registry, traces and the trace detail could not be scrolled at
+   * all below the fold. A default that breaks three pages to suit one is the wrong default.
+   */
+  scroll?: boolean;
 }) {
   return (
     <div className="flex h-screen w-full overflow-hidden bg-base">
       <Rail pathname={pathname} />
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-12 shrink-0 items-center justify-between gap-4 border-b border-subtle px-4">
+        <header className="flex h-header shrink-0 items-center justify-between gap-4 border-b border-subtle px-6">
           <div className="flex min-w-0 items-baseline gap-3">
-            <h1 className="truncate text-md font-semibold text-primary">{title}</h1>
+            <h1 className="truncate text-md text-primary">{title}</h1>
             {meta ? <div className="truncate text-sm text-muted">{meta}</div> : null}
           </div>
           <div className="flex shrink-0 items-center gap-2">
@@ -116,9 +124,17 @@ export function AppShell({
             <ThemeToggle />
           </div>
         </header>
-        {/* The page owns its own scrolling. A body that scrolls horizontally at 1080p is the
-            one layout failure that cannot be hidden in a recording. */}
-        <main className="min-h-0 flex-1 overflow-hidden">{children}</main>
+        {/* Vertical scrolling by default; the workspace opts out because it scrolls each of
+            its three panes separately. Horizontal is always hidden -- a body that scrolls
+            sideways at 1080p is the one layout failure that cannot be hidden in a recording. */}
+        <main
+          className={cx(
+            'min-h-0 flex-1 overflow-x-hidden',
+            scroll ? 'overflow-y-auto' : 'overflow-hidden',
+          )}
+        >
+          {children}
+        </main>
       </div>
       <CommandPalette reviews={reviews} />
     </div>

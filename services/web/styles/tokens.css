@@ -102,6 +102,10 @@
   --alpha-100: rgba(0, 0, 0, 0.04);
   --alpha-200: rgba(0, 0, 0, 0.06);
   --alpha-300: rgba(0, 0, 0, 0.09);
+  /* 0.14, not 0.12. Composited over a white card the lighter value measured 1.32:1 against
+     it -- under the 1.35 floor a card outline keeps, while a row divider deliberately sits
+     below it. Measured on the rendered page by compositing the alpha rather than by reading
+     the token, which is the only way a translucent border can be measured at all. */
   --alpha-400: rgba(0, 0, 0, 0.14);
   --alpha-scrim: rgba(0, 0, 0, 0.42);
 
@@ -149,9 +153,9 @@
    * undefined in any theme state. The viewer has three: an explicit choice stamps
    * `data-theme`, and "system" stamps nothing at all.
    */
-  /* `--background-200` (#fafafa) measured 1.04:1 against a white card, which is a step in
-   * name only and disappears entirely under video compression. `--gray-100` gives 1.12:1 --
-   * still quiet, and actually visible. */
+  /* The mirror of the dark rule: the page is the off-white, a card is pure white.
+   * `--background-200` (#fafafa) measured 1.04:1 against a white card, which is a step in
+   * name only, so the page sits one further out at `--gray-100` for 1.12:1. */
   --bg-base: var(--gray-100);
   --bg-surface: var(--background-100);
   --bg-raised: var(--background-100);
@@ -165,9 +169,10 @@
   --text-muted: var(--gray-800);
   --text-inverse: var(--background-100);
 
+  /* Split by job, as in dark: `subtle` divides rows, `default` outlines a card. */
   --border-subtle: var(--alpha-200);
-  --border-default: var(--gray-400);
-  --border-strong: var(--gray-600);
+  --border-default: var(--alpha-400);
+  --border-strong: var(--gray-500);
   --border-focus: var(--accent);
 
   --state-cited: var(--hue-cited);
@@ -259,9 +264,9 @@
     --gray-100: #1a1a1a;
     --gray-200: #1f1f1f;
     --gray-300: #292929;
-    --gray-400: #333333;
+    --gray-400: #2e2e2e;
     --gray-500: #454545;
-    --gray-600: #575757;
+    --gray-600: #878787;
     --gray-700: #8f8f8f;
     --gray-800: #7d7d7d;
     --gray-900: #a1a1a1;
@@ -270,11 +275,11 @@
     --background-100: #0a0a0a;
     --background-200: #000000;
 
-    --alpha-100: rgba(255, 255, 255, 0.05);
-    --alpha-200: rgba(255, 255, 255, 0.08);
-    --alpha-300: rgba(255, 255, 255, 0.12);
-    --alpha-400: rgba(255, 255, 255, 0.18);
-    --alpha-scrim: rgba(0, 0, 0, 0.66);
+    --alpha-100: rgba(255, 255, 255, 0.06);
+    --alpha-200: rgba(255, 255, 255, 0.09);
+    --alpha-300: rgba(255, 255, 255, 0.11);
+    --alpha-400: rgba(255, 255, 255, 0.14);
+    --alpha-scrim: rgba(0, 0, 0, 0.72);
 
     --accent: #0070f3;
     --accent-hover: #3291ff;
@@ -282,9 +287,12 @@
     --accent-ink: #ffffff;
     --accent-text: #3291ff;
 
-    --bg-base: var(--background-100);
-    --bg-surface: var(--gray-100);
-    --bg-raised: var(--gray-200);
+    /* The page is pure black; a card is `#0a0a0a`. Not the other way round, which is what
+       this file said until the values were sampled from the live site -- and inverting them
+       is what made every surface read as grey. */
+    --bg-base: var(--background-200);
+    --bg-surface: var(--background-100);
+    --bg-raised: var(--gray-100);
     --bg-sunken: var(--background-200);
     --bg-hover: var(--alpha-100);
     --bg-active: var(--alpha-200);
@@ -293,11 +301,13 @@
     --text-primary: var(--gray-1000);
     --text-secondary: var(--gray-900);
     --text-muted: var(--gray-700);
-    --text-inverse: var(--background-100);
+    --text-inverse: var(--background-200);
 
+    /* Translucent, and split by job: `subtle` divides rows inside a surface, `default`
+       outlines a card. See the note at the top about the floor this deliberately walks back. */
     --border-subtle: var(--alpha-200);
-    --border-default: var(--gray-400);
-    --border-strong: var(--gray-600);
+    --border-default: var(--alpha-400);
+    --border-strong: var(--gray-400);
     --border-focus: var(--accent);
 
     --state-cited: var(--hue-cited-dark);
@@ -327,9 +337,9 @@
   --gray-100: #1a1a1a;
   --gray-200: #1f1f1f;
   --gray-300: #292929;
-  --gray-400: #333333;
+  --gray-400: #2e2e2e;
   --gray-500: #454545;
-  --gray-600: #575757;
+  --gray-600: #878787;
   --gray-700: #8f8f8f;
   --gray-800: #7d7d7d;
   --gray-900: #a1a1a1;
@@ -338,11 +348,11 @@
   --background-100: #0a0a0a;
   --background-200: #000000;
 
-  --alpha-100: rgba(255, 255, 255, 0.05);
-  --alpha-200: rgba(255, 255, 255, 0.08);
-  --alpha-300: rgba(255, 255, 255, 0.12);
-  --alpha-400: rgba(255, 255, 255, 0.18);
-  --alpha-scrim: rgba(0, 0, 0, 0.66);
+  --alpha-100: rgba(255, 255, 255, 0.06);
+  --alpha-200: rgba(255, 255, 255, 0.09);
+  --alpha-300: rgba(255, 255, 255, 0.11);
+  --alpha-400: rgba(255, 255, 255, 0.14);
+  --alpha-scrim: rgba(0, 0, 0, 0.72);
 
   --accent: #0070f3;
   --accent-hover: #3291ff;
@@ -350,9 +360,12 @@
   --accent-ink: #ffffff;
   --accent-text: #3291ff;
 
-  --bg-base: var(--background-100);
-  --bg-surface: var(--gray-100);
-  --bg-raised: var(--gray-200);
+  /* The page is pure black; a card is `#0a0a0a`. Not the other way round, which is what
+     this file said until the values were sampled from the live site -- and inverting them
+     is what made every surface read as grey. */
+  --bg-base: var(--background-200);
+  --bg-surface: var(--background-100);
+  --bg-raised: var(--gray-100);
   --bg-sunken: var(--background-200);
   --bg-hover: var(--alpha-100);
   --bg-active: var(--alpha-200);
@@ -361,11 +374,13 @@
   --text-primary: var(--gray-1000);
   --text-secondary: var(--gray-900);
   --text-muted: var(--gray-700);
-  --text-inverse: var(--background-100);
+  --text-inverse: var(--background-200);
 
+  /* Translucent, and split by job: `subtle` divides rows inside a surface, `default`
+     outlines a card. See the note at the top about the floor this deliberately walks back. */
   --border-subtle: var(--alpha-200);
-  --border-default: var(--gray-400);
-  --border-strong: var(--gray-600);
+  --border-default: var(--alpha-400);
+  --border-strong: var(--gray-400);
   --border-focus: var(--accent);
 
   --state-cited: var(--hue-cited-dark);

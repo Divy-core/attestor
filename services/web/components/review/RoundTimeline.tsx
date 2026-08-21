@@ -38,7 +38,7 @@ export function RoundTimeline({
       className="flex flex-col gap-2 border-b border-subtle px-6 py-3"
     >
       <div className="flex items-baseline justify-between">
-        <span className="text-xs uppercase tracking-wide text-muted">Rounds</span>
+        <span className="text-xs text-muted">Rounds</span>
         <span className="text-xs text-muted">
           {Math.round(span / 86_400_000)} days since intake
         </span>

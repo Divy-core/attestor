@@ -23,8 +23,8 @@ export default async function TracesIndexPage() {
 
   return (
     <AppShell pathname="/traces" title="Audit trails">
-      <div className="p-6">
-        <Panel className="overflow-hidden">
+      <div className="mx-auto flex w-full max-w-page flex-col gap-4 px-6 py-8">
+        <Panel flush className="overflow-hidden">
           {error !== null ? (
             <Failure what="Reviews could not be listed." detail={error} />
           ) : reviews.length === 0 ? (
@@ -38,7 +38,7 @@ export default async function TracesIndexPage() {
                 <li key={review.review_id} className="border-b border-subtle last:border-b-0">
                   <Link
                     href={`/reviews/${review.review_id}`}
-                    className="flex items-center gap-4 px-4 py-2 no-underline transition-colors hover:bg-hover"
+                    className="flex items-center gap-4 px-6 py-4 no-underline transition-colors hover:bg-hover hover:no-underline"
                   >
                     <span className="flex min-w-0 flex-1 flex-col">
                       <span className="truncate text-sm text-primary">{review.customer}</span>
@@ -54,7 +54,7 @@ export default async function TracesIndexPage() {
             </ul>
           )}
         </Panel>
-        <p className="px-1 pt-3 text-sm text-secondary">
+        <p className="max-w-prose text-sm leading-relaxed text-muted">
           Open a review and follow <span className="text-primary">Audit trail</span> to see its
           compliance plane. A trail is addressed by run, and a review may have several — a
           redelivery, a resume after a human, and a follow-up round are each their own run against

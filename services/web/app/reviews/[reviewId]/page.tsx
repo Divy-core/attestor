@@ -120,6 +120,8 @@ export default async function ReviewPage({
 
   return (
     <AppShell
+      // The one page that scrolls itself: three panes, each with its own overflow.
+      scroll={false}
       pathname={`/reviews/${reviewId}`}
       title={review.customer}
       meta={
@@ -139,7 +141,7 @@ export default async function ReviewPage({
         </>
       }
     >
-      <div className="flex flex-col">
+      <div className="flex h-full flex-col">
         <RoundTimeline rounds={review.rounds} createdAt={review.created_at} />
         <div className="min-h-0 flex-1">
           <ReviewWorkspace

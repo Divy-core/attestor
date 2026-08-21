@@ -148,7 +148,7 @@ export function ExportPanel({ reviewId, roundId }: Props) {
         )}
         <a
           href={href('pdf')}
-          className="inline-flex items-center rounded-sm shadow-line-strong bg-surface px-3 py-1 text-sm text-primary no-underline transition-colors hover:bg-hover"
+          className="inline-flex items-center rounded-sm bg-surface px-3 py-1 text-sm text-primary no-underline transition-colors hover:bg-hover"
         >
           Download the evidence pack
         </a>
@@ -167,7 +167,7 @@ export function ExportPanel({ reviewId, roundId }: Props) {
 function Figure({ label, value }: { label: string; value: number }) {
   return (
     <div className="flex flex-col gap-1">
-      <span className="text-xs uppercase tracking-wide text-muted">{label}</span>
+      <span className="text-xs text-muted">{label}</span>
       <span className="font-mono text-lg tabular-nums text-primary">{value}</span>
     </div>
   );

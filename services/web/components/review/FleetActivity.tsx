@@ -102,7 +102,7 @@ export function FleetActivity({ questions, answers, events, total }: Props) {
       </div>
 
       {byDepartment.length > 0 ? (
-        <div className="flex flex-col gap-2 border-t border-subtle pt-3">
+        <div className="flex flex-col gap-3">
           <div className="flex items-baseline justify-between gap-3">
             <h3 className="text-sm font-medium text-primary">Department engines</h3>
             <span className="text-xs text-muted">
@@ -133,7 +133,7 @@ export function FleetActivity({ questions, answers, events, total }: Props) {
       ) : null}
 
       {judgements.length > 0 ? (
-        <div className="flex flex-col gap-2 border-t border-subtle pt-3">
+        <div className="flex flex-col gap-3">
           <h3 className="text-sm font-medium text-primary">The orchestrator’s decisions</h3>
           <ul className="flex flex-col gap-2">
             {judgements.map((event, index) => {
@@ -150,8 +150,8 @@ export function FleetActivity({ questions, answers, events, total }: Props) {
                     <span
                       className={
                         fallback
-                          ? 'rounded-sm shadow-line bg-fill-degraded px-2 text-xs text-degraded'
-                          : 'rounded-sm shadow-line bg-fill-cited px-2 text-xs text-cited'
+                          ? 'text-xs text-degraded'
+                          : 'text-xs text-cited'
                       }
                       title={
                         fallback
@@ -218,7 +218,7 @@ function Counter({
   }[String(tone)];
   return (
     <div className="flex flex-col gap-1">
-      <span className="text-xs uppercase tracking-wide text-muted">{label}</span>
+      <span className="text-xs text-muted">{label}</span>
       <span className="flex items-baseline gap-1">
         <span className={`font-mono text-xl tabular-nums ${ink ?? 'text-primary'}`}>{value}</span>
         {typeof of === 'number' ? (

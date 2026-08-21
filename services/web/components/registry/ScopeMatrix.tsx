@@ -42,7 +42,7 @@ export function ScopeMatrix({ agents }: { agents: RegistryAgent[] }) {
           an instruction.
         </caption>
         <thead>
-          <tr className="border-b border-subtle text-xs uppercase tracking-wide text-muted">
+          <tr className="border-b border-subtle text-xs text-muted">
             <th scope="col" className="px-4 py-2 text-left font-normal">
               Agent
             </th>

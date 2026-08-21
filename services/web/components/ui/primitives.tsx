@@ -66,18 +66,15 @@ export function Mono({
   );
 }
 
-/** A column heading or a metadata label. Never a sentence. */
+/**
+ * A column heading or a metadata label. Never a sentence.
+ *
+ * Plain small grey text, not uppercase with tracking. The uppercase version was the loudest
+ * thing on the page -- forty shouted labels reading `OWNING DEPARTMENT` next to the values
+ * they describe -- and a label's job is to be found when looked for and ignored otherwise.
+ */
 export function Label({ children, className }: { children: ReactNode; className?: string }) {
-  return (
-    <span
-      className={cx(
-        'text-xs font-medium uppercase tracking-wide text-muted',
-        className,
-      )}
-    >
-      {children}
-    </span>
-  );
+  return <span className={cx('text-xs text-muted', className)}>{children}</span>;
 }
 
 /**
@@ -102,7 +99,7 @@ export function Figure({
       <div className="flex items-baseline gap-1">
         <span
           className={cx(
-            'text-xl font-medium tabular-nums',
+            'text-xl tabular-nums',
             tone === 'muted' ? 'text-muted' : 'text-primary',
           )}
         >
@@ -138,11 +135,7 @@ export function Panel({
 }) {
   return (
     <section
-      className={cx(
-        'rounded bg-surface shadow-line',
-        flush ? '' : 'p-4',
-        className,
-      )}
+      className={cx('rounded border border-line bg-surface', flush ? '' : 'p-6', className)}
     >
       {children}
     </section>
@@ -160,9 +153,9 @@ export function PanelHeader({
   actions?: ReactNode;
 }) {
   return (
-    <header className="flex items-center justify-between gap-4 border-b border-subtle px-4 py-3">
+    <header className="flex items-center justify-between gap-4 border-b border-subtle px-6 py-4">
       <div className="flex min-w-0 items-baseline gap-3">
-        <h2 className="truncate text-md font-semibold text-primary">{title}</h2>
+        <h2 className="truncate text-md font-medium text-primary">{title}</h2>
         {meta ? <span className="truncate text-sm text-muted">{meta}</span> : null}
       </div>
       {actions ? <div className="flex shrink-0 items-center gap-2">{actions}</div> : null}
@@ -187,8 +180,8 @@ export function Empty({
   action?: ReactNode;
 }) {
   return (
-    <div className="flex flex-col items-start gap-2 px-4 py-8">
-      <p className="text-base font-medium text-secondary">{title}</p>
+    <div className="flex flex-col items-start gap-2 px-6 py-12">
+      <p className="text-base text-secondary">{title}</p>
       <p className="max-w-prose text-sm text-muted">{hint}</p>
       {action ? <div className="pt-2">{action}</div> : null}
     </div>
@@ -212,8 +205,8 @@ export function Failure({
   action?: ReactNode;
 }) {
   return (
-    <div className="flex flex-col items-start gap-2 rounded bg-fill-denied px-4 py-3 shadow-line">
-      <p className="text-base font-medium text-denied">{what}</p>
+    <div className="flex flex-col items-start gap-2 rounded border border-subtle px-4 py-3">
+      <p className="text-base text-denied">{what}</p>
       <p className="max-w-prose font-mono text-xs text-secondary">{detail}</p>
       {action ? <div className="pt-1">{action}</div> : null}
     </div>
@@ -229,9 +222,9 @@ type ButtonTone = 'primary' | 'secondary' | 'ghost' | 'danger';
 const BUTTON_TONES: Record<ButtonTone, string> = {
   // The accent's only appearances: this, links, focus, and the active nav item.
   primary: 'bg-accent text-accent-ink hover:bg-accent-hover',
-  secondary: 'bg-surface text-primary shadow-line-strong hover:bg-hover',
+  secondary: 'border border-line bg-transparent text-primary hover:bg-hover',
   ghost: 'bg-transparent text-secondary hover:bg-hover hover:text-primary',
-  danger: 'bg-transparent text-denied shadow-line-strong hover:bg-fill-denied',
+  danger: 'border border-subtle bg-transparent text-denied hover:bg-hover',
 };
 
 export function Button({
@@ -260,7 +253,7 @@ export function Button({
       disabled={disabled}
       title={title}
       className={cx(
-        'inline-flex shrink-0 items-center justify-center gap-2 rounded-sm font-medium transition-colors',
+        'inline-flex shrink-0 items-center justify-center gap-2 rounded-sm transition-colors',
         'disabled:cursor-not-allowed disabled:opacity-40',
         small ? 'h-row-dense px-2 text-xs' : 'h-row px-3 text-sm',
         BUTTON_TONES[tone],
@@ -275,7 +268,7 @@ export function Button({
 /** A keyboard shortcut, shown where the action is. */
 export function Key({ children }: { children: ReactNode }) {
   return (
-    <kbd className="rounded-sm bg-sunken px-1 font-mono text-xs text-muted shadow-line">
+    <kbd className="rounded-sm bg-raised px-1 font-mono text-xs text-muted">
       {children}
     </kbd>
   );
@@ -332,12 +325,7 @@ export function StateBadge({
   return (
     <span
       title={state.meaning}
-      className={cx(
-        'inline-flex items-center gap-2 rounded-sm px-2 py-1 text-xs font-medium',
-        state.fill,
-        state.ink,
-        className,
-      )}
+      className={cx('inline-flex items-center gap-2 text-xs', state.ink, className)}
     >
       <StateDot form={state.form} />
       {children ?? state.label}
@@ -369,8 +357,8 @@ export function LifecycleBadge({ state, tone }: { state: string; tone: string })
   return (
     <span
       className={cx(
-        'inline-flex items-center rounded-sm px-2 py-1 text-xs font-medium shadow-line',
-        tone === 'terminal' ? 'text-muted' : 'text-primary',
+        'inline-flex items-center text-xs',
+        tone === 'terminal' ? 'text-muted' : 'text-secondary',
       )}
     >
       {state.replace(/_/g, ' ')}
@@ -443,7 +431,7 @@ export function Row({
       tabIndex={onClick ? -1 : undefined}
       onClick={onClick}
       className={cx(
-        'flex w-full items-center gap-3 border-b border-subtle px-4 py-2 text-left transition-colors',
+        'flex w-full items-center gap-3 border-b border-subtle px-4 py-3 text-left transition-colors',
         onClick ? 'cursor-pointer' : '',
         selected ? 'bg-active' : 'hover:bg-hover',
         className,
@@ -464,7 +452,7 @@ export function Row({
 // ---------------------------------------------------------------------------------
 
 const CONTROL =
-  'h-row w-full rounded-sm bg-sunken px-2 text-sm text-primary shadow-line outline-none placeholder:text-muted';
+  'h-row w-full rounded-sm border border-subtle bg-transparent px-3 text-sm text-primary outline-none transition-colors placeholder:text-muted focus:border-line';
 
 export function Field({
   label,

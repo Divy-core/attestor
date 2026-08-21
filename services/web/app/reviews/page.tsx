@@ -74,7 +74,7 @@ export default async function ReviewsPage({
       actions={<NewReviewButton />}
       reviews={all.filter((review) => !review.archived)}
     >
-      <div className="flex h-full flex-col gap-4 overflow-y-auto p-4">
+      <div className="mx-auto flex w-full max-w-page flex-col gap-6 px-6 py-8">
         {error !== null ? (
           <Failure what="The control plane could not be reached." detail={error} />
         ) : (

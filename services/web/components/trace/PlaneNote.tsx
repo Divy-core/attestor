@@ -58,7 +58,7 @@ export function PlaneNote({ eventCount }: { eventCount: number }) {
             Latency, token cost, tool spans. Answers &ldquo;what was slow&rdquo;. Real, and
             organised by span parentage rather than by subject.
           </p>
-          <pre className="overflow-x-auto rounded shadow-line bg-code px-3 py-2 font-mono text-xs text-secondary">
+          <pre className="overflow-x-auto rounded bg-code px-3 py-2 font-mono text-xs text-secondary">
             {SPAN_TREE}
           </pre>
           <p className="border-t border-subtle pt-2 text-sm text-secondary">

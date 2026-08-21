@@ -46,7 +46,7 @@ export function CitationList({
   }
 
   return (
-    <ol className="flex flex-col border-l-2 border-cited">
+    <ol className="flex flex-col gap-3">
       {citations.map((citation, index) => {
         const expanded = open === index;
         return (
@@ -75,7 +75,7 @@ export function CitationList({
             </button>
 
             {expanded ? (
-              <div className="ml-3 mb-2 mr-2 rounded shadow-line bg-sunken p-3">
+              <div className="rounded border border-subtle p-4">
                 {/* The passage as the retriever saw it. This is the whole point: the reader
                     checks the claim against the text that was scored, not against a summary
                     of it. */}

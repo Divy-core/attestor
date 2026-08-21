@@ -3208,7 +3208,7 @@ It also asserts the guard refuses: no token, wrong token, and reads still open.
 | 1 | A person can upload a questionnaire in the browser and a review starts | **DONE** | `tools/verify_journey.py` — sign 201, PUT 200, create 201, start 202, all over HTTP with no repository import |
 | 2 | The review runs to completion with no further input, visibly | **DONE** | 312 of 312 answers, `awaiting_human`, 757.5s unattended (`journey.json`) |
 | 3 | Live counters, active department engines, orchestrator decisions on screen | **DONE (code)** · **NOT VISUALLY VERIFIED** | `FleetActivity` renders all three; the pane could not composite screenshots in this session |
-| 4 | Flagged answers approved through the UI, run resumes, audit names the operator | **PARTIAL** | The endpoint and the audit `actor` are proven (`drill-approval.json`, contract tests); the click-through in a browser is not done |
+| 4 | Flagged answers approved through the UI, run resumes, audit names the operator | **DONE in Phase 7** | Clicked through on the deployed stack against `rev-556261438508`: the receipt, the dedup key, the status change in Firestore and the `human_decision` event are all recorded in the Phase 7 section. The click also found that the `actor` was a constant, which is fixed there |
 | 5 | XLSX in the customer's own format + PDF evidence pack, flagged marked | **DONE** | 65,892-byte `PK\x03\x04`, 453,254-byte `%PDF`, `X-Attestor-Rows: 312`, `X-Attestor-Sendable: 92` |
 | 6 | Write paths guarded by token, review cap, question ceiling; exposure stated | **DONE** | 401 without a token and with a wrong one, measured against the deployed service; residual exposure listed above |
 | 7 | Homepage copy updated | **DONE** | "nothing is started from it" replaced; the reason recorded in a comment beside it |
@@ -3436,9 +3436,9 @@ which is what a viewer's screen actually shows.
 | `text-muted` on `bg-surface` | 5.38 | 4.74 |
 | link (`accent-text`) on `bg-surface` | 5.49 | 4.55 |
 | button label on `accent` | 4.55 | 4.55 |
-| `border-default` on `bg-surface` | 1.38 | 1.37 |
-| `border-strong` on `bg-surface` | 2.41 | 2.38 |
-| `bg-surface` on `bg-base` | 1.14 | 1.12 |
+| card outline, composited | 1.42 | 1.38 |
+| row divider, composited | 1.22 | 1.14 |
+| `bg-surface` on `bg-base` | 1.06 | 1.12 |
 
 Badge ink on its own fill, all six states, both themes: **4.54 to 6.67**. Every one clears AA.
 
@@ -3681,6 +3681,71 @@ claiming a request was sent when it was not is the failure this project keeps re
 One bug found while writing the test for it: `send_reply` passed `threadId: ""` for the
 internal notification, which has no thread. Gmail rejects an empty string, so the field is
 omitted rather than sent blank.
+
+### Three pages could not be scrolled, and the ramp was inverted
+
+Both found by a person opening the deployed site, which is the only way either would have
+been found — every check this repository runs passed throughout.
+
+**The scroll bug.** `AppShell` set `overflow-hidden` on `<main>` unconditionally, because the
+review workspace scrolls each of its three panes separately. Every other page inherited that
+and was simply clipped: registry, traces and the trace detail could not be scrolled below the
+fold at all. A default that breaks three pages to suit one is the wrong default, so the shell
+scrolls by default and the workspace opts out with `scroll={false}`. Verified on each page by
+setting `main.scrollTop` and reading it back.
+
+**The ramp was inverted, and that is why it read grey.** The Phase 7 tokens made `#0a0a0a`
+the page and `#1a1a1a` the card. Sampled from `vercel.com` with `getComputedStyle` on the
+live page, it is the other way round:
+
+```
+--ds-background-200  hsl(0 0% 0)    the page — pure black
+--ds-background-100  hsl(0 0% 4%)   #0a0a0a — a card
+--ds-gray-alpha-200  #ffffff17      9% white — a divider
+--ds-gray-alpha-400  #ffffff24      14% white — a card outline
+--ds-gray-900        #a1a1a1        secondary text
+--ds-gray-1000       #ededed        primary text
+```
+
+The card is *barely* lighter than the ground and what separates it is a hairline and a lot of
+space, not a fill step. Getting that backwards is what made every surface read as grey rather
+than as black.
+
+The borders were the second half of it. This file carried solid `#333333` on the argument
+that H.264 subsamples chroma before luma and a fine line vanishes in a recording. The
+reasoning is sound and the conclusion drawn from it was wrong: it drew a visible box around
+every element on every page. Vercel's are **translucent white at 9% and 14%**, and the rule
+is now split by job rather than applied uniformly — `--border-default` outlines a card and
+measures 1.42:1 dark / 1.38:1 light, `--border-subtle` divides rows inside a surface at
+1.22:1 / 1.14:1, deliberately below the floor, because a row divider you notice is a row
+divider that should not be there.
+
+Measuring a translucent border needs compositing it over its surface and reading the pixel
+back; reading the token gives an alpha value, not a contrast.
+
+### The clutter, itemised
+
+Four decisions, each applied in forty places, each removed in one pass:
+
+| What | Why it was loud |
+|---|---|
+| `shadow-line` on nearly every element | A 1px ring nested three deep in places. A `Panel` keeps one outline; nothing inside it has one, and separation is the divider and the padding |
+| `uppercase tracking-wide` on every `Label` | Forty shouted words reading `OWNING DEPARTMENT` beside the values they describe. A label should be findable when looked for and invisible otherwise |
+| `font-semibold` on every heading | Vercel's dashboard is 400 and 500 with almost no 600 anywhere. The weight was doing work that size and position should |
+| A tinted fill behind every status badge | Six coloured chips per row. The dot already carries the state; the fill only added weight |
+
+Measured on the rendered pages afterwards: **zero** uppercase text nodes, **zero** elements at
+weight ≥ 600, and the bordered-or-shadowed count inside `<main>` is 1 on traces, 9 on the
+fleet and registry, and 16 on the three-pane workspace — which is the densest page in the
+product and has three panes to separate.
+
+Padding went from 16px to 24px inside every card, list rows from 8px to 16px, and pages gained
+a `max-w-page` measure of 1280px. Content that runs the full width of a 1920px monitor because
+it can is the difference between dense and cluttered.
+
+**Verified live at 1920×1080**: page background `rgb(0, 0, 0)`, card `rgb(10, 10, 10)`, card
+border `rgba(255, 255, 255, 0.14)` at 6px radius and 24px padding, no horizontal overflow, and
+every page scrolls.
 
 ### The approval, clicked through in a browser at last
 

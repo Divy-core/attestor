@@ -109,7 +109,7 @@ export function TraceTree({ events }: { events: AuditEvent[] }) {
             onChange={(event) => setFilter(event.target.value)}
             placeholder="Filter by question, event kind or agent"
             aria-label="Filter events"
-            className="w-full rounded-sm shadow-line bg-sunken px-2 py-1 text-sm text-primary placeholder:text-muted"
+            className="w-full rounded-sm bg-sunken px-2 py-1 text-sm text-primary placeholder:text-muted"
           />
           <Mono dim className="shrink-0 tabular-nums">
             {events.length} events
@@ -132,7 +132,7 @@ export function TraceTree({ events }: { events: AuditEvent[] }) {
             <button
               key={kind}
               onClick={() => setFilter(kind)}
-              className="rounded-sm shadow-line px-2 py-1 text-xs text-muted transition-colors hover:bg-hover"
+              className="rounded-sm px-2 py-1 text-xs text-muted transition-colors hover:bg-hover"
             >
               {humanKind(kind)}{' '}
               <span className="font-mono tabular-nums">{count}</span>
@@ -172,7 +172,7 @@ export function TraceTree({ events }: { events: AuditEvent[] }) {
                       {group.events.length} events
                     </span>
                     {group.notable > 0 ? (
-                      <span className="shrink-0 rounded-sm shadow-line bg-fill-denied px-2 py-1 text-xs text-denied">
+                      <span className="shrink-0 rounded-sm text-xs text-denied">
                         {group.notable} notable
                       </span>
                     ) : null}

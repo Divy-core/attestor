@@ -114,7 +114,7 @@ export function ArtifactsPanel({
     <div className="flex flex-col gap-4 p-4">
       <section className="flex flex-col gap-3">
         <div className="flex items-baseline justify-between gap-4">
-          <h3 className="text-md font-semibold text-primary">Artifacts</h3>
+          <h3 className="text-md font-medium text-primary">Artifacts</h3>
           <Label>what this review produced</Label>
         </div>
 
@@ -168,12 +168,12 @@ export function ArtifactsPanel({
 
       <section className="flex flex-col gap-3 border-t border-subtle pt-4">
         <div className="flex items-baseline justify-between gap-4">
-          <h3 className="text-md font-semibold text-primary">Send to the customer</h3>
+          <h3 className="text-md font-medium text-primary">Send to the customer</h3>
           <Label>irreversible</Label>
         </div>
 
         {sent !== null ? (
-          <div className="flex flex-col gap-2 rounded-sm bg-fill-cited px-3 py-2 shadow-line">
+          <div className="flex flex-col gap-2 rounded-sm bg-fill-cited px-3 py-2">
             <p className="text-sm font-medium text-cited">Sent to {sent.to}.</p>
             <p className="text-xs text-secondary">
               The dispatcher is delivering it. A redelivery of this authorisation is a no-op —
@@ -199,7 +199,7 @@ export function ArtifactsPanel({
                 value={name}
                 onChange={(event) => setName(event.target.value)}
                 placeholder="who is authorising this"
-                className="h-row w-full max-w-list rounded-sm bg-sunken px-2 text-sm text-primary shadow-line outline-none placeholder:text-muted"
+                className="h-row w-full max-w-list rounded-sm bg-sunken px-2 text-sm text-primary outline-none placeholder:text-muted"
               />
             </label>
             <label className="flex flex-col gap-2">
@@ -208,7 +208,7 @@ export function ArtifactsPanel({
                 value={note}
                 onChange={(event) => setNote(event.target.value)}
                 placeholder="optional"
-                className="h-row w-full max-w-list rounded-sm bg-sunken px-2 text-sm text-primary shadow-line outline-none placeholder:text-muted"
+                className="h-row w-full max-w-list rounded-sm bg-sunken px-2 text-sm text-primary outline-none placeholder:text-muted"
               />
             </label>
 

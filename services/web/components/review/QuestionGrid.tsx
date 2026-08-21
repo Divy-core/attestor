@@ -183,7 +183,7 @@ export function QuestionGrid({
             }}
             placeholder="Filter questions"
             aria-label="Filter questions"
-            className="h-row-dense w-full rounded-sm bg-sunken px-2 text-sm text-primary shadow-line outline-none placeholder:text-muted"
+            className="h-row-dense w-full rounded-sm bg-sunken px-2 text-sm text-primary outline-none placeholder:text-muted"
           />
           <Mono dim className="shrink-0">
             {filtered.length}/{rows.length}
@@ -304,7 +304,7 @@ function Chip({
       aria-pressed={active}
       className={cx(
         'inline-flex items-center gap-2 rounded-sm px-2 py-1 text-xs transition-colors',
-        active ? 'bg-active text-primary shadow-line-strong' : 'text-muted hover:bg-hover',
+        active ? 'bg-active text-primary' : 'text-muted hover:bg-hover',
       )}
     >
       {state ? (

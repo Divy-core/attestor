@@ -68,7 +68,7 @@ export function ApprovalQueue({
           value={operator}
           onChange={(event) => setOperator(event.target.value)}
           placeholder="who is reviewing"
-          className="h-row w-full max-w-list rounded-sm bg-sunken px-2 text-sm text-primary shadow-line outline-none placeholder:text-muted"
+          className="h-row w-full max-w-list rounded-sm bg-sunken px-2 text-sm text-primary outline-none placeholder:text-muted"
         />
         {operator.trim() ? null : (
           <span className="text-xs text-muted">
@@ -195,7 +195,7 @@ function ApprovalRow({
           rows={5}
           aria-label="Edited answer"
           className={cx(
-            'w-full rounded-sm shadow-line-strong bg-sunken px-2 py-2 text-sm text-primary',
+            'w-full rounded-sm bg-sunken px-2 py-2 text-sm text-primary',
           )}
         />
       ) : (

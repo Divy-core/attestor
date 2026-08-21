@@ -22,8 +22,8 @@ export function AnswerCard({
   const state = stateFor(answer?.status ?? null, answer?.citations.length ?? 0);
 
   return (
-    <article className="flex flex-col gap-4 rounded shadow-line bg-surface">
-      <header className="flex flex-col gap-2 border-b border-subtle px-4 py-3">
+    <article className="flex flex-col gap-6 rounded border border-line bg-surface pb-6">
+      <header className="flex flex-col gap-3 border-b border-subtle px-6 py-4">
         <div className="flex items-start justify-between gap-4">
           <p className="min-w-0 text-md text-primary">{question.text}</p>
           <StateBadge state={state} />
@@ -46,7 +46,7 @@ export function AnswerCard({
       </header>
 
       {answer === null ? (
-        <div className="px-4 pb-4">
+        <div className="px-6">
           <p className="border-l-2 border-dashed border-line pl-3 text-sm text-secondary">
             Not yet drafted. This question has been triaged to{' '}
             <span className="text-primary">{question.department}</span> and is waiting for that
@@ -55,9 +55,9 @@ export function AnswerCard({
         </div>
       ) : (
         <>
-          <div className="flex flex-col gap-2 px-4">
+          <div className="flex flex-col gap-3 px-6">
             <div className="flex items-baseline gap-3">
-              <span className="text-xs uppercase tracking-wide text-muted">Answer</span>
+              <span className="text-xs text-muted">Answer</span>
               <Mono dim title="The agent that authored this">
                 {answer.authored_by}
               </Mono>
@@ -81,14 +81,14 @@ export function AnswerCard({
             <Verification answer={answer} />
           </div>
 
-          <div className="flex flex-col gap-2 px-4">
-            <span className="text-xs uppercase tracking-wide text-muted">
+          <div className="flex flex-col gap-3 px-6">
+            <span className="text-xs text-muted">
               Evidence · {answer.citations.length}
             </span>
             <CitationList citations={answer.citations} />
           </div>
 
-          <div className="px-4 pb-4">
+          <div className="px-6">
             <ConfidenceMeter answer={answer} />
           </div>
         </>
@@ -120,9 +120,9 @@ function Verification({ answer }: { answer: AnswerRow }) {
   }
   const label = verdict.replace(/_/g, ' ');
   return (
-    <div className="flex flex-col gap-2 rounded-sm bg-sunken px-3 py-2 shadow-line">
+    <div className="flex flex-col gap-2">
       <div className="flex flex-wrap items-baseline gap-3">
-        <span className="text-xs uppercase tracking-wide text-muted">Verified</span>
+        <span className="text-xs text-muted">Verified</span>
         <span
           className={cx(
             'text-sm font-medium',

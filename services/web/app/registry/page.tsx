@@ -1,6 +1,6 @@
 import { AppShell } from '@/components/layout/AppShell';
 import { ScopeMatrix } from '@/components/registry/ScopeMatrix';
-import { Panel, PanelHeader, Empty, Failure, Mono } from '@/components/ui/primitives';
+import { Empty, Failure, Label, Mono, Panel, PanelHeader } from '@/components/ui/primitives';
 import { ApiError, api, type RegistryAgent } from '@/lib/api/client';
 import { describe, engineId, identityFor, isDepartmentEngine, partition } from '@/lib/registry';
 
@@ -36,7 +36,7 @@ export default async function RegistryPage() {
       title="Registry"
       meta={error === null && agents.length > 0 ? describe(split) : undefined}
     >
-      <div className="flex flex-col gap-3 p-6">
+      <div className="mx-auto flex w-full max-w-page flex-col gap-12 px-6 py-8">
         {error !== null ? (
           <Failure
             what="The Agent Registry could not be read."
@@ -55,7 +55,7 @@ export default async function RegistryPage() {
           />
         ) : (
           <>
-            <Panel>
+            <Panel flush>
               <PanelHeader
                 title="Scope"
                 meta={`${split.fleet.filter(isDepartmentEngine).length} department engines, one corpus each`}
@@ -63,15 +63,14 @@ export default async function RegistryPage() {
               <ScopeMatrix agents={split.fleet} />
             </Panel>
 
-            <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 xl:grid-cols-3">
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-3">
               {split.fleet.map((agent) => (
                 <AgentCard key={agent.agent_id} agent={agent} />
               ))}
             </div>
 
-            <Panel>
-              <div className="flex flex-col gap-2 px-4 py-3">
-                <h2 className="text-sm font-medium text-primary">
+            <section className="flex flex-col gap-4">
+                <h2 className="text-md text-primary">
                   What this listing does and does not prove
                 </h2>
                 <p className="max-w-prose text-sm text-secondary">
@@ -81,7 +80,7 @@ export default async function RegistryPage() {
                   discovery is the platform&rsquo;s job and we did not build a catalogue.
                 </p>
                 {!anyIdentityFromRegistry ? (
-                  <p className="max-w-prose text-sm text-secondary">
+                  <p className="max-w-prose text-sm leading-relaxed text-secondary">
                     What it does <em>not</em> carry is identity. The list endpoint returns{' '}
                     <Mono dim>effective_identity</Mono> and <Mono dim>identity_type</Mono> as{' '}
                     <Mono dim>null</Mono> on every entry, so those rows are left blank rather than
@@ -94,7 +93,7 @@ export default async function RegistryPage() {
                   </p>
                 ) : null}
                 {split.other.length > 0 ? (
-                  <p className="max-w-prose text-sm text-secondary">
+                  <p className="max-w-prose text-sm leading-relaxed text-secondary">
                     The registry also catalogues{' '}
                     <span className="text-primary">{split.other.length}</span> agent
                     {split.other.length === 1 ? '' : 's'} that {split.other.length === 1 ? 'is' : 'are'}{' '}
@@ -104,17 +103,16 @@ export default async function RegistryPage() {
                     spoils it is not a count.
                   </p>
                 ) : null}
-              </div>
-            </Panel>
+            </section>
 
             {split.other.length > 0 ? (
-              <Panel>
+              <Panel flush>
                 <PanelHeader title="Other agents in this project" meta="Not deployed by Attestor" />
                 <ul className="flex flex-col">
                   {split.other.map((agent) => (
                     <li
                       key={agent.agent_id}
-                      className="flex items-baseline gap-4 border-b border-subtle px-4 py-2 last:border-b-0"
+                      className="flex items-baseline gap-4 border-b border-subtle px-6 py-4 last:border-b-0"
                     >
                       <span className="min-w-0 flex-1 truncate text-sm text-primary">
                         {agent.display_name ?? 'unnamed'}
@@ -138,12 +136,14 @@ function AgentCard({ agent }: { agent: RegistryAgent }) {
   const engine = engineId(agent);
   const identity = identityFor(agent);
   return (
-    <Panel>
-      <PanelHeader
-        title={agent.display_name ?? agent.name ?? 'unnamed'}
-        meta={isDepartmentEngine(agent) ? agent.department : 'no corpus binding'}
-      />
-      <dl className="flex flex-col gap-2 px-4 py-3">
+    <Panel className="flex flex-col gap-6">
+      <header className="flex min-w-0 flex-col gap-2">
+        <h3 className="truncate text-base text-primary">
+          {agent.display_name ?? agent.name ?? 'unnamed'}
+        </h3>
+        <Label>{isDepartmentEngine(agent) ? agent.department : 'no corpus binding'}</Label>
+      </header>
+      <dl className="flex flex-col gap-4">
         <Field
           label="reasoningEngine"
           value={engine}
@@ -191,7 +191,7 @@ function Field({
 }) {
   return (
     <div className="flex flex-col gap-1">
-      <dt className="text-xs uppercase tracking-wide text-muted">{label}</dt>
+      <dt className="text-xs text-muted">{label}</dt>
       <dd className="min-w-0">
         {value === null ? (
           <span className="block text-sm text-muted">not returned</span>

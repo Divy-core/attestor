@@ -44,13 +44,13 @@ export function InjectionDiff({ event }: { event: AuditEvent }) {
   const documentUri = typeof detail['document_uri'] === 'string' ? detail['document_uri'] : null;
 
   return (
-    <article className="flex flex-col gap-3 rounded shadow-line bg-surface">
+    <article className="flex flex-col gap-3 rounded bg-surface">
       <header className="flex flex-wrap items-baseline justify-between gap-3 border-b border-subtle px-4 py-3">
         <div className="flex items-baseline gap-3">
           <span className="text-sm font-medium text-primary">
             {surface === 'tool_output' ? 'Tool poisoning' : 'Prompt injection'}
           </span>
-          <span className="inline-flex items-center gap-2 rounded-sm shadow-line bg-fill-quarantined px-2 py-1 text-xs text-quarantined">
+          <span className="inline-flex items-center gap-2 rounded-sm text-xs text-quarantined">
             <span aria-hidden className="fill-hatched inline-block h-2 w-2 rounded-sm border border-current" />
             {decision}
           </span>
@@ -77,11 +77,11 @@ export function InjectionDiff({ event }: { event: AuditEvent }) {
 
       {filters.length > 0 ? (
         <div className="flex flex-wrap items-center gap-2 px-4">
-          <span className="text-xs uppercase tracking-wide text-muted">Matched</span>
+          <span className="text-xs text-muted">Matched</span>
           {filters.map((filter) => (
             <span
               key={filter}
-              className="rounded-sm shadow-line bg-fill-denied px-2 py-1 font-mono text-xs text-denied"
+              className="rounded-sm font-mono text-xs text-denied"
             >
               {filter}
             </span>
@@ -91,7 +91,7 @@ export function InjectionDiff({ event }: { event: AuditEvent }) {
 
       {excerpt.length > 0 ? (
         <div className="px-4 pb-4">
-          <span className="text-xs uppercase tracking-wide text-muted">
+          <span className="text-xs text-muted">
             The payload, as submitted
           </span>
           {/*
@@ -121,7 +121,7 @@ export function InjectionDiff({ event }: { event: AuditEvent }) {
 function Meta({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
     <div className="flex min-w-0 flex-col gap-1">
-      <span className="text-xs uppercase tracking-wide text-muted">{label}</span>
+      <span className="text-xs text-muted">{label}</span>
       <Mono title={hint} className="truncate text-sm">
         {value}
       </Mono>
