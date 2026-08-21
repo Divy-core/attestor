@@ -172,7 +172,14 @@ export function QuestionGrid({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex flex-col gap-2 border-b border-subtle px-4 py-3">
+      {/*
+        Thirteen controls stacked in three rows is what a filter bar looks like when every
+        option gets a chip. Two changes halve it without losing anything: departments become
+        one select, and a state chip only appears when the round actually has answers in that
+        state. On a real round that is three or four rather than seven -- and a chip reading
+        `Denied 0` is a control that cannot do anything, taking up space next to ones that can.
+      */}
+      <div className="flex flex-col gap-3 border-b border-subtle px-4 py-3">
         <div className="flex items-center gap-2">
           <input
             ref={search}
@@ -183,40 +190,45 @@ export function QuestionGrid({
             }}
             placeholder="Filter questions"
             aria-label="Filter questions"
-            className="h-row-dense w-full rounded-sm bg-sunken px-2 text-sm text-primary outline-none placeholder:text-muted"
+            className="h-row-dense min-w-0 flex-1 rounded-sm border border-subtle bg-transparent px-3 text-sm text-primary outline-none transition-colors placeholder:text-muted focus:border-line"
           />
+          <select
+            value={filters.department}
+            aria-label="Department"
+            onChange={(event) =>
+              onFilters({ ...filters, department: event.target.value as Department | 'all' })
+            }
+            className="h-row-dense shrink-0 rounded-sm border border-subtle bg-transparent px-2 text-sm text-secondary outline-none"
+          >
+            {DEPARTMENTS.map((value) => (
+              <option key={value} value={value}>
+                {value === 'all' ? 'All departments' : value}
+              </option>
+            ))}
+          </select>
           <Mono dim className="shrink-0">
             {filtered.length}/{rows.length}
           </Mono>
         </div>
 
-        <div className="flex flex-wrap items-center gap-1">
-          {DEPARTMENTS.map((value) => (
-            <Chip
-              key={value}
-              label={value === 'all' ? 'All departments' : value}
-              active={filters.department === value}
-              onClick={() => onFilters({ ...filters, department: value })}
-            />
-          ))}
-        </div>
-
-        <div className="flex flex-wrap items-center gap-1">
+        <div className="flex flex-wrap items-center gap-2">
           <Chip
             label="Any state"
             active={filters.state === 'all'}
             onClick={() => onFilters({ ...filters, state: 'all' })}
           />
-          {STATE_ORDER.map((key) => (
-            <Chip
-              key={key}
-              label={STATES[key].label}
-              count={counts.get(key) ?? 0}
-              active={filters.state === key}
-              onClick={() => onFilters({ ...filters, state: key })}
-              state={key}
-            />
-          ))}
+          {STATE_ORDER.filter((key) => (counts.get(key) ?? 0) > 0 || filters.state === key).map(
+            (key) => (
+              <Chip
+                key={key}
+                label={STATES[key].label}
+                count={counts.get(key) ?? 0}
+                active={filters.state === key}
+                onClick={() => onFilters({ ...filters, state: key })}
+                state={key}
+              />
+            ),
+          )}
         </div>
       </div>
 
