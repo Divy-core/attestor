@@ -42,7 +42,7 @@ import logging
 import os
 import time
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request, status
@@ -73,6 +73,7 @@ from attestor_platform.firestore import (
 )
 from attestor_platform.pubsub import WorkPublisher
 from attestor_platform.storage import StorageClient
+from attestor_platform.thread import answer_from_trail, build_thread
 from control_plane.guard import require_capacity, require_write_token
 from control_plane.streaming import RunEventStream
 
@@ -682,9 +683,7 @@ def inbox_status() -> dict[str, Any]:
     """
     cursor = inbox_state().cursor()
     expiration_ms = int(cursor.get("expiration_ms") or 0)
-    expires_at = (
-        datetime.fromtimestamp(expiration_ms / 1000, tz=UTC) if expiration_ms else None
-    )
+    expires_at = datetime.fromtimestamp(expiration_ms / 1000, tz=UTC) if expiration_ms else None
     return {
         "watching": bool(expiration_ms),
         "address": cursor.get("address") or "",
@@ -793,6 +792,164 @@ def list_artifacts(review_id: str) -> list[dict[str, Any]]:
     access to is a string.
     """
     return artifacts().for_review(review_id)
+
+
+# ---------------------------------------------------------------------------------
+# The thread -- the audit trail read back as the conversation that produced it
+# ---------------------------------------------------------------------------------
+
+#: How many audit events one thread read may take in.
+#:
+#: A 312-question round writes roughly 1,200. The ceiling is above that on purpose: a
+#: thread built from the first thousand of twelve hundred events would describe part of a
+#: run as all of it, and the counts a post quotes would silently disagree with the grid.
+#: When the ceiling *is* hit the projection is told, and the thread says so rather than
+#: rendering a confident half-story.
+MAX_THREAD_EVENTS = 4000
+
+
+#: What one thread read needs: the review, its rounds, the target round's questions and
+#: answers, the audit trail, and whether that trail was cut short.
+ThreadInputs = tuple[Review, list[Round], list[Any], list[Any], list[dict[str, Any]], bool]
+
+
+def _thread_inputs(review_id: str, round_id: str | None) -> ThreadInputs:
+    """Everything the projection reads, and whether the audit read hit its ceiling.
+
+    One place, because the thread endpoint and the ask endpoint need exactly the same
+    five reads and a drifting pair of them would mean a reply grounded in a different
+    round from the one on screen.
+    """
+    review = reviews().get(review_id)
+    if review is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"no review {review_id}")
+
+    all_rounds = rounds().for_review(review_id)
+    target = None
+    if round_id is not None:
+        target = next((r for r in all_rounds if r.round_id == round_id), None)
+        if target is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, f"no round {round_id}")
+    elif all_rounds:
+        target = max(all_rounds, key=lambda r: r.ordinal)
+
+    round_questions = questions().for_round(target.round_id) if target else []
+    round_answers = answers().for_round(target.round_id) if target else []
+    events = audit().for_review(review_id, limit=MAX_THREAD_EVENTS)
+    truncated = len(events) >= MAX_THREAD_EVENTS
+    return review, all_rounds, round_questions, round_answers, events, truncated
+
+
+@router.get("/reviews/{review_id}/thread")
+def get_thread(review_id: str, round_id: str | None = None) -> dict[str, Any]:
+    """The review, as a conversation between the agents that worked it.
+
+    A read over records that already existed. Nothing is written to serve this, and no
+    model is called to compose it -- see `attestor_platform.thread` for why both of those
+    are load-bearing rather than incidental.
+
+    Aggregated **here** rather than in the browser. Twelve hundred audit events serialised
+    into a page payload so the client can pick a dozen summaries out of them is half a
+    megabyte of JSON to render fifteen lines, and it is the same mistake as the 312-row
+    grid in a different place.
+    """
+    review, all_rounds, round_questions, round_answers, events, truncated = _thread_inputs(
+        review_id, round_id
+    )
+    thread = build_thread(
+        review=review,
+        rounds=all_rounds,
+        questions=round_questions,
+        answers=round_answers,
+        events=events,
+        artifacts=artifacts().for_review(review_id),
+        truncated=truncated,
+    )
+    return thread.as_dict()
+
+
+class AskRequest(BaseModel):
+    """A question a person typed into the thread."""
+
+    question: str = Field(min_length=1, max_length=1000)
+    #: `Actor` rather than a bare string, for the same reason approvals use it: this ends
+    #: up in the append-only record as the person who asked, and three spaces is not a
+    #: person.
+    asked_by: Actor
+
+
+@router.post("/reviews/{review_id}/ask", status_code=status.HTTP_201_CREATED)
+def ask(review_id: str, body: AskRequest, request: Request) -> dict[str, Any]:
+    """Answer a question about this review out of its own audit trail.
+
+    ## Why this is a write
+
+    Both halves are appended to `audit_events`: `human_asked` with the person's name on it,
+    and `orchestrator_answered` with the reply and the blocks it was built from. A
+    conversation about a compliance decision belongs in the compliance record, and storing
+    the reply whole is what makes the thread reproducible -- recomposing it on every read
+    would let the same question answer differently in June from how it answered in January.
+
+    ## Why it is guarded but not capacity-checked
+
+    `require_write_token` applies because this writes. `require_capacity` does not, because
+    the ceiling it enforces is on *fleet* work and this spends nothing: no model call, no
+    retrieval, no engine. It reads five collections and runs string templates over them.
+    """
+    require_write_token(request)
+    review, _all_rounds, round_questions, round_answers, events, _truncated = _thread_inputs(
+        review_id, None
+    )
+
+    run_id = next(
+        (str(e["run_id"]) for e in events if e.get("run_id")),
+        f"ask-{uuid.uuid4().hex[:8]}",
+    )
+    round_id = next((str(e["round_id"]) for e in events if e.get("round_id")), None)
+
+    composed = answer_from_trail(
+        body.question,
+        review=review,
+        questions=round_questions,
+        answers=round_answers,
+        events=events,
+    )
+
+    asked_at = datetime.now(UTC).isoformat()
+    audit().append_safe(
+        {
+            "kind": "human_asked",
+            "review_id": review_id,
+            "run_id": run_id,
+            "round_id": round_id,
+            "question_id": composed.question_id,
+            "actor": body.asked_by,
+            "occurred_at": asked_at,
+            "detail": {"question": body.question},
+        }
+    )
+    audit().append_safe(
+        {
+            "kind": "orchestrator_answered",
+            "review_id": review_id,
+            "run_id": run_id,
+            "round_id": round_id,
+            "question_id": composed.question_id,
+            "actor": "Orchestrator",
+            # One microsecond after the question, so the sort in the projection cannot put
+            # the answer above the question it answers. Two `datetime.now()` calls in the
+            # same request can return the same value, and a thread that renders the reply
+            # first is a thread nobody trusts.
+            "occurred_at": _just_after(asked_at),
+            "detail": composed.as_detail(),
+        }
+    )
+    return {"asked_at": asked_at, **composed.as_detail()}
+
+
+def _just_after(iso: str) -> str:
+    """One microsecond later, as a string. See the call site for why."""
+    return (datetime.fromisoformat(iso) + timedelta(microseconds=1)).isoformat()
 
 
 @router.get("/registry")

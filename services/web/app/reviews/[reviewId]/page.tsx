@@ -1,86 +1,83 @@
 import Link from 'next/link';
 
 import { AppShell } from '@/components/layout/AppShell';
-import { NewReviewButton } from '@/components/review/NewReview';
-import { ReviewWorkspace } from '@/components/review/ReviewWorkspace';
+import { ReviewSurface } from '@/components/review/ReviewSurface';
 import { RoundTimeline } from '@/components/review/RoundTimeline';
 import { Button, Failure, Mono } from '@/components/ui/primitives';
 import {
   ApiError,
   api,
   type AnswerRow,
-  type AuditEvent,
   type QuestionRow,
   type ReviewDetailRow,
 } from '@/lib/api/client';
 import { absolute, ago } from '@/lib/format';
+import { isTab, type Tab } from '@/lib/tabs';
+import type { ThreadPayload } from '@/lib/types/thread';
 
 export const dynamic = 'force-dynamic';
 
-/** The orchestrator's own judgement calls. Kept in step with `FleetActivity`. */
-const JUDGEMENT_KINDS = new Set(['plan_selected', 'retry_decided', 'run_completed']);
-
 /**
- * The workspace. Server component: the first paint carries real data from the deployed control
- * plane, and `ReviewWorkspace` keeps it live from there.
+ * A review, opening on its thread.
  *
- * Server-rendering the first read rather than fetching on mount matters for the recording. A
- * client-fetched page shows its skeleton for the length of a round trip on every navigation,
- * which on a 1080p take is a second of nothing at the moment the presenter starts talking.
+ * Server component: the first paint carries real data from the deployed control plane, and
+ * the client components keep it live from there. Server-rendering the first read rather
+ * than fetching on mount matters for the recording — a client-fetched page shows its
+ * skeleton for the length of a round trip on every navigation, which on a 1080p take is a
+ * second of nothing at the moment the presenter starts talking.
+ *
+ * ## Four reads, and each one degrades on its own
+ *
+ * The review, its questions, its answers, its thread. A failed thread read renders as a
+ * failed thread read, never as a review with nothing in it; a failed grid read is the same.
+ * That distinction has been made five times in the Python half of this build and is worth
+ * every repetition: an empty surface during a recorded demo, caused by a 503 nobody
+ * surfaced, is the worst version of it.
+ *
+ * The audit trail is **not** among them. It is a thousand documents that only the Audit tab
+ * renders, and that tab fetches it when it is opened.
  */
 export default async function ReviewPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ reviewId: string }>;
+  searchParams: Promise<{ tab?: string }>;
 }) {
   const { reviewId } = await params;
+  const { tab } = await searchParams;
+  const initialTab: Tab = isTab(tab) ? tab : 'thread';
 
   let review: ReviewDetailRow | null = null;
   let questions: QuestionRow[] = [];
   let answers: AnswerRow[] = [];
+  let thread: ThreadPayload | null = null;
   let loadError: string | null = null;
-  let runId: string | null = null;
-  let arrivedByEmail = false;
-  let judgements: AuditEvent[] = [];
+  let threadError: string | null = null;
 
   try {
     review = await api.getReview(reviewId);
-    // The latest round is the one being worked. `rounds` comes back ordered by the repository,
-    // but ordering by ordinal here rather than trusting position keeps this correct if that
-    // changes.
+    // The latest round is the one being worked. `rounds` comes back ordered by the
+    // repository, but ordering by ordinal here rather than trusting position keeps this
+    // correct if that ever changes.
     const latest = [...review.rounds].sort((a, b) => b.ordinal - a.ordinal)[0] ?? null;
     if (latest !== null) {
-      [questions, answers] = await Promise.all([
+      const [questionResult, answerResult, threadResult] = await Promise.allSettled([
         api.listQuestions(latest.round_id),
         api.listAnswers(latest.round_id),
+        api.getThread(reviewId),
       ]);
-      // The run id is not on the round: it is on the audit events the run wrote. Reading it
-      // from the most recent event is how the page knows which stream to open, and if there is
-      // no event yet there is no run to watch — which the workspace says rather than opening a
-      // stream to nothing.
-      // One read, two uses, and both are filtered here rather than in the browser. A 312-
-      // question review has ~949 audit events; serialising all of them into the page payload to
-      // pick four out on the client would put half a megabyte of JSON into the HTML.
-      const audit = await api.listAudit(reviewId, 1000);
-      runId = audit.find((event) => event.run_id)?.run_id ?? null;
-      // Whether this review arrived by email, read from the trail rather than from a second
-      // query. Only a review with a thread can be replied to, and the send control has to
-      // know before it renders -- a button that 409s when pressed is worse than one that
-      // explains why it is absent.
-      arrivedByEmail = audit.some(
-        (event) =>
-          event.kind === 'review_started_by_email' || event.kind === 'follow_up_started_by_email',
-      );
-      judgements = audit
-        .filter((event) => JUDGEMENT_KINDS.has(event.kind))
-        // `for_review` applies no ordering -- Firestore returns documents in id order, which for
-        // auto-ids is arbitrary -- so the sort is done here rather than assumed. Oldest first, so
-        // the live stream can simply append.
-        .sort((a, b) => String(a.recorded_at ?? '').localeCompare(String(b.recorded_at ?? '')))
-        .slice(-8);
+
+      if (questionResult.status === 'fulfilled') questions = questionResult.value;
+      if (answerResult.status === 'fulfilled') answers = answerResult.value;
+      if (questionResult.status === 'rejected') loadError = describe(questionResult.reason);
+      else if (answerResult.status === 'rejected') loadError = describe(answerResult.reason);
+
+      if (threadResult.status === 'fulfilled') thread = threadResult.value;
+      else threadError = describe(threadResult.reason);
     }
   } catch (cause) {
-    loadError = cause instanceof ApiError ? cause.human : String(cause);
+    loadError = describe(cause);
   }
 
   const latestRound =
@@ -107,7 +104,7 @@ export default async function ReviewPage({
               <div className="w-full border-t border-dashed border-line" />
               <h3 className="pt-3 text-sm font-medium text-primary">This review has no rounds</h3>
               <p className="max-w-prose text-sm text-secondary">
-                A round appears when a questionnaire is uploaded and{' '}
+                A round appears when a questionnaire is parsed and{' '}
                 <Mono dim>intake_document</Mono> is published. Nothing here is created by this
                 interface — the review advances by Pub/Sub message.
               </p>
@@ -118,44 +115,50 @@ export default async function ReviewPage({
     );
   }
 
+  const pendingCount = answers.filter((answer) => answer.status === 'needs_human').length;
+
+  // The run id and "did this arrive by email" both come off the thread, which already read
+  // the trail to build itself. They used to cost a second full audit read of up to a
+  // thousand documents, taken purely to pick two facts out of it.
+  const runId = thread?.run_id ?? null;
+  const arrivedByEmail = thread?.arrived_by_email ?? false;
+
   return (
     <AppShell
-      // The one page that scrolls itself: three panes, each with its own overflow.
+      // The one page that scrolls itself: every tab manages its own panes.
       scroll={false}
       pathname={`/reviews/${reviewId}`}
       title={review.customer}
       meta={
         <>
-          {review.state} · round {review.current_round} ·{' '}
+          {review.state.replace(/_/g, ' ')} · round {review.current_round} ·{' '}
           <span title={absolute(review.created_at)}>{ago(review.created_at)}</span>
         </>
       }
-      actions={
-        <>
-          {runId !== null ? (
-            <Link href={`/traces/${runId}`}>
-              <Button tone="ghost">Audit trail</Button>
-            </Link>
-          ) : null}
-          <NewReviewButton tone="secondary" />
-        </>
-      }
+      reviews={[review]}
     >
       <div className="flex h-full flex-col">
         <RoundTimeline rounds={review.rounds} createdAt={review.created_at} />
         <div className="min-h-0 flex-1">
-          <ReviewWorkspace
+          <ReviewSurface
             reviewId={reviewId}
             roundId={latestRound.round_id}
             runId={runId}
+            initialTab={initialTab}
+            initialThread={thread}
             initialQuestions={questions}
             initialAnswers={answers}
-            initialJudgements={judgements}
+            threadError={threadError}
             loadError={loadError}
             arrivedByEmail={arrivedByEmail}
+            pendingCount={pendingCount}
           />
         </div>
       </div>
     </AppShell>
   );
+}
+
+function describe(cause: unknown): string {
+  return cause instanceof ApiError ? cause.human : String(cause);
 }

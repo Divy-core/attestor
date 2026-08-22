@@ -37,6 +37,8 @@ const OVERSCAN = 8;
 type Row = {
   question: QuestionRow;
   answer: AnswerRow | null;
+  /** `Q112`. Position in the round, which is what every other surface calls it. */
+  label: string;
   state: StateKey;
 };
 
@@ -85,11 +87,15 @@ export function QuestionGrid({
 
   const rows = useMemo<Row[]>(
     () =>
-      questions.map((question) => {
+      questions.map((question, position) => {
         const answer = answers.get(question.question_id) ?? null;
         return {
           question,
           answer,
+          // The number the rest of the product calls this question. Assigned from position
+          // in the round -- the same rule `attestor_platform.thread` uses -- so a thread
+          // post reading "Q112 is held" names a row a person can find here.
+          label: `Q${position + 1}`,
           state: stateFor(answer?.status ?? null, answer?.citations.length ?? 0).key,
         };
       }),
@@ -112,7 +118,8 @@ export function QuestionGrid({
         return false;
       if (filters.state !== 'all' && row.state !== filters.state) return false;
       if (needle.length > 0) {
-        const haystack = `${row.question.text} ${row.question.question_id}`.toLowerCase();
+        const haystack =
+          `${row.label} ${row.question.text} ${row.question.question_id}`.toLowerCase();
         if (!haystack.includes(needle)) return false;
       }
       return true;
@@ -260,6 +267,9 @@ export function QuestionGrid({
                   >
                     <span className={cx('flex shrink-0 items-center', state.ink)} title={state.meaning}>
                       <StateDot form={state.form} />
+                    </span>
+                    <span className="w-10 shrink-0 font-mono text-xs tabular-nums text-muted">
+                      {row.label}
                     </span>
                     <span className="min-w-0 flex-1 truncate text-sm text-primary">
                       {row.question.text}

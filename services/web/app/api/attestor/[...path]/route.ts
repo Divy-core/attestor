@@ -49,6 +49,7 @@ const ALLOWED: ReadonlyArray<{ method: 'GET' | 'POST'; pattern: RegExp }> = [
   { method: 'GET', pattern: /^rounds\/[^/]+\/answers$/ },
   { method: 'GET', pattern: /^registry$/ },
   { method: 'GET', pattern: /^reviews\/[^/]+\/artifacts$/ },
+  { method: 'GET', pattern: /^reviews\/[^/]+\/thread$/ },
   { method: 'GET', pattern: /^inbox$/ },
   { method: 'POST', pattern: /^rounds\/[^/]+\/answers\/[^/]+\/approval$/ },
   // The entrance. In the order the New review flow calls them.
@@ -63,6 +64,10 @@ const ALLOWED: ReadonlyArray<{ method: 'GET' | 'POST'; pattern: RegExp }> = [
   // control plane still requires the token, the protocol still requires a named human on the
   // envelope, and the dispatcher still does the sending.
   { method: 'POST', pattern: /^reviews\/[^/]+\/deliver$/ },
+  // Asking the thread a question. A write because both halves of the exchange are
+  // appended to the audit trail; it spends nothing, calls no model, and reaches no
+  // engine. See `attestor_platform.thread.answering` for why that last part matters.
+  { method: 'POST', pattern: /^reviews\/[^/]+\/ask$/ },
 ];
 
 /**

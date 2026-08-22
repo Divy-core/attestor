@@ -1,9 +1,10 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useState } from 'react';
 
 import { Button, Label, Mono, cx } from '@/components/ui/primitives';
 import type { AnswerRow, QuestionRow } from '@/lib/api/client';
+import { useOperator } from '@/lib/operator';
 
 /**
  * The human gate.
@@ -93,36 +94,6 @@ export function ApprovalQueue({
   );
 }
 
-/**
- * The reviewer's name, remembered for the session.
- *
- * Until Phase 7 this was the literal string `console-operator`, under a comment saying "a
- * real name, not `system`" -- a comment asserting something the code did not do. The audit
- * trail therefore recorded every approval against a constant, which cannot answer "who
- * approved this" and is the one question the trail exists for.
- *
- * `localStorage`, so it is asked once rather than per answer -- a reviewer working through
- * forty held answers must not retype their name forty times. It is not authentication and
- * makes no claim to be: nothing verifies it, the same way nothing verifies the token in
- * `guard.py`. It is an attribution, and an attribution a person typed is strictly better
- * than a constant a developer typed.
- */
-function useOperator(): [string, (next: string) => void] {
-  const [operator, setOperator] = useState('');
-
-  useEffect(() => {
-    setOperator(window.localStorage.getItem(OPERATOR_KEY) ?? '');
-  }, []);
-
-  const update = useCallback((next: string) => {
-    setOperator(next);
-    window.localStorage.setItem(OPERATOR_KEY, next);
-  }, []);
-
-  return [operator, update];
-}
-
-const OPERATOR_KEY = 'attestor-operator';
 
 function ApprovalRow({
   question,

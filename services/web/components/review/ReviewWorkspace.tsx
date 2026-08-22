@@ -5,8 +5,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { AnswerCard } from '@/components/review/AnswerCard';
 import { ApprovalQueue } from '@/components/review/ApprovalQueue';
-import { ArtifactsPanel } from '@/components/review/ArtifactsPanel';
-import { ExportPanel } from '@/components/review/ExportPanel';
 import { FleetActivity } from '@/components/review/FleetActivity';
 import { EMPTY_FILTERS, QuestionGrid, type GridFilters } from '@/components/review/QuestionGrid';
 import { StreamIndicator } from '@/components/review/StreamIndicator';
@@ -75,21 +73,18 @@ import type { StateKey } from '@/lib/states';
  */
 
 type Props = {
-  reviewId: string;
   roundId: string;
   runId: string | null;
   initialQuestions: QuestionRow[];
   initialAnswers: AnswerRow[];
-  /** The orchestrator's judgement events as of the server render. Filtered server-side. */
-  initialJudgements: AuditEvent[];
   /** Set when the server-side read failed. The page renders the error rather than an empty grid. */
   loadError: string | null;
   /**
-   * Whether this review came in on an email thread. A review started from the browser has
-   * nowhere to reply to, and the send control says so rather than offering a button that
-   * 409s when pressed.
+   * A row another surface asked for. The thread names a question in an expanded block and
+   * the evidence panel names one per document; both land here, on that row, rather than at
+   * the top of a list of 312 with the reader left to find it.
    */
-  arrivedByEmail: boolean;
+  focusQuestion?: string | null;
 };
 
 /**
@@ -105,20 +100,22 @@ const MIN_REFETCH_INTERVAL_MS = 1_200;
 const JUDGEMENT_KINDS = new Set(['plan_selected', 'retry_decided', 'run_completed']);
 
 export function ReviewWorkspace({
-  reviewId,
   roundId,
   runId,
   initialQuestions,
   initialAnswers,
-  initialJudgements,
   loadError,
-  arrivedByEmail,
+  focusQuestion,
 }: Props) {
   const params = useSearchParams();
 
   const [questions, setQuestions] = useState(initialQuestions);
   const [answers, setAnswers] = useState(initialAnswers);
-  const [judgements, setJudgements] = useState<AuditEvent[]>(initialJudgements);
+  // Accumulated from the stream rather than seeded from a server read. Seeding it cost a
+  // full audit read of the review on every page load, taken to render at most four lines;
+  // the band fills in from the stream within a second of a run doing anything, and on a
+  // finished run there is nothing live to show anyway.
+  const [judgements, setJudgements] = useState<AuditEvent[]>([]);
 
   // The URL seeds this state and then mirrors it. It is deliberately NOT the source of
   // truth, and the first version of this component made it one -- `router.replace` per
@@ -128,12 +125,13 @@ export function ReviewWorkspace({
   //
   // So navigation is local state, and `history.replaceState` writes the shareable URL
   // afterwards. Same link, no round trip, and the grid responds at the speed of a keypress.
-  const [view, setView] = useState<'answer' | 'queue' | 'export' | 'artifacts'>(() => {
-    const initial = params.get('view');
-    return initial === 'queue' || initial === 'export' || initial === 'artifacts'
-      ? initial
-      : 'answer';
-  });
+  // Two views, not four. Export and Artifacts were tabs here and are now tabs of the
+  // review itself, one level up: they are properties of the *review*, not of the question
+  // the cursor happens to be on, and nesting them under a selected row was a filing
+  // mistake that put the deliverable three clicks from the landing surface.
+  const [view, setView] = useState<'answer' | 'queue'>(() =>
+    params.get('view') === 'queue' ? 'queue' : 'answer',
+  );
   const [selected, setSelected] = useState<string | null>(
     () => params.get('sel') ?? initialQuestions[0]?.question_id ?? null,
   );
@@ -144,11 +142,19 @@ export function ReviewWorkspace({
   }));
 
   const showQueue = view === 'queue';
-  const showExport = view === 'export';
-  const showArtifacts = view === 'artifacts';
+
+  // A row another surface asked for wins over whatever was selected here.
+  useEffect(() => {
+    if (focusQuestion) setSelected(focusQuestion);
+  }, [focusQuestion]);
 
   useEffect(() => {
-    const next = new URLSearchParams();
+    const next = new URLSearchParams(window.location.search);
+    next.delete('q');
+    next.delete('dept');
+    next.delete('state');
+    next.delete('view');
+    next.delete('sel');
     if (filters.query) next.set('q', filters.query);
     if (filters.department !== 'all') next.set('dept', filters.department);
     if (filters.state !== 'all') next.set('state', filters.state);
@@ -374,22 +380,12 @@ export function ReviewWorkspace({
         {/* Pane three: the answer, its evidence, and the two things a person does with it. */}
         <div className="flex min-h-0 min-w-detail flex-col">
           <nav className="flex shrink-0 items-center gap-1 border-b border-subtle px-4 py-2">
-            <ViewTab
-              label="Answer"
-              active={!showQueue && !showExport}
-              onClick={() => setView('answer')}
-            />
+            <ViewTab label="Answer" active={!showQueue} onClick={() => setView('answer')} />
             <ViewTab
               label="Needs a human"
               count={pending.length}
               active={showQueue}
               onClick={() => setView('queue')}
-            />
-            <ViewTab label="Export" active={showExport} onClick={() => setView('export')} />
-            <ViewTab
-              label="Artifacts"
-              active={showArtifacts}
-              onClick={() => setView('artifacts')}
             />
             <div className="ml-auto flex items-center gap-2">
               {runId === null ? (
@@ -418,10 +414,6 @@ export function ReviewWorkspace({
                 focus={selected}
                 onResolved={() => poller.now()}
               />
-            ) : showExport ? (
-              <ExportPanel reviewId={reviewId} roundId={roundId} />
-            ) : showArtifacts ? (
-              <ArtifactsPanel reviewId={reviewId} canDeliver={arrivedByEmail} />
             ) : selectedQuestion === null ? (
               <Empty
                 title="No question selected"

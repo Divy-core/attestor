@@ -17,6 +17,7 @@
 
 import { env, READ_TIMEOUT_MS, WRITE_TIMEOUT_MS } from '@/lib/env';
 import type { ApprovalRequest } from '@/lib/types/generated';
+import type { ThreadPayload } from '@/lib/types/thread';
 
 export class ApiError extends Error {
   readonly status: number;
@@ -128,6 +129,21 @@ export const api = {
   /** Every file this review produced, and where it went. */
   listArtifacts: (reviewId: string) =>
     call<ArtifactRow[]>(`/reviews/${encodeURIComponent(reviewId)}/artifacts`),
+
+  /**
+   * The review as a conversation between the agents that worked it.
+   *
+   * Aggregated by the control plane rather than here. A 312-question round writes ~1,200
+   * audit events, and serialising all of them into the page payload so the browser can pick
+   * a dozen summaries out of them is half a megabyte of JSON to render fifteen lines. The
+   * projection is `attestor_platform.thread`; it reads records that already exist, writes
+   * nothing, and calls no model.
+   */
+  getThread: (reviewId: string, roundId?: string) =>
+    call<ThreadPayload>(
+      `/reviews/${encodeURIComponent(reviewId)}/thread` +
+        (roundId ? `?round_id=${encodeURIComponent(roundId)}` : ''),
+    ),
 
   /**
    * Approve or edit one answer.

@@ -73,8 +73,18 @@ export function createPoller(
     timer = setTimeout(run, interval());
   }
 
-  async function run(): Promise<void> {
-    if (!running || inFlight) return;
+  /**
+   * One poll, with no opinion about scheduling.
+   *
+   * Separated from `run` because `now()` must work when the loop is **not** running, and
+   * before Phase 8 it did not: `run` began with `if (!running) return`, so the manual
+   * Refresh control was inert on every review whose stream had closed — which is every
+   * finished review, and every review a person opens the day after. The docstring on
+   * `now()` had said "poll once, immediately" since Phase 6. It was found by pressing the
+   * button, not by reading the code.
+   */
+  async function once(): Promise<void> {
+    if (inFlight) return;
     inFlight = true;
     try {
       const changed = await fetchOnce();
@@ -85,8 +95,13 @@ export function createPoller(
       quietRuns += 1;
     } finally {
       inFlight = false;
-      schedule();
     }
+  }
+
+  async function run(): Promise<void> {
+    if (!running) return;
+    await once();
+    schedule();
   }
 
   return {
@@ -107,7 +122,7 @@ export function createPoller(
     },
     now(): void {
       quietRuns = 0;
-      void run();
+      void once();
     },
     get running(): boolean {
       return running;
