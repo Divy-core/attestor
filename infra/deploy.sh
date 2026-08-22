@@ -113,7 +113,15 @@ grant() {
 # `sanitizeUserPrompt` does not error, it quarantines every question it is given. The
 # first deployed run delivered a review with twelve quarantined answers and zero
 # citations, reported `delivered`, and the only sign was a 403 in the logs.
-for role in roles/datastore.user roles/pubsub.publisher roles/aiplatform.user \
+#
+# `pubsub.viewer` is for the Connections page's pre-flight: does the Gmail topic exist,
+# and is anyone subscribed to it. Those are the two failures `users.watch` accepts without
+# complaint. It deliberately does NOT extend to reading the topic's IAM policy --
+# `pubsub.topics.getIamPolicy` is not in this role, measured on the deployed service, and
+# the fix is not `pubsub.admin` for a status page: Gmail's own 403 is the authoritative
+# answer to whether it may publish, and it is relayed verbatim.
+for role in roles/datastore.user roles/pubsub.publisher roles/pubsub.viewer \
+            roles/aiplatform.user \
             roles/storage.objectViewer roles/cloudtrace.agent roles/logging.logWriter \
             roles/modelarmor.user roles/discoveryengine.viewer; do
     grant "$DISPATCHER_SA" "$role"
@@ -560,4 +568,5 @@ printf '  dispatcher    : %s\n' "$DISPATCHER_URL"
 printf '  web           : %s\n' "${WEB_URL:-not deployed}"
 printf '  subscription  : %s -> %s/pubsub/push\n' "$PUSH_SUBSCRIPTION" "$DISPATCHER_URL"
 printf '  inbound mail  : %s -> %s/gmail/push\n' "$GMAIL_SUBSCRIPTION" "$DISPATCHER_URL"
-printf '                  register the watch: PROJECT_ID=%s uv run python tools/gmail_watch.py --apply\n' "$PROJECT_ID"
+printf '                  connect the mailbox at %s/connections
+' "${WEB_URL:-the web service}"

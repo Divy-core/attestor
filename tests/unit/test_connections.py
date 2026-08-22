@@ -241,3 +241,75 @@ class TestConsentIsABooleanAndNotAnException:
             lambda: {"client_id": "a", "client_secret": "b", "refresh_token": "c"},
         )
         assert watch_module.has_consent() is True
+
+
+class TestAnUnreadablePolicyIsNotABrokenTopic:
+    """Measured on the deployed service: `pubsub.topics.getIamPolicy` is not in
+    `roles/pubsub.viewer`, so the same check that passed under a developer's own credentials
+    came back 403 in Cloud Run. Reporting a healthy topic as broken because a *status read*
+    was refused is the failure-impersonating-empty shape, and it would have blocked Connect
+    on a deployment where everything was fine."""
+
+    def test_an_unchecked_binding_does_not_block_registration(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        consent(monkeypatch, granted=True)
+        topic(
+            monkeypatch,
+            TopicCheck(
+                exists=True,
+                publisher_bound=False,
+                publisher_checked=False,
+                subscriptions=("projects/p/subscriptions/s",),
+                note="cannot be checked from this service",
+            ),
+        )
+        mailbox = Mailbox()
+        result = register(project="p", topic="t", gmail=mailbox, state=FakeState())
+        assert mailbox.watched == ["projects/p/topics/t"]
+        assert result.connected is True
+
+    def test_a_binding_that_was_read_and_is_absent_still_blocks(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The difference that matters: unknown is not the same as known-missing."""
+        consent(monkeypatch, granted=True)
+        topic(
+            monkeypatch,
+            TopicCheck(
+                exists=True,
+                publisher_bound=False,
+                publisher_checked=True,
+                subscriptions=("projects/p/subscriptions/s",),
+                note="Gmail's publisher identity is not permitted to publish",
+            ),
+        )
+        mailbox = Mailbox()
+        with pytest.raises(WatchRefused, match="not permitted to publish"):
+            register(project="p", topic="t", gmail=mailbox, state=FakeState())
+        assert mailbox.watched == []
+
+    def test_no_subscribers_blocks_however_the_binding_reads(self) -> None:
+        assert (
+            TopicCheck(
+                exists=True, publisher_bound=True, publisher_checked=False, subscriptions=()
+            ).deliverable
+            is False
+        )
+
+    def test_gmails_own_refusal_is_relayed_verbatim(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Gmail is the authority on whether it may publish, and its 4xx names the topic."""
+        from attestor_core.errors import ContextUnavailable
+
+        consent(monkeypatch, granted=True)
+        topic(monkeypatch, DELIVERABLE)
+
+        class Refusing(Mailbox):
+            def watch(self, topic: str) -> Registration:
+                raise ContextUnavailable(
+                    "gmail POST /watch -> 403: User not authorized to perform this action.",
+                    status_code=403,
+                )
+
+        with pytest.raises(WatchRefused, match="User not authorized"):
+            register(project="p", topic="t", gmail=Refusing(), state=FakeState())

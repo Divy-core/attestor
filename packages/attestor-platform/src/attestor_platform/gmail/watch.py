@@ -41,6 +41,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 
+from attestor_core.errors import ContextUnavailable
 from attestor_platform.firestore import InboxStateRepository
 from attestor_platform.gmail.client import SCOPES, GmailClient
 
@@ -80,21 +81,49 @@ def topic_path(project: str, topic: str = DEFAULT_TOPIC) -> str:
 
 @dataclass(frozen=True)
 class TopicCheck:
-    """Whether Gmail can actually deliver to this topic, and who is listening."""
+    """Whether Gmail can actually deliver to this topic, and who is listening.
+
+    ## Why the publisher binding is checked on a best-effort basis
+
+    Reading a topic's IAM policy needs `pubsub.topics.getIamPolicy`, which is **not** in
+    `roles/pubsub.viewer` -- measured on the deployed service, which came back 403 while the
+    same code passed locally under a developer's own credentials. The options were to give
+    the dispatcher `roles/pubsub.admin` so a status page could read a policy, or to stop
+    treating an unreadable policy as a broken topic.
+
+    The second is right, and not only for least privilege. The authoritative answer to "may
+    Gmail publish here" is Gmail's own: `users.watch` returns a 403 naming the topic when
+    the binding is missing, and that error is surfaced verbatim. So this check is a
+    *pre-flight* -- it catches the two failures Gmail will happily let through, a topic that
+    does not exist and a topic nobody subscribes to -- and where it cannot see the binding it
+    says so rather than reporting a healthy topic as broken.
+    """
 
     exists: bool
     publisher_bound: bool
     subscriptions: tuple[str, ...] = ()
     note: str = ""
+    #: False when this service is not permitted to read the topic's IAM policy. Distinct
+    #: from `publisher_bound=False`, which means the policy was read and Gmail is not on it.
+    publisher_checked: bool = True
 
     @property
     def deliverable(self) -> bool:
-        return self.exists and self.publisher_bound and bool(self.subscriptions)
+        """Whether registering here is worth attempting.
+
+        An unreadable binding does not block: it is unknown, not refused, and Gmail is the
+        one that gets to say. What blocks is a topic that is absent or unsubscribed, because
+        both of those produce a registration that looks healthy and delivers nothing.
+        """
+        if not self.exists or not self.subscriptions:
+            return False
+        return self.publisher_bound or not self.publisher_checked
 
     def as_dict(self) -> dict[str, Any]:
         return {
             "exists": self.exists,
             "publisher_bound": self.publisher_bound,
+            "publisher_checked": self.publisher_checked,
             "subscriptions": list(self.subscriptions),
             "deliverable": self.deliverable,
             "note": self.note,
@@ -153,23 +182,48 @@ def has_consent() -> bool:
 
 
 def check_topic(project: str, topic: str = DEFAULT_TOPIC) -> TopicCheck:
-    """Can Gmail publish here, and is anyone subscribed? A 403 is the usual first failure."""
+    """Pre-flight: does this topic exist, is anyone listening, and may Gmail publish?
+
+    The third question is answered when this service is permitted to answer it, and left
+    open when it is not -- see `TopicCheck`. The first two are the ones that matter, because
+    they are the two failures `users.watch` will accept without complaint.
+    """
     from google.api_core import exceptions as gexc
     from google.cloud import pubsub_v1  # type: ignore[attr-defined]
 
     client = pubsub_v1.PublisherClient()
     path = topic_path(project, topic)
+
     try:
-        policy = client.get_iam_policy(request={"resource": path})
+        client.get_topic(request={"topic": path})
     except gexc.NotFound:
         return TopicCheck(False, False, note=f"The topic {path} does not exist.")
-    except gexc.PermissionDenied as exc:
-        return TopicCheck(False, False, note=f"The IAM policy on {path} could not be read: {exc}")
+    except gexc.GoogleAPIError as exc:
+        return TopicCheck(
+            False,
+            False,
+            note=f"The topic {path} could not be read: {exc}",
+        )
 
-    bound = any(
-        binding.role == "roles/pubsub.publisher" and GMAIL_PUBLISHER in binding.members
-        for binding in policy.bindings
-    )
+    bound = False
+    checked = True
+    try:
+        policy = client.get_iam_policy(request={"resource": path})
+        bound = any(
+            binding.role == "roles/pubsub.publisher" and GMAIL_PUBLISHER in binding.members
+            for binding in policy.bindings
+        )
+    except gexc.PermissionDenied:
+        checked = False
+        logger.info(
+            "not permitted to read the IAM policy on %s; leaving the publisher binding "
+            "unchecked rather than reporting the topic as broken",
+            path,
+        )
+    except gexc.GoogleAPIError as exc:
+        checked = False
+        logger.warning("could not read the IAM policy on %s: %s", path, exc)
+
     try:
         subscriptions = tuple(
             str(name) for name in client.list_topic_subscriptions(request={"topic": path})
@@ -178,19 +232,26 @@ def check_topic(project: str, topic: str = DEFAULT_TOPIC) -> TopicCheck:
         subscriptions = ()
         logger.warning("could not list subscriptions on %s: %s", path, exc)
 
-    if not bound:
-        note = (
-            f"Gmail's publisher identity is not permitted to publish to {path}, so a "
-            "registration here would never deliver anything."
-        )
-    elif not subscriptions:
+    if not subscriptions:
         note = (
             f"Nothing is subscribed to {path}. A watch registered against it would look "
             "healthy and deliver into a void."
         )
+    elif not checked:
+        note = (
+            f"{len(subscriptions)} subscription(s) listen on {path}. Whether Gmail is "
+            "permitted to publish there cannot be checked from this service, so Gmail is "
+            "left to answer it -- a registration is refused with its own words if it is not."
+        )
+    elif not bound:
+        note = (
+            f"Gmail's publisher identity is not permitted to publish to {path}, so a "
+            "registration here would never deliver anything."
+        )
     else:
         note = f"Gmail may publish to {path}, and {len(subscriptions)} subscription(s) listen."
-    return TopicCheck(True, bound, subscriptions, note)
+
+    return TopicCheck(True, bound, subscriptions, note, publisher_checked=checked)
 
 
 def status(
@@ -262,7 +323,15 @@ def register(
 
     client = gmail or GmailClient()
     repository = state or InboxStateRepository()
-    registration = client.watch(topic_path(project, topic))
+    try:
+        registration = client.watch(topic_path(project, topic))
+    except ContextUnavailable as exc:
+        # Gmail's own words. It returns a 403 naming the topic when its publisher identity
+        # is not bound, which is the authoritative answer to the one question the pre-flight
+        # above cannot always ask -- and its 4xx bodies name the scope or id at fault, so
+        # relaying them verbatim turns a one-line diagnosis into a one-line diagnosis rather
+        # than an afternoon.
+        raise WatchRefused(str(exc)) from exc
     repository.record_watch(
         registration.history_id,
         registration.expiration_ms,

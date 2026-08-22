@@ -212,7 +212,14 @@ export function ConnectionsBoard({
         {gmail.delivery ? (
           <div className="flex flex-col gap-2">
             <Label>whether a notification would actually arrive</Label>
-            <p className="max-w-prose text-sm text-secondary">{gmail.delivery.note}</p>
+            <p
+              className={cx(
+                'max-w-prose text-sm',
+                gmail.delivery.deliverable ? 'text-secondary' : 'text-flagged',
+              )}
+            >
+              {gmail.delivery.note}
+            </p>
             {gmail.delivery.subscriptions.length > 0 ? (
               <ul className="flex flex-col gap-1">
                 {gmail.delivery.subscriptions.map((name) => (

@@ -314,6 +314,14 @@ export type ScopeGrant = { scope: string; grants: string };
 export type TopicDelivery = {
   exists: boolean;
   publisher_bound: boolean;
+  /**
+   * False when the service could not read the topic's IAM policy at all.
+   *
+   * Distinct from `publisher_bound: false`, which means the policy *was* read and Gmail is
+   * not on it. Unknown is not the same as known-missing, and collapsing the two would
+   * report a healthy topic as broken because a status read was refused.
+   */
+  publisher_checked: boolean;
   subscriptions: string[];
   deliverable: boolean;
   note: string;
