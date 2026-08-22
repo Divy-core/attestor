@@ -41,10 +41,35 @@ type Command = {
 };
 
 const NAVIGATION: readonly Command[] = [
-  { id: 'nav-fleet', label: 'Fleet', hint: 'Six agents and what each is doing', href: '/', group: 'Go to' },
-  { id: 'nav-reviews', label: 'Reviews', hint: 'Every review', href: '/reviews', group: 'Go to' },
-  { id: 'nav-registry', label: 'Registry', hint: 'The live Agent Registry', href: '/registry', group: 'Go to' },
-  { id: 'nav-traces', label: 'Traces', hint: 'One run, span by span', href: '/traces', group: 'Go to' },
+  {
+    id: 'nav-reviews',
+    label: 'Reviews',
+    hint: 'Every review, sorted by what needs attention',
+    href: '/reviews',
+    group: 'Go to',
+  },
+  {
+    id: 'nav-fleet',
+    label: 'Fleet',
+    hint: 'What each agent is doing right now',
+    href: '/',
+    group: 'Go to',
+  },
+  {
+    id: 'nav-connections',
+    label: 'Connections',
+    hint: 'Gmail, Drive, Slack — and what each may do',
+    href: '/connections',
+    group: 'Go to',
+  },
+  {
+    id: 'nav-registry',
+    label: 'Registry',
+    hint: 'The live Agent Registry',
+    href: '/registry',
+    group: 'Go to',
+  },
+  { id: 'nav-traces', label: 'Audit', hint: 'One run, span by span', href: '/traces', group: 'Go to' },
   {
     id: 'nav-flagged',
     label: 'Answers held for a human',
@@ -84,13 +109,25 @@ export function CommandPalette({ reviews = [] }: { reviews?: ReadonlyArray<Revie
   const commands = useMemo<readonly Command[]>(
     () => [
       ...NAVIGATION,
-      ...reviews.map((review) => ({
-        id: review.review_id,
-        label: review.customer,
-        hint: `${review.review_id} · ${review.state.replace(/_/g, ' ')}`,
-        href: `/reviews/${review.review_id}`,
-        group: 'Review' as const,
-      })),
+      // Two destinations per review, because the thread and the grid answer different
+      // questions and typing the customer's name should be able to reach either. The thread
+      // is first because it is where a review opens.
+      ...reviews.flatMap((review) => [
+        {
+          id: review.review_id,
+          label: review.customer,
+          hint: `thread · ${review.state.replace(/_/g, ' ')}`,
+          href: `/reviews/${review.review_id}`,
+          group: 'Review' as const,
+        },
+        {
+          id: `${review.review_id}-questions`,
+          label: `${review.customer} — questions`,
+          hint: `the grid · ${review.review_id}`,
+          href: `/reviews/${review.review_id}?tab=questions`,
+          group: 'Review' as const,
+        },
+      ]),
     ],
     [reviews],
   );

@@ -140,7 +140,13 @@ export const STATE_ORDER: readonly StateKey[] = [
  * seventh through ninth for lifecycle positions would dilute all of them.
  */
 export const TERMINAL_REVIEW_STATES = new Set(['delivered', 'failed']);
-export const BLOCKED_REVIEW_STATES = new Set(['awaiting_human', 'awaiting_evidence']);
+export const BLOCKED_REVIEW_STATES = new Set([
+  'awaiting_human',
+  'awaiting_evidence',
+  // The state machine's own recoverable halt, which this set had never listed. It is the
+  // most blocked a review can be without being terminal.
+  'blocked',
+]);
 
 export function reviewStateTone(state: string): 'active' | 'blocked' | 'terminal' {
   if (TERMINAL_REVIEW_STATES.has(state)) return 'terminal';

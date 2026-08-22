@@ -356,9 +356,7 @@ class TestVerificationInTheDeliverable:
         return Answer(**fields)  # type: ignore[arg-type]
 
     def test_an_ungrounded_answer_is_not_sendable(self) -> None:
-        answer = self._answer(
-            support=SupportVerdict.UNSUPPORTED, verified_by="attestor-verifier"
-        )
+        answer = self._answer(support=SupportVerdict.UNSUPPORTED, verified_by="attestor-verifier")
         state = release_state(answer)
         assert state is ReleaseState.UNGROUNDED
         assert not state.sendable

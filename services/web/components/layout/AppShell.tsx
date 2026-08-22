@@ -2,6 +2,7 @@ import Link from 'next/link';
 import type { ReactNode } from 'react';
 
 import { CommandPalette } from '@/components/layout/CommandPalette';
+import { NewReviewRailAction } from '@/components/review/NewReview';
 import { ThemeToggle } from '@/components/layout/ThemeToggle';
 import { Key, Mono, cx } from '@/components/ui/primitives';
 import { env } from '@/lib/env';
@@ -19,10 +20,21 @@ import { env } from '@/lib/env';
  */
 
 export const NAV: ReadonlyArray<{ href: string; label: string; match: string; hint: string }> = [
-  { href: '/', label: 'Fleet', match: '^/$', hint: 'Six agents, what each is doing now' },
-  { href: '/reviews', label: 'Reviews', match: '^/reviews', hint: 'Every review and its round' },
+  {
+    href: '/reviews',
+    label: 'Reviews',
+    match: '^/reviews',
+    hint: 'Every review, sorted by what needs attention',
+  },
+  { href: '/', label: 'Fleet', match: '^/$', hint: 'What each agent is doing right now' },
+  {
+    href: '/connections',
+    label: 'Connections',
+    match: '^/connections',
+    hint: 'Gmail, Drive, Slack — connected, and what each may do',
+  },
   { href: '/registry', label: 'Registry', match: '^/registry', hint: 'The live Agent Registry' },
-  { href: '/traces', label: 'Traces', match: '^/traces', hint: 'One run, span by span' },
+  { href: '/traces', label: 'Audit', match: '^/traces', hint: 'One run, span by span' },
 ];
 
 function Rail({ pathname }: { pathname: string }) {
@@ -37,6 +49,16 @@ function Rail({ pathname }: { pathname: string }) {
       >
         Attestor
       </Link>
+
+      {/*
+        The primary action, in the rail, above everything it acts on.
+
+        It was a blue button top-right, which is where a marketing page puts a call to
+        action. Handing a questionnaire in is the first thing this application does, so it
+        goes first, in the same column as the things it produces, styled like them.
+      */}
+      <NewReviewRailAction />
+      <div className="mb-2 mt-2 border-t border-subtle" />
 
       {NAV.map((item) => {
         const active = new RegExp(item.match).test(pathname);

@@ -42,6 +42,7 @@ import logging
 import os
 import time
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -50,7 +51,7 @@ from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel, Field
 
 from attestor_core.domain import Review, Round
-from attestor_core.domain.enums import Framework, Residency, ReviewState
+from attestor_core.domain.enums import AnswerStatus, Framework, Residency, ReviewState
 from attestor_core.errors import AttestorError, IllegalTransition
 from attestor_core.protocol import Actor, WorkEnvelope, WorkKind
 from attestor_core.state import transition
@@ -74,6 +75,7 @@ from attestor_platform.firestore import (
 from attestor_platform.pubsub import WorkPublisher
 from attestor_platform.storage import StorageClient
 from attestor_platform.thread import answer_from_trail, build_thread
+from control_plane import dispatcher_link
 from control_plane.guard import require_capacity, require_write_token
 from control_plane.streaming import RunEventStream
 
@@ -391,6 +393,104 @@ def list_reviews(limit: int = 50, include_archived: bool = True) -> list[dict[st
     return [r.model_dump(mode="json") for r in rows]
 
 
+#: How many reviews the board enriches with counts.
+#:
+#: Each row costs three server-side aggregations, which are cheap but not free, and a
+#: board is a working set rather than an archive. Beyond this the rows still appear --
+#: with their counts absent and *marked* absent, never as zeros, because "no answers
+#: yet" and "not counted" are different facts and one of them is a lie.
+BOARD_ENRICHED = 24
+
+#: How many cards are built at once. Bounded well under `BOARD_ENRICHED`: the point is to
+#: collapse the latency of independent round trips, not to open fifty concurrent Firestore
+#: streams from a service running `--max-instances 4`.
+BOARD_WORKERS = 8
+
+
+@router.get("/reviews/board")
+def review_board(limit: int = 50, include_archived: bool = False) -> list[dict[str, Any]]:
+    """Every review with the state a person needs to decide which one to open.
+
+    ## Why this is not `GET /reviews` with more fields
+
+    A flat list of rows is a directory, and a directory makes a person open five reviews to
+    find the one waiting on them. The card needs progress and a held count, and those are
+    properties of the *answers*, not of the review document -- so this endpoint costs reads
+    that a plain listing should not.
+
+    ## The counts are aggregations, and they are taken in parallel
+
+    `count_for_round` is a Firestore COUNT run server-side; streaming the answers to take a
+    length would be 312 documents per row. Even so, thirteen reviews at four sequential
+    round trips each is fifty-two round trips, which measured at 28 seconds against a
+    laptop and would time out the page. They are independent, so they are fanned out over a
+    small pool -- Firestore's client is thread-safe and FastAPI already runs this handler
+    off the event loop.
+
+    ## An uncounted row says so
+
+    `counted: false` when the aggregation failed, with the counts left null. A card showing
+    `0 held` because a read failed would send somebody past the review that is waiting on
+    them, which is the one thing this surface exists to prevent.
+    """
+    rows = reviews().list_all(limit=min(limit, MAX_ROWS))
+    if not include_archived:
+        rows = [row for row in rows if not row.archived]
+    if not rows:
+        return []
+
+    with ThreadPoolExecutor(max_workers=BOARD_WORKERS) as pool:
+        return list(
+            pool.map(
+                # Archived reviews are never counted. The counts exist to answer "what
+                # needs attention", and a review taken out of the working set needs none --
+                # so eight of this project's thirteen rows cost three aggregations each for
+                # a figure nobody reads. Their cards say "not counted", which is true.
+                lambda pair: _board_card(
+                    pair[1], enrich=not pair[1].archived and pair[0] < BOARD_ENRICHED
+                ),
+                enumerate(rows),
+            )
+        )
+
+
+def _board_card(review: Review, *, enrich: bool) -> dict[str, Any]:
+    """One card. Never raises: a review that could not be counted is still a review."""
+    card: dict[str, Any] = {
+        **review.model_dump(mode="json"),
+        "round_id": None,
+        "questions": None,
+        "answered": None,
+        "held": None,
+        "counted": False,
+        "opened_at": None,
+        "closed_at": None,
+    }
+    try:
+        review_rounds = rounds().for_review(review.review_id)
+    except AttestorError as exc:
+        logger.warning("could not read rounds for %s: %s", review.review_id, exc)
+        return card
+
+    latest = max(review_rounds, key=lambda item: item.ordinal, default=None)
+    if latest is None:
+        return card
+    card["round_id"] = latest.round_id
+    card["opened_at"] = latest.received_at.isoformat()
+    card["closed_at"] = latest.closed_at.isoformat() if latest.closed_at else None
+    if not enrich:
+        return card
+
+    try:
+        card["questions"] = questions().count_for_round(latest.round_id)
+        card["answered"] = answers().count_for_round(latest.round_id)
+        card["held"] = answers().count_for_round(latest.round_id, AnswerStatus.NEEDS_HUMAN)
+        card["counted"] = True
+    except AttestorError as exc:
+        logger.warning("could not count %s for the board: %s", review.review_id, exc)
+    return card
+
+
 class ArchiveRequest(BaseModel):
     archived: bool = True
     #: Why, recorded on the audit trail. Not stored on the review: the review carries the
@@ -678,8 +778,9 @@ def inbox_status() -> dict[str, Any]:
     negative is the only signal there is, so it is on screen rather than in a log.
 
     Reads Firestore only. The control plane deliberately holds no Gmail credential -- the
-    watched address is recorded at registration time by `tools/gmail_watch.py` precisely so
-    that a read-only service does not need one.
+    watched address is recorded beside the history cursor at registration time precisely so
+    that this service does not need one. Registering or stopping a watch *does* need the
+    credential, and goes through `dispatcher_link` to the service that has it.
     """
     cursor = inbox_state().cursor()
     expiration_ms = int(cursor.get("expiration_ms") or 0)
@@ -698,6 +799,114 @@ def inbox_status() -> dict[str, Any]:
         ),
         "expired": bool(expires_at and expires_at < datetime.now(UTC)),
     }
+
+
+# ---------------------------------------------------------------------------------
+# Connections -- the page that replaced a CLI command printed in the product
+# ---------------------------------------------------------------------------------
+
+
+@router.get("/connections")
+def connections(probe: bool = True) -> dict[str, Any]:
+    """What this deployment is connected to, and whether it can be changed from here.
+
+    ## Two sources, and the poorer one always answers
+
+    The mailbox watch state is in Firestore, which this service reads directly, so the page
+    can always say whether email is arriving. Everything else -- whether a consent document
+    exists at all, whether Gmail can actually publish to the topic, what Drive is scoped to
+    -- lives with the dispatcher, which is the only service holding the credential.
+
+    So the dispatcher is asked, and when it cannot be reached the answer is
+    `manageable: false` **with the reason**, on top of the Firestore state that is still
+    true. What is never returned is "not connected" because a call failed. A Connections
+    page reporting a disconnection caused by a service scaling from zero is the
+    failure-impersonating-empty shape this codebase has found nine times, on the one page
+    whose entire job is reporting whether something is connected.
+    """
+    local = inbox_status()
+    payload: dict[str, Any] = {
+        "gmail": {
+            "connected": bool(local["watching"]) and not local["expired"],
+            "address": local["address"],
+            "topic": local["topic"],
+            "history_id": local["history_id"],
+            "registered_at": local["registered_at"],
+            "expires_at": local["expires_at"],
+            "expires_in_hours": local["expires_in_hours"],
+            "expired": local["expired"],
+            "scopes": [],
+            "refusal": "",
+        },
+        "drive": {"connected": False, "scopes": [], "shares_consent_with": "gmail"},
+        "slack": {"connected": False, "scopes": [], "available": False},
+        "manageable": False,
+        "unavailable": "",
+    }
+
+    if not probe:
+        # The fast path, for a first paint. Firestore only, no cross-service call, and
+        # `manageable` stays false because nothing has been asked yet -- the page fills the
+        # rest in from a second call it makes itself. Probing costs an IAM policy read, a
+        # subscription list and a Secret Manager read, which is four round trips more than a
+        # page should hold a person's first frame for.
+        payload["unavailable"] = ""
+        return payload
+
+    try:
+        remote = dispatcher_link.call("/connections")
+    except dispatcher_link.DispatcherUnreachable as exc:
+        payload["unavailable"] = (
+            "The service holding the mailbox credential could not be reached, so this "
+            f"connection cannot be changed from here right now. {exc}"
+        )
+        return payload
+    except dispatcher_link.DispatcherResponse as exc:
+        payload["unavailable"] = f"The connection service answered {exc.status}."
+        return payload
+
+    if isinstance(remote, dict):
+        # The dispatcher's view wins on everything it knows, because it can see the consent
+        # and the topic. The Firestore-derived fields above are the floor, not a preference.
+        payload["gmail"] = {**payload["gmail"], **(remote.get("gmail") or {})}
+        payload["drive"] = {**payload["drive"], **(remote.get("drive") or {})}
+        payload["slack"] = {**payload["slack"], **(remote.get("slack") or {})}
+        payload["manageable"] = True
+    return payload
+
+
+@router.post("/connections/gmail")
+def connect_gmail(request: Request) -> dict[str, Any]:
+    """Connect the mailbox: register the watch that turns inbound email into work.
+
+    This endpoint is the whole point of the Connections page. Before it, the only way to
+    start the inbound path was `tools/gmail_watch.py --apply`, and that string was printed
+    inside the product as an instruction to the reader.
+
+    A refusal comes back as a **409 carrying the reason**. Gmail will register a watch
+    against a topic nobody is subscribed to, return a history id, and drop every
+    notification for seven days -- so the dispatcher checks first, and "why not" is the
+    most useful thing this call can return.
+    """
+    require_write_token(request)
+    try:
+        return dict(dispatcher_link.call("/connections/gmail/watch", method="POST", body={}))
+    except dispatcher_link.DispatcherResponse as exc:
+        raise HTTPException(exc.status, exc.payload().get("refusal", exc.detail)) from exc
+    except dispatcher_link.DispatcherUnreachable as exc:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, str(exc)) from exc
+
+
+@router.delete("/connections/gmail")
+def disconnect_gmail(request: Request) -> dict[str, Any]:
+    """Stop the watch. No further email starts a review until it is registered again."""
+    require_write_token(request)
+    try:
+        return dict(dispatcher_link.call("/connections/gmail/stop", method="POST", body={}))
+    except dispatcher_link.DispatcherResponse as exc:
+        raise HTTPException(exc.status, exc.payload().get("refusal", exc.detail)) from exc
+    except dispatcher_link.DispatcherUnreachable as exc:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, str(exc)) from exc
 
 
 class DeliverRequest(BaseModel):

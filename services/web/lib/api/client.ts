@@ -105,6 +105,18 @@ async function call<T>(
 
 export const api = {
   listReviews: (limit = 50) => call<ReviewRow[]>(`/reviews?limit=${limit}`),
+
+  /**
+   * Every review with the state a person needs to choose which one to open.
+   *
+   * A separate endpoint from `listReviews` because the counts are Firestore aggregations
+   * over the answers collection — cheap, but not free, and a plain listing should not pay
+   * for them.
+   */
+  reviewBoard: (limit = 100, includeArchived = false) =>
+    call<ReviewCard[]>(
+      `/reviews/board?limit=${limit}&include_archived=${includeArchived ? 'true' : 'false'}`,
+    ),
   getReview: (reviewId: string) =>
     call<ReviewDetailRow>(`/reviews/${encodeURIComponent(reviewId)}`),
   listQuestions: (roundId: string) =>
@@ -125,6 +137,15 @@ export const api = {
    * looks exactly like a mailbox nobody has emailed.
    */
   inbox: () => call<InboxStatus>('/inbox'),
+
+  /**
+   * Gmail, Drive and Slack: connected or not, which account, which scopes, since when.
+   *
+   * The page this feeds is the one that removed `tools/gmail_watch.py --apply` from the
+   * product. Connecting Gmail registers the watch.
+   */
+  connections: (probe = true) =>
+    call<Connections>(`/connections?probe=${probe ? 'true' : 'false'}`),
 
   /** Every file this review produced, and where it went. */
   listArtifacts: (reviewId: string) =>
@@ -220,6 +241,11 @@ export type ReviewState =
   | 'assembling'
   | 'delivered'
   | 'follow_up'
+  // `blocked` was missing from this union until Phase 8, and the omission was found by
+  // writing an exhaustive switch over it rather than by seeing one: a blocked review would
+  // have rendered with no label at all. It is a real state -- a recoverable halt that
+  // remembers where it came from -- and the state machine has always been able to reach it.
+  | 'blocked'
   | 'failed';
 
 export type ReviewRow = {
@@ -233,6 +259,25 @@ export type ReviewRow = {
   blocked_from: ReviewState | null;
   /** Out of the working set. Hidden by default, behind a control that names the count. */
   archived: boolean;
+  /** The date the customer asked for, as they wrote it. Empty when they named none. */
+  deadline?: string;
+};
+
+/**
+ * One review, with enough of its round on it to be a card rather than a row.
+ *
+ * `counted` is the honest half. When an aggregation fails the counts stay `null` and this
+ * is `false`; they are never zeroed. A card reading `0 held` because a read failed would
+ * send somebody past the review that is waiting on them.
+ */
+export type ReviewCard = ReviewRow & {
+  round_id: string | null;
+  questions: number | null;
+  answered: number | null;
+  held: number | null;
+  counted: boolean;
+  opened_at: string | null;
+  closed_at: string | null;
 };
 
 /** One file the review produced. Drive ids and links are not secrets: the files are shared
@@ -260,6 +305,61 @@ export type InboxStatus = {
   expires_at: string;
   expires_in_hours: number | null;
   expired: boolean;
+};
+
+/** One scope, and what it actually permits. Shown plainly: the narrowness is the point. */
+export type ScopeGrant = { scope: string; grants: string };
+
+/** Whether Gmail can deliver to the topic at all, and who is listening. */
+export type TopicDelivery = {
+  exists: boolean;
+  publisher_bound: boolean;
+  subscriptions: string[];
+  deliverable: boolean;
+  note: string;
+};
+
+export type GmailConnection = {
+  connected: boolean;
+  address: string;
+  topic: string;
+  history_id: string;
+  registered_at: string;
+  expires_at: string;
+  expires_in_hours: number | null;
+  expired: boolean;
+  scopes: ScopeGrant[];
+  refusal: string;
+  /** Whether a consent document exists at all. Absent means nothing can be registered. */
+  consented?: boolean;
+  delivery?: TopicDelivery | null;
+  topic_path?: string;
+};
+
+export type DriveConnection = {
+  connected: boolean;
+  scopes: ScopeGrant[];
+  /** Drive rides the same consent as Gmail; there is nothing separate to register. */
+  shares_consent_with: string;
+};
+
+export type SlackConnection = { connected: boolean; scopes: ScopeGrant[]; available: boolean };
+
+/**
+ * `GET /connections`.
+ *
+ * `manageable` is false when the service holding the mailbox credential could not be
+ * reached, and `unavailable` says why. That is deliberately not the same as `connected:
+ * false` — a page reporting a disconnection caused by a service scaling from zero would be
+ * the failure-impersonating-empty shape this codebase keeps finding, on the one page whose
+ * job is reporting whether something is connected.
+ */
+export type Connections = {
+  gmail: GmailConnection;
+  drive: DriveConnection;
+  slack: SlackConnection;
+  manageable: boolean;
+  unavailable: string;
 };
 
 export type RoundRow = {

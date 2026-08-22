@@ -256,3 +256,15 @@ class Review(_Mutable):
     #: Deliberately not deletion. Eight dead runs from the quota work are referenced by
     #: `docs/proof/`; removing them would break artefacts that are the measured record.
     archived: bool = False
+    #: The date the customer asked for a response by, as they wrote it.
+    #:
+    #: A string, not a `datetime`, and that is the point: an unparseable deadline should
+    #: stay visible as what the customer actually wrote rather than becoming `None` and
+    #: disappearing. "End of Q3" is a real thing customers put in these emails and it is
+    #: more useful on screen than absent.
+    #:
+    #: Lives on the review because it belongs to the engagement rather than to a round, and
+    #: because the alternative -- reading it back out of the inbound audit event every time
+    #: a list of reviews is rendered -- means a thousand-document audit read per row.
+    #: Defaulted, so every document written before this field existed still validates.
+    deadline: str = ""

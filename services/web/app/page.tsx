@@ -1,6 +1,5 @@
 import { FleetBoard } from '@/components/fleet/FleetBoard';
 import { AppShell } from '@/components/layout/AppShell';
-import { NewReviewButton } from '@/components/review/NewReview';
 import { Failure } from '@/components/ui/primitives';
 import {
   ApiError,
@@ -73,7 +72,6 @@ export default async function FleetPage() {
           ? `${members.length} agents · ${visible.length} live reviews`
           : undefined
       }
-      actions={<NewReviewButton />}
       reviews={visible}
     >
       {reviewsError !== null ? (

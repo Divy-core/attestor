@@ -23,7 +23,8 @@ from google.api_core import exceptions as gexc
 from google.cloud import firestore
 
 from attestor_core.domain import Answer, Commitment, Question, Review, Round
-from attestor_core.errors import AttestorError
+from attestor_core.domain.enums import AnswerStatus
+from attestor_core.errors import AttestorError, ContextUnavailable
 from attestor_platform.config import project_id
 
 logger = logging.getLogger(__name__)
@@ -54,6 +55,28 @@ class _Repository:
     ) -> None:
         self._db = client if client is not None else _client()
         self._timeout = timeout
+
+
+def _count(query: Any, timeout: float) -> int:
+    """One Firestore COUNT aggregation, as an int.
+
+    Its own function because the result shape is three levels of nesting deep and reads
+    like a mistake at every call site. Degrades to 0 only when the aggregation returns
+    nothing at all, which is not the same as a failed read: a `GoogleAPIError` propagates,
+    because "this round has no answers" and "the count could not be taken" must not be the
+    same value.
+    """
+    try:
+        result = query.count().get(timeout=timeout)
+    except gexc.GoogleAPIError as exc:
+        # Raised, never returned as 0. A board that showed "0 held" because an aggregation
+        # failed would send somebody past the review that is waiting on them -- the exact
+        # empty-impersonating-failure shape this codebase has now found nine times.
+        raise ContextUnavailable(f"a Firestore count could not be taken: {exc}") from exc
+    for row in result:
+        for item in row:
+            return int(item.value)
+    return 0
 
 
 class ReviewRepository(_Repository):
@@ -121,6 +144,16 @@ class QuestionRepository(_Repository):
             for d in query.stream(timeout=self._timeout)
         ]
 
+    def count_for_round(self, round_id: str) -> int:
+        """How many questions this round has, without reading any of them.
+
+        A server-side aggregation. The reviews board needs this figure for every visible
+        review, and streaming 312 documents per row to compute a length would make a list
+        page read the whole answers collection.
+        """
+        query = self._db.collection(QUESTIONS).where("round_id", "==", round_id)
+        return _count(query, self._timeout)
+
 
 class AnswerRepository(_Repository):
     def _doc_id(self, round_id: str, question_id: str) -> str:
@@ -142,6 +175,13 @@ class AnswerRepository(_Repository):
     def for_round(self, round_id: str) -> list[Answer]:
         query = self._db.collection(ANSWERS).where("round_id", "==", round_id)
         return [Answer.model_validate(d.to_dict()) for d in query.stream(timeout=self._timeout)]
+
+    def count_for_round(self, round_id: str, status: AnswerStatus | None = None) -> int:
+        """How many answers this round has, optionally in one status. Server-side."""
+        query = self._db.collection(ANSWERS).where("round_id", "==", round_id)
+        if status is not None:
+            query = query.where("status", "==", status.value)
+        return _count(query, self._timeout)
 
 
 class CommitmentRepository(_Repository):

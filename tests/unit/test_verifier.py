@@ -428,9 +428,7 @@ class TestTheSwitch:
     like a round that was checked.
     """
 
-    def test_it_is_on_unless_explicitly_turned_off(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_it_is_on_unless_explicitly_turned_off(self, monkeypatch: pytest.MonkeyPatch) -> None:
         from dispatcher.runner import verification_enabled
 
         monkeypatch.delenv("ATTESTOR_VERIFY_ANSWERS", raising=False)

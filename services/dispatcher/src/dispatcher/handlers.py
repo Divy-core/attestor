@@ -1139,6 +1139,10 @@ class HandlerRegistry:
             residency=Residency.US,
             current_round=1,
             state=ReviewState.INTAKE,
+            # Carried onto the review rather than left in the inbound audit event. The
+            # reviews board shows it on every card, and reading it back out of a
+            # thousand-document audit trail per row is not a thing a list page can do.
+            deadline=verdict.deadline,
         )
         self.reviews.put(review)
         # Bound before the work is published, not after. A reply that arrives while round

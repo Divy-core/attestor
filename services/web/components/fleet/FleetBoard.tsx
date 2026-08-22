@@ -128,24 +128,34 @@ function AgentCard({ member, activity }: { member: FleetMember; activity: AgentA
  * invisible from the outside. It expires after seven days, Gmail does not warn, and a mailbox
  * that has stopped notifying looks exactly like a mailbox nobody has emailed. The hours
  * remaining going negative is the only signal there is, so it is on screen.
+ *
+ * ## What this used to say
+ *
+ * *"No watch is registered, so no email will start a review. Register one with
+ * `tools/gmail_watch.py --apply`."* A shell command, printed in the product, as an
+ * instruction to the reader — and the single clearest symptom of an interface that
+ * documented the system rather than being it. The unregistered case now links to
+ * Connections, where the button that registers it lives.
  */
 function Inbound({ inbox, error }: { inbox: InboxStatus | null; error: string | null }) {
   return (
     <section className="flex flex-col gap-4">
-      <h2 className="text-md text-primary">Inbound</h2>
-      <p className="max-w-prose text-sm leading-relaxed text-secondary">
-        A customer emails the watched address. Gmail publishes a change notification to
-        Pub/Sub, the dispatcher turns it into a unit of work, and the fleet answers it. A reply
-        on a thread Attestor already owns wakes that review and opens the next round instead.
-        Nobody opens this page for any of that to happen.
-      </p>
+      <div className="flex items-baseline gap-4">
+        <h2 className="text-md text-primary">Inbound</h2>
+        <Link href="/connections" className="text-sm text-accent-text hover:underline">
+          Connections
+        </Link>
+      </div>
 
       {error !== null ? (
         <p className="text-sm text-denied">The mailbox status could not be read. {error}</p>
       ) : inbox === null || !inbox.watching ? (
-        <p className="text-sm text-muted">
-          No watch is registered, so no email will start a review. Register one with{' '}
-          <span className="font-mono text-xs">tools/gmail_watch.py --apply</span>.
+        <p className="max-w-prose text-sm text-muted">
+          No mailbox is being watched, so no email starts a review.{' '}
+          <Link href="/connections" className="text-accent-text hover:underline">
+            Connect one
+          </Link>
+          .
         </p>
       ) : (
         <dl className="flex flex-wrap items-baseline gap-10">

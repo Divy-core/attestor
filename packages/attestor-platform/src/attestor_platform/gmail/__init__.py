@@ -24,18 +24,38 @@ from attestor_platform.gmail.staging import (
     stage_attachment,
     stage_body_questions,
 )
+from attestor_platform.gmail.watch import (
+    DEFAULT_TOPIC,
+    SCOPE_NOTES,
+    TopicCheck,
+    WatchRefused,
+    WatchStatus,
+    check_topic,
+)
+from attestor_platform.gmail.watch import register as register_watch
+from attestor_platform.gmail.watch import status as watch_status
+from attestor_platform.gmail.watch import stop as stop_watch
 
 __all__ = [
+    "DEFAULT_TOPIC",
     "OAUTH_SECRET",
     "SCOPES",
+    "SCOPE_NOTES",
     "Attachment",
     "GmailClient",
     "HistoryPage",
     "InboundMessage",
+    "TopicCheck",
+    "WatchRefused",
     "WatchRegistration",
+    "WatchStatus",
     "build_questionnaire",
+    "check_topic",
     "parse_message",
+    "register_watch",
     "safe_filename",
     "stage_attachment",
     "stage_body_questions",
+    "stop_watch",
+    "watch_status",
 ]

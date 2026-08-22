@@ -39,8 +39,9 @@ export const dynamic = 'force-dynamic';
  *
  * The blast radius argument is unchanged. What changed is that a person can hand work in.
  */
-const ALLOWED: ReadonlyArray<{ method: 'GET' | 'POST'; pattern: RegExp }> = [
+const ALLOWED: ReadonlyArray<{ method: Method; pattern: RegExp }> = [
   { method: 'GET', pattern: /^reviews$/ },
+  { method: 'GET', pattern: /^reviews\/board$/ },
   { method: 'GET', pattern: /^reviews\/[^/]+$/ },
   { method: 'GET', pattern: /^reviews\/[^/]+\/audit$/ },
   { method: 'GET', pattern: /^reviews\/[^/]+\/armor$/ },
@@ -51,6 +52,7 @@ const ALLOWED: ReadonlyArray<{ method: 'GET' | 'POST'; pattern: RegExp }> = [
   { method: 'GET', pattern: /^reviews\/[^/]+\/artifacts$/ },
   { method: 'GET', pattern: /^reviews\/[^/]+\/thread$/ },
   { method: 'GET', pattern: /^inbox$/ },
+  { method: 'GET', pattern: /^connections$/ },
   { method: 'POST', pattern: /^rounds\/[^/]+\/answers\/[^/]+\/approval$/ },
   // The entrance. In the order the New review flow calls them.
   { method: 'POST', pattern: /^uploads$/ },
@@ -68,6 +70,11 @@ const ALLOWED: ReadonlyArray<{ method: 'GET' | 'POST'; pattern: RegExp }> = [
   // appended to the audit trail; it spends nothing, calls no model, and reaches no
   // engine. See `attestor_platform.thread.answering` for why that last part matters.
   { method: 'POST', pattern: /^reviews\/[^/]+\/ask$/ },
+  // Connecting the mailbox. The write that replaced a CLI command printed in the
+  // product; it registers the Gmail watch through the one service holding the
+  // credential. DELETE stops it.
+  { method: 'POST', pattern: /^connections\/gmail$/ },
+  { method: 'DELETE', pattern: /^connections\/gmail$/ },
 ];
 
 /**
@@ -81,11 +88,20 @@ const ALLOWED: ReadonlyArray<{ method: 'GET' | 'POST'; pattern: RegExp }> = [
  */
 
 /** Query parameters worth forwarding. Everything else is dropped rather than relayed. */
-const FORWARDED_PARAMS = new Set(['limit', 'round_id', 'format']);
+const FORWARDED_PARAMS = new Set([
+  'limit',
+  'round_id',
+  'format',
+  'include_archived',
+  'probe',
+]);
+
+/** The methods this proxy relays. `DELETE` joined them in Phase 8, for disconnecting. */
+type Method = 'GET' | 'POST' | 'DELETE';
 
 const TIMEOUT_MS = 30_000;
 
-async function proxy(request: NextRequest, segments: string[], method: 'GET' | 'POST') {
+async function proxy(request: NextRequest, segments: string[], method: Method) {
   // Rebuilt from the decoded segments rather than taken from the raw URL, so `..` and
   // encoded separators cannot walk out of the allowlisted shape.
   const path = segments.map((s) => encodeURIComponent(s)).join('/');
@@ -103,7 +119,7 @@ async function proxy(request: NextRequest, segments: string[], method: 'GET' | '
   // The token is attached here and only here. It comes from the server environment, so it is
   // never in the client bundle and never in the browser's network tab.
   const headers: Record<string, string> = {};
-  if (method === 'POST') {
+  if (method !== 'GET') {
     headers['Content-Type'] = 'application/json';
     if (env.writeToken) headers['X-Attestor-Token'] = env.writeToken;
   }
@@ -155,4 +171,12 @@ export async function POST(
 ): Promise<Response> {
   const { path } = await params;
   return proxy(request, path, 'POST');
+}
+
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ path: string[] }> },
+): Promise<Response> {
+  const { path } = await params;
+  return proxy(request, path, 'DELETE');
 }

@@ -51,7 +51,7 @@ export default async function RegistryPage() {
         ) : agents.length === 0 ? (
           <Empty
             title="No agents catalogued"
-            hint="Agents appear here automatically when deployed to Agent Runtime — there is no manual registration step. Run services/runtime/deploy_fleet.py to deploy the fleet."
+            hint="Agents appear here automatically when they are deployed to Agent Runtime. There is no manual registration step, and nothing on this page creates one — the registry is read, never written."
           />
         ) : (
           <>

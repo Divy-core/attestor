@@ -165,6 +165,139 @@ async def push(request: Request, response: Response) -> dict[str, Any]:
     return _dispatch(message, response)
 
 
+# ---------------------------------------------------------------------------------
+# Connections -- the product's own control over its integrations
+# ---------------------------------------------------------------------------------
+#
+# These three endpoints exist so that "Connect Gmail" is a button rather than a command.
+# Until Phase 8 the only way to register the mailbox watch was `tools/gmail_watch.py
+# --apply`, and that string was printed in the interface as an instruction -- the clearest
+# possible statement that the product documented the system rather than being it.
+#
+# ## Why they are here and not on the control plane
+#
+# The dispatcher is the only service holding the mailbox credential, and that is worth
+# keeping true. The control plane is `--allow-unauthenticated` behind a shared demo token;
+# giving it a refresh token for a real mailbox to render a status line and register a watch
+# would widen the blast radius of that token from "can start work" to "holds a Google
+# credential". So the control plane calls these over HTTP with an OIDC token, the way
+# Pub/Sub already does, and the secret stays in one process.
+#
+# `GET /connections` is the exception that needs no credential at all: the mailbox address
+# is stored beside the history cursor at registration time precisely so a status read is a
+# Firestore read.
+
+
+@app.get("/connections")
+def connections() -> dict[str, Any]:
+    """What this deployment is connected to, and what each connection may do.
+
+    Reported rather than asserted. Gmail's state comes from the recorded registration and
+    its expiry; Drive's comes from whether the same consent exists at all, because Drive
+    rides the same refresh token and there is nothing separate to register. Slack is
+    reported as not built, by name, rather than omitted -- a missing integration and an
+    integration nobody has connected look identical when only the connected ones are
+    listed.
+    """
+    from attestor_platform.gmail.watch import SCOPE_NOTES, check_topic, has_consent
+    from attestor_platform.gmail.watch import status as watch_status
+
+    project = os.environ.get("PROJECT_ID", "").strip()
+    topic = os.environ.get("ATTESTOR_GMAIL_TOPIC", "attestor-gmail")
+
+    gmail_state = watch_status(state=inbox_state())
+    consented = has_consent()
+
+    delivery: dict[str, Any] | None = None
+    if project:
+        try:
+            delivery = check_topic(project, topic).as_dict()
+        except Exception as exc:  # a status read must not 500 on a Pub/Sub blip
+            logger.warning("could not check the gmail topic: %s", exc)
+            delivery = None
+
+    return {
+        "gmail": {
+            **gmail_state.as_dict(),
+            "consented": consented,
+            "delivery": delivery,
+            "topic_path": f"projects/{project}/topics/{topic}" if project else "",
+        },
+        "drive": {
+            # Drive is consented in the same grant as Gmail and has nothing to register, so
+            # it is connected exactly when the consent exists. Saying that plainly is better
+            # than a second Connect button that would do nothing.
+            "connected": consented,
+            "scopes": [
+                {
+                    "scope": "https://www.googleapis.com/auth/drive.file",
+                    "grants": SCOPE_NOTES["https://www.googleapis.com/auth/drive.file"],
+                }
+            ],
+            "shares_consent_with": "gmail",
+        },
+        "slack": {"connected": False, "scopes": [], "available": False},
+    }
+
+
+@app.post("/connections/gmail/watch")
+def connect_gmail(response: Response) -> dict[str, Any]:
+    """Register the mailbox watch. The button's implementation.
+
+    A refusal is a **409 with the reason**, not a 500 and not a silent success. Gmail will
+    happily register a watch against a topic nobody is subscribed to; that returns a history
+    id, records a healthy-looking registration, and drops every notification into a void for
+    seven days. `register` checks first and refuses, and the reason it refuses is the most
+    useful thing this endpoint can return.
+    """
+    from attestor_core.errors import AttestorError
+    from attestor_platform.gmail.watch import WatchRefused, register
+
+    try:
+        registered = register(gmail=gmail(), state=inbox_state())
+    except WatchRefused as refusal:
+        response.status_code = status.HTTP_409_CONFLICT
+        return {"connected": False, "refusal": str(refusal)}
+    except AttestorError as exc:
+        # A misconfiguration -- an unreadable secret, an unset project -- reaching a person
+        # as "Internal Server Error" is how a fixable state becomes an unfixable one. It is
+        # still a refusal: nothing was registered, and the reason is actionable.
+        response.status_code = status.HTTP_409_CONFLICT
+        return {"connected": False, "refusal": str(exc)}
+    audit().append_safe(
+        {
+            "kind": "gmail_watch_registered",
+            "review_id": "",
+            "run_id": "",
+            "actor": "ControlPlane",
+            "detail": {
+                "address": registered.address,
+                "topic": registered.topic,
+                "expires_at": registered.expires_at,
+            },
+        }
+    )
+    return registered.as_dict()
+
+
+@app.post("/connections/gmail/stop")
+def disconnect_gmail() -> dict[str, Any]:
+    """Stop the watch, and clear the recorded expiry so the product agrees with reality."""
+    from attestor_platform.gmail.watch import stop
+
+    stopped = stop(gmail=gmail(), state=inbox_state())
+    audit().append_safe(
+        {
+            "kind": "gmail_watch_stopped",
+            "review_id": "",
+            "run_id": "",
+            "actor": "ControlPlane",
+            "detail": {"address": stopped.address},
+        }
+    )
+    return stopped.as_dict()
+
+
 @app.post("/gmail/push")
 async def gmail_push(request: Request, response: Response) -> dict[str, Any]:
     """Gmail said the mailbox changed. Work out what arrived and publish it.

@@ -415,6 +415,35 @@ if [[ -n "${WEB_URL:-}" ]]; then
     printf '  dispatcher -> ATTESTOR_CONSOLE_URL=%s\n' "$WEB_URL"
 fi
 
+# The Connections page, and the one call the control plane makes to the dispatcher.
+#
+# Registering the Gmail watch needs the mailbox credential, and the dispatcher is the only
+# service that holds one. Before Phase 8 the only way to register it was a CLI command --
+# printed inside the product, on the fleet page, as an instruction to the reader. Now the
+# control plane asks the dispatcher over an authenticated call, and the credential stays
+# where it was.
+#
+# Both halves are applied after the services exist, because each needs the other's address.
+# `--update-env-vars` MERGES, unlike the `--set-env-vars` used at deploy time, so this
+# cannot wipe PROJECT_ID or the write token.
+if [[ -n "${DISPATCHER_URL:-}" ]]; then
+    gcloud run services update attestor-control-plane \
+        --project "$PROJECT_ID" --region "$REGION" \
+        --update-env-vars "DISPATCHER_URL=${DISPATCHER_URL}" \
+        --quiet --format=none
+    printf '  control plane -> DISPATCHER_URL=%s\n' "$DISPATCHER_URL"
+
+    # The dispatcher stays --no-allow-unauthenticated. This is the narrowest widening of
+    # that available: one named service account, on one service, minting its own OIDC token
+    # from the metadata server. Same mechanism Pub/Sub already uses to reach the same
+    # service, with a different member.
+    gcloud run services add-iam-policy-binding attestor-dispatcher \
+        --project "$PROJECT_ID" --region "$REGION" \
+        --member="serviceAccount:${CONTROL_SA}" --role=roles/run.invoker \
+        --quiet --format=none
+    printf '  control plane -> may invoke the dispatcher (roles/run.invoker)\n'
+fi
+
 if (( SERVICES_ONLY )); then
     printf '\n%sservices deployed; skipping subscription wiring%s\n' "$B" "$R"
     exit 0

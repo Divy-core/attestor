@@ -84,6 +84,38 @@ export function NewReviewButton({ tone = 'primary' }: { tone?: 'primary' | 'seco
   );
 }
 
+/**
+ * The same action, in the rail, styled as navigation.
+ *
+ * It used to sit top-right in accent blue, which is where a marketing page puts its call to
+ * action and not where a console puts a primary action. In the rail it reads as the first
+ * thing this application does — above Threads, above Fleet — and it stops competing for
+ * attention with whatever the page it is on happens to be showing.
+ *
+ * Not a link, because it opens a dialog rather than navigating, and dressing a button as a
+ * link is how a person ends up middle-clicking it into a dead tab. Everything else about it
+ * matches the rail items around it.
+ */
+export function NewReviewRailAction() {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="flex items-center gap-2 rounded-sm px-2 py-2 text-left text-sm text-primary transition-colors hover:bg-hover"
+        title="Hand a questionnaire in"
+      >
+        <span aria-hidden className="font-mono text-xs text-muted">
+          +
+        </span>
+        New review
+      </button>
+      {open ? <NewReviewDialog onClose={() => setOpen(false)} /> : null}
+    </>
+  );
+}
+
 function NewReviewDialog({ onClose }: { onClose: () => void }) {
   const router = useRouter();
   const ids = useId();
