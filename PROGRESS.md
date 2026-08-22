@@ -3922,3 +3922,178 @@ surface anyway.
   can be measured through the DOM was measured; the thing that needs a rendered frame was not.
 - **B1 and B2 exercised end to end.** Built, deployed, unit-tested, and blocked on one human
   granting consent to one mailbox.
+
+---
+
+## Phase 8 — Stop Building a Console, Build the Product (Day 9, 22 Aug 2026)
+
+One sentence diagnosed the whole interface, and it was live on the fleet page:
+
+> *"No watch is registered, so no email will start a review. Register one with
+> `tools/gmail_watch.py --apply`."*
+
+A shell command, printed in the product, as an instruction to the reader. Everything else
+wrong with the interface came from the same root — **it documented the system rather than
+being it**. The fleet page was eight cards listing `reads`, `refused`, `identity`. The
+review page was 312 question-and-answer rows. Both were accurate, and both described the
+system's configuration and its output while saying nothing about what it *did*.
+
+### The Review Thread
+
+The audit trail has carried the answer since Phase 3. `audit_events` records that a
+questionnaire arrived by email, that triage routed it three ways with a named model, that a
+department agent retrieved *n* passages from its own datastore and drafted with *k*
+citations, that a separate identity checked the answer against those citations, and that
+policy escalated on a stated reason. All of it, per question, with the actor on every row.
+The only missing thing was a way to read it as what it is: a conversation between the agents
+that wrote it.
+
+`attestor_platform.thread` is a projection. It writes nothing. Twelve hundred events become
+about a dozen posts, each collapsed to one sentence and each expanding to the retrieval, the
+passages, the scores and the audit rows behind it. The thread cannot drift from the
+compliance record because it **is** the compliance record — a post claiming an agent did
+something would vanish if the event behind it were removed, and there is no second feed to
+keep in step.
+
+Two rules hold throughout, and the tests are about those rather than about rendering.
+
+**Counts come from the answers collection, never from event arithmetic.** An audit write is
+non-fatal by contract, so events under-count. "42 held" has to read 41 the moment one is
+approved, even though all 42 `human_required` events stay on the append-only trail forever.
+
+**Narrative comes from events, so where the trail is silent the thread is silent.** A run in
+which the verifier never reported produces **no verification post at all**. A post reading
+"0 unsupported" over a run where nothing was checked would be the ninth instance of the
+failure-impersonating-empty shape this build keeps finding, on the surface least able to
+afford it.
+
+### Asking the thread, without a model
+
+The composer answers from the trail and calls no model. That is the design, not a shortcut.
+"Why did you flag this?" has a real answer already written down; handing those events to an
+LLM to narrate produces fluent sentences whose relationship to the events is unverifiable,
+on the one surface whose entire purpose is being checkable. Both halves of the exchange —
+`human_asked` with the asker's name, `orchestrator_answered` with the reply and the blocks
+it was built from — are appended to `audit_events`, so a question asked today is still there
+in three weeks with the answer it was given.
+
+The reply is stored whole rather than recomposed on read. A thread that answers the same
+question differently in January and in June is not an audit trail.
+
+**Measured on the deployed 312-question round, and three defects came out of it.**
+
+| Defect | What happened | Fix |
+|---|---|---|
+| Over-eager resolution | *"how many are held?"* reduces to the single content word **held**, which appears in some answer somewhere, so it scored 1.0 and resolved to row 31 — a confident, fluent, completely wrong answer about one row to a question about the round | Reference first, round-level handlers second, fuzzy match last, with floors on both the asked words (at least 3) and the overlap (at least 2). A ratio over a one-word set is not evidence |
+| Wrong label | Questions were labelled by spreadsheet row, so typing `Q112` got *"row 301 is held for a person"* — correct, checkable, and disorienting | The label is the question's number in the round, which is what both sides of the conversation count. Sheet, row and cell moved into the expansion |
+| Impossible order | The assembly post landed above three agents still drafting, because `human_required` fires **per answer during drafting**, not at assembly | Anchored at the `assemble_round` stage event |
+
+And one older defect the thread found by being used: `createPoller().now()` began with
+`if (!running) return`, so the manual Refresh control had been inert on every finished review
+since Phase 6 — contradicting its own docstring, which said "poll once, immediately". Found
+by pressing the button.
+
+### Connections — the page that deleted the CLI line
+
+Registering the Gmail watch needs the mailbox credential, and the dispatcher is the only
+service that holds one. Rather than move a Google refresh token into the public,
+shared-token service to make a button work, the control plane asks the dispatcher over an
+authenticated call — an OIDC token minted from its own identity, the same mechanism Pub/Sub
+already uses to reach the same service, with a different member. **The dispatcher stays
+`--no-allow-unauthenticated`.** `infra/deploy.sh` grants `roles/run.invoker` and sets
+`DISPATCHER_URL`, both after the services exist because each needs the other's address.
+
+The watch logic moved out of the script into `attestor_platform.gmail.watch`, so the
+operator command and the Connect button run the same code. It **refuses** rather than
+registering a watch that cannot deliver, and the refusal is the feature: `users.watch` will
+succeed against a topic nobody subscribes to, return a history id, record a healthy-looking
+registration and drop every notification into a void for seven days — the worst outcome
+available, because it looks exactly like it worked.
+
+Exercised locally against the real project, with both services running:
+
+| Check | Result |
+|---|---|
+| Topic exists | yes — `projects/attestor-505506/topics/attestor-gmail` |
+| Gmail's publisher bound | yes — `gmail-api-push@system.gserviceaccount.com` has `roles/pubsub.publisher` |
+| Subscribers | 1 — `attestor.gmail.push` |
+| Consent on file | **no** — no mailbox has approved the scopes |
+| Connect, pressed in a browser | **409 with a readable reason**, rendered in the page |
+
+Before the consent check existed, that same state reached the page as `500 Internal Server
+Error`, which turns a fixable state into an unfixable one. "Unreachable" and "not connected"
+are reported separately for the same reason.
+
+Every scope is listed with what it permits, because `drive.file` sees only files this
+application created and that is the least-privilege story worth being able to read off the
+screen rather than summarising as "Google access".
+
+### Every other surface
+
+- **The rail.** New review moved out of the top-right accent button into the sidebar, above
+  everything it acts on, styled as navigation. Order: New review · Reviews · Fleet ·
+  Connections · Registry · Audit. The palette matches, and each review now offers two
+  destinations — the thread and the grid — because they answer different questions.
+- **Reviews are cards, ordered by what needs a person.** Held first in descending count,
+  then working, then settled. The counts are Firestore COUNT aggregations, not reads:
+  streaming answers to take a length would be 312 documents per row. Thirteen reviews at
+  four sequential round trips each measured **28s** against a laptop and timed the page out,
+  so they fan out over a pool, and archived reviews are not counted at all — the counts
+  answer "what needs attention" and a review out of the working set needs none. A count that
+  could not be taken renders as **"not counted"**, never as zero.
+- **The review opens on its thread**, with five tabs: Thread · Questions · Evidence ·
+  Artifacts · Audit. Evidence and Audit are new. The questions grid keeps its density and
+  gains question numbers, and loses the two tabs that were properties of the *review* rather
+  than of the selected row.
+- **The fleet page is live status.** A roster saying what each agent is doing now and what it
+  did today, with `reads` / `refused` / `identity` one click down in a per-agent drawer, and
+  the scope story as **one** compact grid over the three department engines — a diagonal, not
+  a block. Proof one click deep is checkable; proof stacked eight times is wallpaper.
+- **Page reads went from five to four.** `run_id` and "did this arrive by email" now come off
+  the thread, which had already read the trail, instead of a second thousand-document audit
+  read that only the Audit tab renders — and that tab now fetches when it is opened.
+
+### Defects found in existing code
+
+- `ReviewState` in TypeScript had never listed `blocked` — a real, reachable state that
+  would have rendered with no label at all. Found by writing an exhaustive switch, not by
+  seeing one. `BLOCKED_REVIEW_STATES` had never listed it either.
+- `createPoller().now()`, above.
+- Two test files unrelated to this work had been failing `ruff format --check` since Phase 7,
+  so `make check` was not green on `main` when this phase began.
+
+### Phase 8 exit criteria
+
+| # | Criterion | State | How verified |
+|---|---|---|---|
+| 1 | Review Thread is the default surface; agents post as themselves; blocks collapse and expand to their evidence; live and historical are the same view | **DONE** | Rendered at 1920x1080 against the deployed control plane's real data: 12 posts from 10 participants over a 949-event run, each expanding to counted detail. One component renders both, because both are the same projection |
+| 2 | Agent-to-agent exchange visible — Verifier returns work, drafter redrafts | **BUILT, NOT EXERCISED** | The projection reports returned answers and their unsupported claims, and is unit-tested against synthetic `answer_verified` events. No run has produced a real one — see #10 |
+| 3 | Human can ask a question in the thread and get an answer grounded in the audit trail | **DONE** | Asked in a browser; the reply named the row, its escalation reason and its confidence, with six blocks including the full per-question event chain. Both halves reloaded from the trail on a fresh page load |
+| 4 | Approvals happen inline in the thread and are clicked through in a browser | **DONE** | One approval clicked in the thread: dedup-key receipt shown, the round resumed under the approver's name, and the held count fell 42 to 41 in the same view |
+| 5 | New review in the sidebar above Fleet, not blue, not top-right | **DONE** | Rail reads `New review · Reviews · Fleet · Connections · Registry · Audit` |
+| 6 | Reviews are cards sorted by what needs attention, not a flat list | **DONE** | 5 visible cards, 41-held first, header reading "58 answers waiting on a person" |
+| 7 | Questions grid virtualised, filterable, keyboard-navigable, detail in the right pane | **DONE (carried, plus numbers)** | Unchanged from Phase 7 except question numbers, which make a thread post naming `Q112` findable |
+| 8 | Fleet shows live status; scope proof in a per-agent drawer; one compact scope matrix | **DONE** | 8 rows with what each is doing and when; the SecurityAgent drawer shows `corpus/security` read, `corpus/legal, corpus/engineering` refused, engine `6333637226001334272`, and 183 retrievals / 82 drafts from the trail. The matrix is three rows |
+| 9 | Connections page: Gmail, Drive, Slack — connect, disconnect, scopes, watch status. **Connecting Gmail registers the watch from the UI** | **BUILT; REFUSES FOR THE RIGHT REASON** | Table above. The button runs `register()` through the dispatcher. It cannot succeed until a mailbox consents, which is unautomatable and is the four-step task recorded at the end of Phase 7 |
+| 10 | VerifierAgent has verified a real run; verdict distribution reported | **NOT DONE** | No run was made this phase. The engine is deployed (`reasoningEngines/1255723093024833536`), the pipeline calls it, and the thread reports the distribution the moment one exists — it costs a fleet run and regional quota |
+| 11 | Pack filed to Drive; Artifacts tab links to it | **BUILT, NOT EXERCISED** | Blocked on the same consent as #9 |
+| 12 | Outbound reply sent in-thread after human approval, audited with a named actor | **BUILT, NOT EXERCISED** | Same |
+| 13 | Nothing in section F appears anywhere in the product | **DONE, with one flagged** | The CLI line and the `services/runtime/deploy_fleet.py` reference are gone; a repo-wide grep over `app/`, `components/` and `lib/` finds no `tools/*.py`, no `uv run`, no `gcloud`. **Flagged, not fixed:** three customer names in Firestore read `Northwind Traders (journey)`, `Acme Corp (deployed)` and `Acme Corp (async harness)`. They are data, not interface, and renaming them would put the live product out of step with the export PDFs in `docs/proof/` that record those names. The clean fix is a fresh run for the recording |
+| 14 | Both themes read at 1080p **with screenshots** | **PARTIAL — fourth session** | Everything reachable through the DOM was measured at 1920x1080: no horizontal scroll, `bg-base` at `rgb(0,0,0)`, GeistSans resolved, every new surface exercised by clicking. `computer{action:"screenshot"}` still times out — *"the Browser pane is not displayed, so the page is not compositing frames"* — in this environment. Marked PARTIAL rather than claimed |
+| 15 | `make check` green, `tsc` clean, layering holds, pushed | **DONE** | 672 passed, 1 skipped; `mypy --strict` clean; `tsc --noEmit` clean; `check-tokens` clean; layering OK; types current |
+
+### What Phase 8 did not do, and why
+
+Order was set by the brief: **C** first and protected above everything, then D1/D2/D5, then
+E, then D3/D4, then D6, then Drive and outbound, and timers cut first. What landed is C, D1,
+D2, D3, D4, D5, D6 and the Connections half of E.
+
+- **The Verifier verifying (E).** The highest-value item in section E, and the one gap that is
+  purely a matter of spending. Everything is in place — the engine is deployed under its own
+  identity, `ReviewPipeline._verify` calls it between drafting and assembly, `distribution()`
+  writes the tally into the trail, and the thread renders it. What is missing is a run, which
+  costs wall-clock, regional engine quota and money.
+- **Drive and outbound.** Built in full since Phase 7, blocked on one human granting consent
+  to one mailbox. The Connections page now says exactly that, in the product, where before
+  the product said to run a script.
+- **Timers.** The brief named this "first to cut". It was, for the second phase running.

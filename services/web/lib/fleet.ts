@@ -210,6 +210,14 @@ export type AgentActivity = {
   cited: number;
   /** The most recent thing it did, and when. */
   lastAt: string | null;
+  /** What that most recent thing was, as the trail names it. */
+  lastKind: string | null;
+  /** Which review it was on, so the fleet page can link to what it is doing. */
+  lastReview: string | null;
+  /** Events it wrote since midnight, local time. "What it did today". */
+  today: number;
+  /** Everything it did, by kind, so a drawer can say what the work consisted of. */
+  kinds: Record<string, number>;
   /** True when its most recent activity is inside the working window. */
   working: boolean;
 };
@@ -231,17 +239,40 @@ export function activityByActor(
   now: number = Date.now(),
 ): Map<string, AgentActivity> {
   const out = new Map<string, AgentActivity>();
+  // Midnight local, because "today" is a thing a person says about their own working day
+  // and not about UTC. Computed once rather than per event.
+  const midnight = new Date(now);
+  midnight.setHours(0, 0, 0, 0);
+  const startOfDay = midnight.getTime();
+
   for (const event of events) {
     const actor = event.actor;
     if (!actor) continue;
-    const current = out.get(actor) ?? { answers: 0, cited: 0, lastAt: null, working: false };
+    const current: AgentActivity = out.get(actor) ?? {
+      answers: 0,
+      cited: 0,
+      lastAt: null,
+      lastKind: null,
+      lastReview: null,
+      today: 0,
+      kinds: {},
+      working: false,
+    };
     if (event.kind === 'answer_drafted') {
       current.answers += 1;
       const citations = Number((event.detail as { citation_count?: unknown })?.citation_count ?? 0);
       if (citations > 0) current.cited += 1;
     }
+    current.kinds[event.kind] = (current.kinds[event.kind] ?? 0) + 1;
     const at = event.occurred_at ?? event.recorded_at ?? null;
-    if (at && (current.lastAt === null || at > current.lastAt)) current.lastAt = at;
+    if (at) {
+      if (Date.parse(at) >= startOfDay) current.today += 1;
+      if (current.lastAt === null || at > current.lastAt) {
+        current.lastAt = at;
+        current.lastKind = event.kind;
+        current.lastReview = event.review_id ?? null;
+      }
+    }
     out.set(actor, current);
   }
   for (const activity of out.values()) {
@@ -250,6 +281,41 @@ export function activityByActor(
   }
   return out;
 }
+
+/**
+ * What an agent is doing, in the words a person would use.
+ *
+ * Derived from the last event it wrote, because that is the only evidence there is. An
+ * agent with no events at all reports as idle with nothing behind it, which is different
+ * from an agent that finished an hour ago -- and the difference matters on a page whose
+ * job is saying what the fleet is doing right now.
+ */
+export function doingNow(activity: AgentActivity | null): string {
+  if (activity === null || activity.lastAt === null) return 'Nothing on the trail yet';
+  const verb = DOING[activity.lastKind ?? ''] ?? (activity.lastKind ?? 'working').replace(/_/g, ' ');
+  return activity.working ? verb : `Last: ${verb.toLowerCase()}`;
+}
+
+const DOING: Record<string, string> = {
+  question_triaged: 'Routing questions to departments',
+  evidence_retrieved: 'Retrieving passages',
+  query_expanded: 'Expanding a question into queries',
+  answer_drafted: 'Drafting answers',
+  answer_verified: 'Checking answers against their citations',
+  consistency_checked: 'Checking against prior commitments',
+  human_required: 'Holding answers for a person',
+  armor_blocked: 'Refusing input before a model reads it',
+  tool_denied: 'Refusing a cross-department read',
+  stage_completed: 'Advancing a stage',
+  export_produced: 'Building the pack',
+  pack_delivered: 'Sending the pack to the customer',
+  plan_selected: 'Choosing a plan for the round',
+  retry_decided: 'Deciding on a retry',
+  run_completed: 'Closing the round',
+  human_decision: 'Recording a decision',
+  human_asked: 'Asking the thread a question',
+  orchestrator_answered: 'Answering from the audit trail',
+};
 
 /**
  * Which reviews are worth reading the audit trail of for the fleet page.

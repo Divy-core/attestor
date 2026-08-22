@@ -10,6 +10,7 @@ import {
   type ReviewRow,
 } from '@/lib/api/client';
 import { activityByActor, reviewsWorthReading, roster } from '@/lib/fleet';
+import { isDepartmentEngine } from '@/lib/registry';
 
 export const dynamic = 'force-dynamic';
 
@@ -49,7 +50,6 @@ export default async function FleetPage() {
   const inboxError = inboxResult.status === 'rejected' ? describe(inboxResult.reason) : null;
 
   const visible = allReviews.filter((review) => !review.archived);
-  const archivedCount = allReviews.length - visible.length;
 
   // Bounded. Every review's audit trail is a separate query of up to a thousand documents,
   // and a landing page must not become a scan of the whole collection as runs accumulate.
@@ -82,8 +82,7 @@ export default async function FleetPage() {
         <FleetBoard
           members={members}
           activity={activity}
-          reviews={visible}
-          archivedCount={archivedCount}
+          registryAgents={registry.filter(isDepartmentEngine)}
           inbox={inbox}
           inboxError={inboxError}
           registryError={registryError}

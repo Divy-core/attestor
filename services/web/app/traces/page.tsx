@@ -22,7 +22,7 @@ export default async function TracesIndexPage() {
   }
 
   return (
-    <AppShell pathname="/traces" title="Audit trails">
+    <AppShell pathname="/traces" title="Audit">
       <div className="mx-auto flex w-full max-w-page flex-col gap-4 px-6 py-8">
         <Panel flush className="overflow-hidden">
           {error !== null ? (
@@ -55,10 +55,10 @@ export default async function TracesIndexPage() {
           )}
         </Panel>
         <p className="max-w-prose text-sm leading-relaxed text-muted">
-          Open a review and follow <span className="text-primary">Audit trail</span> to see its
-          compliance plane. A trail is addressed by run, and a review may have several — a
-          redelivery, a resume after a human, and a follow-up round are each their own run against
-          the same claims.
+          Every agent decision, retrieval, refusal and guardrail block appends here as it
+          happens, and nothing is ever edited afterwards — the repository has no update and no
+          delete. A review may have several runs against the same claims: a redelivery, a
+          resume after a person, and a follow-up round are each their own.
         </p>
       </div>
     </AppShell>
