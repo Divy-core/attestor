@@ -32,8 +32,36 @@ export function ThemeToggle() {
   useEffect(() => {
     if (!ready) return;
     const root = document.documentElement;
+
+    // Transitions off across the change, and back on once the new colours are committed.
+    //
+    // Measured on the deployed site: with them on, 21 of the 35 elements carrying a colour
+    // transition kept painting the dark palette after switching to light -- the rail, the
+    // New review action, every thread summary, every tab, dark-theme ink on the light page
+    // at a contrast of 1.06. A custom property changing under a running transition does not
+    // reliably invalidate what derives from it, and the element holds the old colour.
+    //
+    // Three synchronous steps, and each forced reflow is load-bearing:
+    //
+    //   1. stamp, and flush -- so the suppression is in effect before anything changes.
+    //      Without the flush the browser coalesces both attribute writes into one style
+    //      recalculation and the suppression never applies.
+    //   2. change the theme, and flush -- the new colours are computed and committed with
+    //      no transition to hold the old ones.
+    //   3. unstamp. There is nothing left to animate, because step 2 already landed.
+    //
+    // Deliberately not `requestAnimationFrame`. The first version used two nested frames to
+    // unstamp and the attribute stuck on permanently in a tab that was not compositing --
+    // rAF does not fire there, so transitions stayed off for the life of the page. A theme
+    // change is instantaneous rather than an animation, so it needs no frame at all.
+    root.setAttribute('data-theme-switching', '');
+    void root.offsetHeight;
+
     if (choice === 'system') root.removeAttribute('data-theme');
     else root.setAttribute('data-theme', choice);
+    void root.offsetHeight;
+
+    root.removeAttribute('data-theme-switching');
     window.localStorage.setItem(KEY, choice);
   }, [choice, ready]);
 

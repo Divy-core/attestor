@@ -4079,8 +4079,47 @@ screen rather than summarising as "Google access".
 | 11 | Pack filed to Drive; Artifacts tab links to it | **BUILT, NOT EXERCISED** | Blocked on the same consent as #9 |
 | 12 | Outbound reply sent in-thread after human approval, audited with a named actor | **BUILT, NOT EXERCISED** | Same |
 | 13 | Nothing in section F appears anywhere in the product | **DONE, with one flagged** | The CLI line and the `services/runtime/deploy_fleet.py` reference are gone; a repo-wide grep over `app/`, `components/` and `lib/` finds no `tools/*.py`, no `uv run`, no `gcloud`. **Flagged, not fixed:** three customer names in Firestore read `Northwind Traders (journey)`, `Acme Corp (deployed)` and `Acme Corp (async harness)`. They are data, not interface, and renaming them would put the live product out of step with the export PDFs in `docs/proof/` that record those names. The clean fix is a fresh run for the recording |
-| 14 | Both themes read at 1080p **with screenshots** | **PARTIAL — fourth session** | Everything reachable through the DOM was measured at 1920x1080: no horizontal scroll, `bg-base` at `rgb(0,0,0)`, GeistSans resolved, every new surface exercised by clicking. `computer{action:"screenshot"}` still times out — *"the Browser pane is not displayed, so the page is not compositing frames"* — in this environment. Marked PARTIAL rather than claimed |
+| 14 | Both themes read at 1080p **with screenshots** | **PARTIAL on the screenshot; the theme pass itself found and fixed two real defects** | See below. Measured at 1920x1080 in both themes, on the deployed site, by pressing the toggle and reading computed colours back. `computer{action:"screenshot"}` still times out — *"the Browser pane is not displayed, so the page is not compositing frames"* — fourth session running, so no image. Everything a screenshot would have shown was measured instead |
 | 15 | `make check` green, `tsc` clean, layering holds, pushed | **DONE** | 672 passed, 1 skipped; `mypy --strict` clean; `tsc --noEmit` clean; `check-tokens` clean; layering OK; types current |
+
+### The theme pass, which had never actually been done
+
+Four phases recorded "both themes read end to end" as PARTIAL for want of a screenshot, and
+the absent screenshot became the story. Pressing the toggle and reading the computed colours
+back found two defects, both on the surface this phase makes primary.
+
+**Switching to light left 21 of the 35 elements carrying a colour transition still painting
+the dark palette.** The navigation rail, the New review action, every thread post summary,
+every tab: dark-theme ink on the light page, a contrast of **1.06**. Invisible. A clone of
+any one of those elements, inserted into the same parent in the same frame, painted
+correctly — the markup and the CSS were right, and what was stale was the engine's own idea
+of the element's colour. That is what a custom property changing under a running transition
+does: the transition holds the old value and the variable change does not reliably
+invalidate it.
+
+Transitions are now suppressed across the change, in three synchronous steps with a forced
+reflow between each — stamp and flush, change and flush, unstamp. The first attempt unstamped
+on two nested animation frames and **the attribute stuck on permanently in a tab that was not
+compositing**, because `requestAnimationFrame` does not fire there. Which is the same
+environment fact that has blocked the screenshot for four sessions, arriving as a bug. A
+theme change is instantaneous rather than an animation, so it needs no frame at all.
+
+**`--text-muted` was under AA on the page ground.** Phase 6.5 measured it against a white
+card and darkened it until it read 4.74:1. The Review Thread lays its posts directly on
+`--bg-base`, which is not white, and 4.74:1 on a card is **4.24:1 on the page** — under AA for
+every supporting line and every detail heading on the surface the product now opens with.
+Darkened again: 4.76:1 on the page, 5.33:1 on a card.
+
+The lesson is the ground, not the ink. A contrast measurement is a statement about a *pair*,
+and checking the flattering half of the pair is how this passed twice.
+
+| Measured at 1920x1080, after the fix | Light | Dark |
+|---|---|---|
+| Page background | `rgb(242,242,242)` | `rgb(0,0,0)` |
+| Active tab, on its own fill | 16.01:1 | 17.94:1 |
+| Supporting line and detail heading, 12px, on the page | 4.76:1 | 6.49:1 |
+| Elements left painting the other theme | 0 | 0 |
+| Horizontal overflow | none | none |
 
 ### What Phase 8 did not do, and why
 

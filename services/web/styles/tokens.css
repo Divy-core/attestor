@@ -87,11 +87,21 @@
   --gray-500: #c9c9c9;
   --gray-600: #a8a8a8;
   --gray-700: #8f8f8f;
-  /* `#7d7d7d` here, mirroring the dark ramp, measured 4.12:1 against a white card -- under
-   * AA for the 12px metadata labels `--text-muted` is used on. Darkened until the
-   * measurement agreed with the claim; it is now 4.74:1. The same defect, found the same
-   * way, as the three the Phase 6.5 ramp measurement caught. */
-  --gray-800: #737373;
+  /* Darkened twice, both times because a measurement disagreed with a claim.
+   *
+   * Phase 6.5: `#7d7d7d`, mirroring the dark ramp, measured 4.12:1 against a white card --
+   * under AA for the 12px metadata labels `--text-muted` is used on. Darkened to `#737373`,
+   * which measured 4.74:1 against that card.
+   *
+   * Phase 8: against a *card* was the wrong ground to check. The Review Thread lays its
+   * posts directly on `--bg-base`, which in this theme is `--gray-100` rather than white,
+   * and 4.74:1 on a card is **4.24:1 on the page** -- under AA again, for every supporting
+   * line and every detail heading on the surface the product now opens with. Darkened to
+   * `#6b6b6b`: 4.76:1 on the page, 5.33:1 on a card.
+   *
+   * The lesson is the ground, not the ink. A contrast measurement is a statement about a
+   * pair, and checking the flattering half of the pair is how this passed twice. */
+  --gray-800: #6b6b6b;
   --gray-900: #666666;
   --gray-1000: #171717;
 
@@ -403,4 +413,35 @@
 
   --scale-track: var(--gray-300);
   --scale-fill: var(--gray-1000);
+}
+
+/* ---------------------------------------------------------------------------------
+ * Switching themes
+ * ---------------------------------------------------------------------------------
+ *
+ * Measured on the deployed site in Phase 8, by pressing the toggle and reading the
+ * computed styles back: after switching to light, **21 of the 35 elements carrying a
+ * colour transition were still painting the dark palette** — the whole navigation rail,
+ * the New review action, every thread post summary and every tab. Their text was
+ * `#ededed` on a `#f2f2f2` page, which is a contrast of 1.06. Invisible.
+ *
+ * A clone of any one of those elements, inserted into the same parent in the same frame,
+ * painted correctly. The markup and the CSS were right; what was stale was the engine's
+ * own idea of the element's colour. That is what happens when a custom property changes
+ * under an element that has a running transition on the property deriving from it: the
+ * transition holds the old value and the variable change does not always invalidate it.
+ *
+ * So transitions are switched off for the duration of the change, and back on afterwards.
+ * `data-theme-switching` is stamped on the root, a reflow is forced, and the next frame
+ * removes it. That fixes the stale paint and removes the colour smear across the whole
+ * page, which was never a wanted effect anyway — a theme change is instantaneous, not an
+ * animation.
+ *
+ * Four phases recorded "both themes read end to end" as PARTIAL for want of a screenshot.
+ * The thing a screenshot would have caught was here the whole time, and what found it was
+ * pressing the button and reading the numbers back. */
+[data-theme-switching] *,
+[data-theme-switching] *::before,
+[data-theme-switching] *::after {
+  transition: none !important;
 }

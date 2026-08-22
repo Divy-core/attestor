@@ -241,7 +241,7 @@ def check_topic(project: str, topic: str = DEFAULT_TOPIC) -> TopicCheck:
         note = (
             f"{len(subscriptions)} subscription(s) listen on {path}. Whether Gmail is "
             "permitted to publish there cannot be checked from this service, so Gmail is "
-            "left to answer it -- a registration is refused with its own words if it is not."
+            "left to answer it — a registration is refused with its own words if it is not."
         )
     elif not bound:
         note = (
