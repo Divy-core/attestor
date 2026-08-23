@@ -87,6 +87,15 @@ router = APIRouter()
 #: these are generous for the UI and still bounded.
 MAX_ROWS = 1000
 
+#: How many audit events one thread read may take in.
+#:
+#: A 312-question round writes roughly 1,200. The ceiling is above that on purpose: a
+#: thread built from the first thousand of twelve hundred events would describe part of a
+#: run as all of it, and the counts a post quotes would silently disagree with the grid.
+#: When the ceiling *is* hit the projection is told, and the thread says so rather than
+#: rendering a confident half-story.
+MAX_THREAD_EVENTS = 4000
+
 
 # ---------------------------------------------------------------------------------
 # Request models. Validation at the edge, so a malformed call fails here with a field
@@ -547,7 +556,15 @@ def list_answers(round_id: str) -> list[dict[str, Any]]:
 
 @router.get("/reviews/{review_id}/audit")
 def list_audit(review_id: str, limit: int = 500) -> list[dict[str, Any]]:
-    return audit().for_review(review_id, limit=min(limit, MAX_ROWS))
+    """One review's compliance plane.
+
+    Capped at `MAX_THREAD_EVENTS` rather than at `MAX_ROWS`, and the difference matters: a
+    312-question round writes roughly twelve hundred events, so a thousand-row ceiling
+    returned an arbitrary 1,000 of them -- `for_review` applies no ordering, so it was not
+    even the newest thousand -- under a footer that read "1000 of 1000 events". The page was
+    truthful about what it had and silent about what it did not.
+    """
+    return audit().for_review(review_id, limit=min(limit, MAX_THREAD_EVENTS))
 
 
 @router.get("/reviews/{review_id}/armor")
@@ -1006,16 +1023,6 @@ def list_artifacts(review_id: str) -> list[dict[str, Any]]:
 # ---------------------------------------------------------------------------------
 # The thread -- the audit trail read back as the conversation that produced it
 # ---------------------------------------------------------------------------------
-
-#: How many audit events one thread read may take in.
-#:
-#: A 312-question round writes roughly 1,200. The ceiling is above that on purpose: a
-#: thread built from the first thousand of twelve hundred events would describe part of a
-#: run as all of it, and the counts a post quotes would silently disagree with the grid.
-#: When the ceiling *is* hit the projection is told, and the thread says so rather than
-#: rendering a confident half-story.
-MAX_THREAD_EVENTS = 4000
-
 
 #: What one thread read needs: the review, its rounds, the target round's questions and
 #: answers, the audit trail, and whether that trail was cut short.

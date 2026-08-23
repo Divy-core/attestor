@@ -23,6 +23,19 @@ import { absolute, humanKind } from '@/lib/format';
  * other surfaces for the same reason.
  */
 
+/** How many events one read takes in. Matches the control plane's own ceiling. */
+const CEILING = 4000;
+
+/**
+ * How many rows are put in the DOM at once.
+ *
+ * The grid next door is virtualised; this is not, because an audit row expands to a
+ * variable-height detail block and a fixed-height windower cannot carry that. So the list
+ * grows on request instead, and the control names how many are left rather than the list
+ * simply stopping.
+ */
+const PAGE = 400;
+
 export function AuditPanel({
   reviewId,
   questions,
@@ -40,6 +53,7 @@ export function AuditPanel({
   const [kind, setKind] = useState<string>('all');
   const [question, setQuestion] = useState<string | null>(focus ?? null);
   const [opened, setOpened] = useState<string | null>(null);
+  const [shown, setShown] = useState(PAGE);
 
   // Fetched when this tab is opened, not with the page. It is up to a thousand documents
   // that no other tab renders, and loading it on every review page load was a second full
@@ -49,7 +63,7 @@ export function AuditPanel({
     void (async () => {
       try {
         const response = await fetch(
-          `/api/attestor/reviews/${encodeURIComponent(reviewId)}/audit?limit=1000`,
+          `/api/attestor/reviews/${encodeURIComponent(reviewId)}/audit?limit=${CEILING}`,
           { cache: 'no-store' },
         );
         if (!response.ok) {
@@ -89,6 +103,12 @@ export function AuditPanel({
     () => new Map(questions.map((row) => [row.question_id, row.text])),
     [questions],
   );
+
+  // Reset the window whenever the filters change, so narrowing a 1,200-event trail to nine
+  // rows does not leave a "Show 400 more" control under a list of nine.
+  useEffect(() => {
+    setShown(PAGE);
+  }, [actor, kind, question]);
 
   const rows = ordered.filter(
     (event) =>
@@ -146,7 +166,7 @@ export function AuditPanel({
           />
         ) : (
           <ul>
-            {rows.map((event, index) => {
+            {rows.slice(0, shown).map((event, index) => {
               const id = event.event_id ?? `${event.kind}-${event.occurred_at}-${index}`;
               const isOpen = opened === id;
               return (
@@ -209,14 +229,33 @@ export function AuditPanel({
                 </li>
               );
             })}
+            {rows.length > shown ? (
+              <li className="px-4 py-3">
+                <button
+                  type="button"
+                  onClick={() => setShown((count) => count + PAGE)}
+                  className="text-sm text-accent-text hover:underline"
+                >
+                  Show {Math.min(PAGE, rows.length - shown)} more of {rows.length - shown}
+                </button>
+              </li>
+            ) : null}
           </ul>
         )}
       </div>
 
       <p className="shrink-0 border-t border-subtle px-4 py-2 text-xs text-muted">
-        <Mono dim>{rows.length}</Mono> of <Mono dim>{ordered.length}</Mono> events. Append-only:
-        the repository has no update and no delete, so nothing here was edited after it was
-        written.
+        <Mono dim>{Math.min(shown, rows.length)}</Mono> shown of{' '}
+        <Mono dim>{rows.length}</Mono> matching, <Mono dim>{ordered.length}</Mono> read.
+        {ordered.length >= CEILING ? (
+          <>
+            {' '}
+            This review has more events than one read takes in, so this is the first{' '}
+            <Mono dim>{CEILING}</Mono> of them.
+          </>
+        ) : null}{' '}
+        Append-only: the repository has no update and no delete, so nothing here was edited
+        after it was written.
       </p>
     </div>
   );
