@@ -4113,13 +4113,67 @@ Darkened again: 4.76:1 on the page, 5.33:1 on a card.
 The lesson is the ground, not the ink. A contrast measurement is a statement about a *pair*,
 and checking the flattering half of the pair is how this passed twice.
 
-| Measured at 1920x1080, after the fix | Light | Dark |
+**And a third, on the ground nobody had thought of.** With the page and the card both
+passing, the question grid's *selected row* still failed: `--bg-active` is a 6% black wash,
+so over the page it composites to `#e3e3e3`, and the muted grey on that is 4.15:1 — the
+question number, the department and the confidence figure on whichever row the cursor is on.
+The link colour failed the same way, at 4.07:1, on three links on the fleet page.
+
+So the grounds were finally *enumerated* rather than chosen: base, card, and hover and
+active over each of those. Six, of which `#e3e3e3` is the darkest. `--gray-800` and
+`--gray-900` were set to clear AA on all six at once, and `--accent-text` in the light theme
+darkened from Vercel blue to `#0060d1`. `--gray-900` moved for a second reason as well: two
+rounds of darkening `--gray-800` had walked it to within five units of `--gray-900`, so
+secondary and muted text were nearly the same colour and the hierarchy they exist to express
+had quietly gone.
+
+The dark theme was enumerated the same way and needed no change — its worst case across
+seven grounds is 5.04:1.
+
+### The sweep, after the fixes
+
+Every surface, both themes, at 1920x1080, on the deployed build. A text element counts as a
+failure at under 4.5:1, or under 3:1 where WCAG calls the type large.
+
+| Surface | Text elements | Below AA, light | Below AA, dark | Overflow |
+|---|---|---|---|---|
+| Review thread | 143 | 0 | 0 | none |
+| Questions grid, a row selected | 286 | 0 | 0 | none |
+| Evidence, a document open | 256 | 0 | 0 | none |
+| Audit, a row expanded | 1,684 | 0 | 0 | none |
+| Reviews | 35 | 0 | 0 | none |
+| Fleet, a drawer open | 97 | 0 | 0 | none |
+| Connections | 47 | 0 | 0 | none |
+| Registry | 195 | 0 | 0 | none |
+| Audit trails index | 69 | 0 | 0 | none |
+
+| Spot figures, after the fix | Light | Dark |
 |---|---|---|
 | Page background | `rgb(242,242,242)` | `rgb(0,0,0)` |
-| Active tab, on its own fill | 16.01:1 | 17.94:1 |
+| Active tab, on its own fill | 14.03:1 | 15.32:1 |
+| Post actor name | 16.01:1 | 17.94:1 |
 | Supporting line and detail heading, 12px, on the page | 4.76:1 | 6.49:1 |
-| Elements left painting the other theme | 0 | 0 |
-| Horizontal overflow | none | none |
+| Elements left painting the other theme | 0 of 35 | 0 of 35 |
+| `data-theme-switching` stuck on after a switch | no | no |
+
+### The Audit tab said "1000 of 1000" and meant "1000 of 1,162"
+
+Found the same way: by reading the number back rather than trusting it. `GET
+/reviews/{id}/audit` was capped at `MAX_ROWS`, which is 1,000, and this review's trail is
+1,162 events. `for_review` applies no ordering, so what came back was not even the newest
+thousand — it was an arbitrary thousand, under a footer stating **1000 of 1000 events**.
+Truthful about what it held and silent about what it did not, which is the shape this phase
+has now found six times.
+
+The ceiling is the same 4,000 the thread reads at, so two surfaces over one trail no longer
+disagree about how much of it exists. The footer says how many are shown, how many match the
+filter, and how many were read, and adds a sentence when the read hit its ceiling.
+
+The list is windowed at 400 rows behind a control that names how many are left — not
+virtualised like the questions grid, and deliberately: an audit row expands to a
+variable-height detail block, and a fixed-height windower cannot carry that. The window
+resets when a filter changes, so narrowing 1,162 events to nine does not leave "Show 400
+more" under a list of nine.
 
 ### What Phase 8 did not do, and why
 

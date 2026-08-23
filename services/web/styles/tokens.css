@@ -87,22 +87,31 @@
   --gray-500: #c9c9c9;
   --gray-600: #a8a8a8;
   --gray-700: #8f8f8f;
-  /* Darkened twice, both times because a measurement disagreed with a claim.
+  /* Darkened three times, every time because a measurement disagreed with a claim, and
+   * every time because the *ground* had been chosen flatteringly rather than the ink chosen
+   * badly.
    *
-   * Phase 6.5: `#7d7d7d`, mirroring the dark ramp, measured 4.12:1 against a white card --
-   * under AA for the 12px metadata labels `--text-muted` is used on. Darkened to `#737373`,
-   * which measured 4.74:1 against that card.
+   * Phase 6.5 checked `--text-muted` against a white card and set `#737373` at 4.74:1.
+   * Phase 8 checked it against `--bg-base`, which is not white, and found 4.24:1 -- under
+   * AA for every supporting line on the Review Thread. Set `#6b6b6b`, 4.76:1 on the page.
+   * Phase 8 again, an hour later, checked it against a *selected row*: `--bg-active` is a
+   * 6% black wash, so on the page it composites to `#e3e3e3`, and `#6b6b6b` on that is
+   * 4.15:1. Under AA once more, on the question grid's selected row, for the question
+   * number, the department and the confidence figure.
    *
-   * Phase 8: against a *card* was the wrong ground to check. The Review Thread lays its
-   * posts directly on `--bg-base`, which in this theme is `--gray-100` rather than white,
-   * and 4.74:1 on a card is **4.24:1 on the page** -- under AA again, for every supporting
-   * line and every detail heading on the surface the product now opens with. Darkened to
-   * `#6b6b6b`: 4.76:1 on the page, 5.33:1 on a card.
+   * So this time the whole set of grounds was enumerated rather than picked: base, card,
+   * and hover and active over each of those -- six, of which `#e3e3e3` is the darkest. The
+   * two ink values below clear AA on **all six**, worst-case:
    *
-   * The lesson is the ground, not the ink. A contrast measurement is a statement about a
-   * pair, and checking the flattering half of the pair is how this passed twice. */
-  --gray-800: #6b6b6b;
-  --gray-900: #666666;
+   *     --gray-800  #656565   4.54:1 worst (active over base), 5.83:1 best (card)
+   *     --gray-900  #525252   6.09:1 worst, 6.98:1 on the page
+   *
+   * `--gray-900` moved too, and not only for contrast. Two rounds of darkening `--gray-800`
+   * had walked it to within five units of `--gray-900`, so secondary and muted text were
+   * very nearly the same colour and the hierarchy they exist to express had quietly gone.
+   * The gap is now large enough to see. */
+  --gray-800: #656565;
+  --gray-900: #525252;
   --gray-1000: #171717;
 
   --background-100: #ffffff;
@@ -124,11 +133,17 @@
   --accent-fill: rgba(0, 112, 243, 0.1);
   --accent-ink: #ffffff;
   /* Text is a separate token from the fill, because the same blue cannot do both jobs in
-   * both themes. `#0070f3` measures 4.55:1 on white -- just over AA -- and 3.82:1 on the
-   * dark card surface, which is under it. A link nobody can read is not a design choice, so
-   * the dark theme lifts this to `#3291ff` (5.50:1) while the *fill* stays `#0070f3`, where
-   * it carries white at 4.55:1. Both figures were read off the rendered page. */
-  --accent-text: #0070f3;
+   * both themes. The dark theme lifts it to `#3291ff` while the *fill* stays `#0070f3`,
+   * where it carries white ink.
+   *
+   * The light value was `#0070f3` too, and Phase 8 measured it on the page rather than on
+   * a white card: **4.07:1 on `--bg-base`**, under AA for the 13px links it is used on --
+   * "The registry", "Connections", "Connect one". The same mistake as `--gray-800`, on the
+   * same day, for the same reason: a colour tuned against the flattering half of the pair.
+   *
+   * `#0060d1` measures 5.22:1 on the page and 5.85:1 on a card. The fill is untouched, so
+   * a primary button is still Vercel blue carrying white; only link *text* darkens. */
+  --accent-text: #0060d1;
 
   /* ---- layer 1: the six state hues ----
    *
