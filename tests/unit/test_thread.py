@@ -469,3 +469,48 @@ class TestAskingTheThread:
         assert stored["question_id"] == qs[0].question_id
         assert isinstance(stored["details"], list)
         assert all("heading" in block and "rows" in block for block in stored["details"])
+
+
+class TestAResourceNameIsNotAByline:
+    """The remote verifier writes its engine resource name as the actor, which is right for
+    the trail and unreadable as a byline. Measured on the 150-question run: the post read
+    `projects/906988347581/locations/us-central1/reasoningEngines/1255723093024833536`."""
+
+    def test_an_engine_resource_name_renders_as_the_role(self) -> None:
+        qs = questions(1)
+        engine = "projects/906988347581/locations/us-central1/reasoningEngines/1255723093024833536"
+        thread = thread_for(
+            [
+                event(
+                    "answer_verified",
+                    20,
+                    question_id=qs[0].question_id,
+                    actor=engine,
+                    detail={"verdict": "supported", "drafted_by": "SecurityAgent"},
+                )
+            ],
+            qs=qs,
+            answers=[answer(qs[0])],
+        )
+        post = by_actor(thread, "VerifierAgent")[0]
+        assert post.actor == "VerifierAgent"
+        # And the resource name survives, one disclosure down, as the evidence.
+        duties = next(b for b in post.details if b.heading == "Separation of duties")
+        assert any(engine == row.value for row in duties.rows)
+
+    def test_an_ordinary_actor_name_is_left_alone(self) -> None:
+        qs = questions(1)
+        thread = thread_for(
+            [
+                event(
+                    "answer_verified",
+                    20,
+                    question_id=qs[0].question_id,
+                    actor="VerifierAgent (in-process)",
+                    detail={"verdict": "supported", "drafted_by": "SecurityAgent"},
+                )
+            ],
+            qs=qs,
+            answers=[answer(qs[0])],
+        )
+        assert by_actor(thread, "VerifierAgent (in-process)") != []

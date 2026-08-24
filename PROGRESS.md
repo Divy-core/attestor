@@ -3276,3 +3276,220 @@ figure I cannot derive would be the kind of number this file exists to avoid.
   not run in this session: it competes for the same regional engine quota as the 312-question
   runs, and running it alongside them would have confounded both.
 - **The groundedness eval, timers, and the teardown round trip.** Out of scope by the brief.
+
+---
+
+## Phase 9 — The Front Door, and Running the Loop (Day 11, 24 Aug 2026)
+
+### The third time the product argued with the reader
+
+Live on the Connections page at the start of this phase, under a Slack row describing an
+integration that does not exist:
+
+> *"Listed rather than omitted. An integration that does not exist and one nobody has
+> connected look identical when only the working ones are shown, and the difference is the
+> one a reader is trying to establish."*
+
+That is a design argument, addressed to whoever built it, rendered as product copy. Phase 7
+printed `tools/gmail_watch.py --apply` on the fleet page as an instruction. Phase 8 removed
+that and left this. Same failure, third time, and it kept coming back because nothing
+stopped it.
+
+**The rule: if a sentence would be at home in an ADR, it does not belong on the screen.**
+
+`scripts/check-copy.mjs` enforces it and `make check` runs it. Twelve phrases that only turn
+up when a sentence is defending a choice — *rather than*, *because*, *deliberately*, *by
+design*, *would be*, *instead of* and the rest — matched against **rendered text only**. A
+five-state scanner strips comments first, so a paragraph of reasoning above a component is
+untouched and `//` inside a URL is not mistaken for one. It reads JSX text nodes and the
+fourteen props that carry copy, `aria-label` and `alt` among them: a screen reader hearing a
+design rationale is the same defect delivered to someone with less ability to skip it.
+
+| | |
+|---|---|
+| Marked sentences found by the rule | **19**, across 13 files |
+| Found by hand afterwards, arguing without any of the phrases | **10** |
+| Largest single deletion | the registry page's *"What this listing does and does not prove"* — three paragraphs defending why identity renders blank, when the `Field` rows already say "not returned" with their provenance beside them |
+| Second largest | `PlaneNote`, which kept its two labels, its event count, its span tree and the one factual line that this codebase emits no custom OTel spans, and lost the paragraphs around them |
+
+Slack is gone — off the page, out of `GET /connections` on both services, out of the
+TypeScript. Not "not built". The generated copy in `attestor_platform.gmail.watch` was
+carrying rationale too, and the linter cannot see Python; four notes and a refusal were
+fixed by hand.
+
+The rationale is not lost. It is in this file, in the ADRs, and in the comments beside the
+code — none of which the linter scans, because none of them render.
+
+### The chat is the front door
+
+The Review Thread shipped in Phase 8 buried inside a review, on a page that ran the full
+width of the window. At 1920px that is a measure of about two hundred characters, and the
+eye loses its place on every return sweep. That, rather than the density, is why the old
+page was hard to read.
+
+- A **260px conversation rail**, one per review, ordered by what is waiting on a person,
+  collapsing to a status dot under 1280px.
+- The **centre column capped at 768px**. The single most important number in the layout.
+- A **520px panel** that covers the column below 1280px instead of squeezing it, and is
+  *absent* rather than hidden when closed, so the column re-centres.
+- No header bar over the column. The conversation is named in the rail, and repeating it
+  costs 56px of the one dimension that matters.
+- The sections — Fleet, Connections, Registry, Audit, About — moved to small type at the
+  foot of the rail. A console lists its pages; an application lists your conversations.
+
+The split between column and panel is by **width**: anything that needs more than 768px to
+be worth reading is a panel. That is the 312-row grid, the evidence, the artifacts, the raw
+audit, and the new **Report** — the round as a document, with an executive summary, sections
+by department, and each answer as a paragraph with its citations inline and its verification
+verdict beside it.
+
+**Only the human's turns get a container.** Everything the fleet says is prose. Ten agents
+to one person means a page of bubbles would be almost entirely bubbles, which reads as a
+transcript rather than as a record; boxing only the person's turns means the eye finds where
+they intervened by scanning for the only thing that is boxed.
+
+### The composer acts
+
+One line goes to `POST /reviews/{id}/message` and **the server decides what it is**. Putting
+that decision in the browser would mean shipping the command grammar to the client and
+keeping two copies of it in step.
+
+| Shape | What happened |
+|---|---|
+| `answered` | Nothing matched a command. Answered from the audit trail, no model call. |
+| `confirm` | An irreversible command was recognised and **nothing was written or published**. |
+| `dispatched` | A `WorkEnvelope` is on the bus, and `human_commanded` carries the person's name and the line they typed verbatim. |
+
+The grammar is literal, and the shortlist was cut by the **protocol** rather than by taste.
+`WorkKind` is frozen and its payloads use `extra="forbid"`, so a command can only exist if
+an existing kind can carry it:
+
+- **A follow-up round** needs `OpenFollowUpPayload.gcs_uri`. A round two *is* a second
+  questionnaire, so there is nothing to open without one — which is why attaching a file
+  opens the next round and no text command does.
+- **Filing to Drive alone** has no kind. `DELIVER_PACK` writes to Drive *and* emails, and a
+  command called "file this to Drive" that also emailed a customer would be the worst
+  surprise this product could produce.
+
+That leaves send, redraft and export. `answer` is deliberately not a synonym for redraft:
+"answer Q5" is an instruction and "what did we answer for Q5" is a question, and a prefix
+match cannot see the difference. Losing the synonym costs a person one word; getting it
+wrong throws away the answer they were asking about. A redraft names its question on the
+**envelope**, not in the payload, because `DRAFT_ANSWER` validates against `EmptyPayload`.
+
+Exercised in a browser against the deployed control plane. `who approved Q47` came back with
+the question text, its cell in the customer's file, the model that triaged it, the drafter,
+the verdict, and all four audit rows it was read from — then appeared in the thread as a
+boxed human turn and a prose reply. `send the pack` produced the confirmation with nothing
+published; going ahead refused with *"did not arrive by email, so there is no thread to
+reply on"*.
+
+### The verifier verified, for the first time
+
+Open since Phase 6. One run, 150 questions, clean customer name, verification on, through
+the deployed dispatcher and the deployed engines. `docs/proof/verified-run-150.json`.
+
+| | |
+|---|---|
+| Review | `rev-ead968ab9f94` — Meridian Health Systems, CAIQ, US |
+| Questions | 150, all three partitions completed, final state `awaiting_human` |
+| Audit events | 604 |
+| **Checked by a separate identity** | **36** |
+| **Verdicts** | **10 supported · 11 partially supported · 15 unknown · 0 unsupported** |
+| Verifying identity | `reasoningEngines/1255723093024833536` |
+| Drafting identities | `SecurityAgent` 9 · `LegalAgent` 12 · `EngineeringAgent` 15 |
+| `separation_held` | **true** — no verdict was written by the identity that drafted it |
+
+**Why 36 and not 150**, because that is the first question anyone will ask. Of the 150: 77
+had no passages at all and are flagged rather than answered; 1 was quarantined by Model
+Armor; and 36 are the engine-returned-passages-but-no-prose recovery path, where there is no
+drafted claim to check against the passages. **Every answer that carried a draft was
+checked.** The 15 `unknown` are the verifier declining to decide, reported rather than folded
+into the passes.
+
+Investigating that denominator was worth the hour it took. The 36 unverified answers all
+carried `authored_by: RemoteDraftingPipeline` rather than a department agent, which looked
+exactly like a second code path silently skipping a control — the shape this project has
+found eight times. It is not: it is the Phase 6.5 recovery branch for an engine that returns
+passages and no prose, and there is genuinely nothing to verify. The difference between
+those two readings is a `git blame` and a cross-reference, and guessing would have put a
+false claim in the proof file.
+
+**The empty-retrieval defence, working in a live run.** `empty_retrievals_confirmed: 79`,
+`empty_retrievals_recovered: 33`. Thirty-three retrievals came back empty, were retried
+rather than believed, and returned passages on the second attempt. Without that defence they
+would have been filed as "no supporting evidence in the corpus" — the eighth
+failure-impersonating-empty, defended where it was found.
+
+**One defect the run surfaced.** The remote verifier writes its engine resource name as the
+event actor, which is right for the trail and unreadable as a byline: the thread post read
+`projects/906988347581/locations/us-central1/reasoningEngines/1255723093024833536` where a
+name belongs. The byline is now the role and the resource name stays in the *Separation of
+duties* block, where it is the evidence rather than the label. Both are on screen, one click
+apart, and the trail is untouched.
+
+### /about
+
+Six chapters, no argument. Structure borrowed from Exa's about page and joinmynd — a
+display-size statement that holds the viewport, a strip of four measured figures, then
+numbered chapters with generous vertical rhythm — and Attestor's own tokens throughout.
+`--text-display` at 44px is one step above the console's scale and only this page reaches
+for it, in the ramp rather than as an arbitrary value.
+
+Every figure traces to a file. The 403 is verbatim from `iam-runtime-denial.json`, next to
+the fact that the same probe read its own prefix at 4,298 bytes in the same run. Recall is
+`make recall` over 63 hand-labelled pairs. The commitment in chapter four is the one Memory
+Bank actually returned. The six engine ids are read live from the Agent Registry on each
+request, so the page cannot drift from what is deployed — and the count comes from the same
+filter `/fleet` uses, which drops `attestor-probe`. It said seven before that, and two pages
+disagreeing about how many engines exist is worse than either number.
+
+Chapter five is the eight failure-impersonating-empty findings, each as *where it was* and
+*what it became*. Nothing on the site told that story and it is the most interesting thing
+in the project.
+
+The fleet diagram is **SVG, not three.js**. The claim is a *shape* — a diagonal, not a mesh
+— and a diagonal is legible in one glance at any size, in both themes, with no runtime, no
+reduced-motion branch and nothing to load. The refused edges are drawn dashed rather than
+omitted, because a diagram of only what is permitted looks identical to a diagram of a
+system with no boundaries.
+
+### Attestor never reaches the web to answer a question
+
+`attestor_fleet.tools` is an empty package carrying the rule, and
+`tests/unit/test_no_web_answers.py` enforces it: the fleet and the dispatcher are parsed,
+docstrings stripped via AST so the paragraphs explaining the rule do not trip the scan, and
+nine markers checked against what actually executes. The root agent's three tools are
+pinned, because a fourth is where a web tool would arrive.
+
+It is a test rather than a convention because of the failure mode. It is not a blank: it is
+a fluent, well-cited answer sourced from a competitor's trust page, returned to a customer
+under this company's name, with a citation that makes it look *more* trustworthy than the
+honest refusal it replaced. Every one of the 77 uncited answers in the run above is a place
+a web tool would have produced one.
+
+Research about the **customer** at intake stays allowed. The boundary is the destination,
+not the tool.
+
+### Phase 9 exit criteria
+
+| # | Criterion | State | How verified |
+|---|---|---|---|
+| 1 | Rationale sweep complete; count per page; lint rule added; Slack gone | **DONE** | 19 marked + 10 unmarked sentences removed, per-file counts above. `make check` runs `check-copy.mjs`. Slack removed from the page, both services and the TypeScript |
+| 2 | Gmail connected with a label-scoped watch | **DEFERRED** | Held for the next session at Divy's direction |
+| 3 | An email starts a review with nobody involved | **DEFERRED** | Depends on #2 |
+| 4 | Chat page is the front door: rail, 768px column, panel on demand, composer with `+` | **DONE** | Measured in a browser at 1920×1080: rail 260px, column 768px, panel 520px, no horizontal overflow |
+| 5 | Commands dispatch real work and appear on the trail | **DONE** | Three shapes exercised against the deployed control plane; `human_commanded` carries the actor and the verbatim line |
+| 6 | Report view renders the round as a document | **DONE** | Summary figures, sections by department, citations inline, verdict beside each answer |
+| 7 | One authoritative run with verification on; distribution reported; clean names | **DONE** | `verified-run-150.json`. 10 supported · 11 partially · 15 unknown · 0 unsupported, separation held. Customer reads "Meridian Health Systems" |
+| 8 | Pack to Drive; reply sent after named approval | **DEFERRED** | Depends on #2 |
+| 9 | `/about` live | **DONE** | Six chapters, live engine ids, zero AA failures in either theme |
+| 10 | Nine footage items captured | **PARTIAL** | Four new captures specified in `FOOTAGE.md` with what to point at and the artefact behind each. The *visual* capture is still the outstanding half, as it has been since Phase 5 |
+| 11 | `make check` green, `tsc` clean, layering holds, pushed | **DONE** | 723 passed, 1 skipped; mypy --strict, tsc, tokens, copy and layering all clean |
+
+### What Phase 9 did not do
+
+- **Gmail**, at Divy's direction, and everything downstream of it: the inbound run, the
+  Drive filing and the in-thread reply. All three are built and none is exercised.
+- **Timers.** Cut for the third phase running, as the brief said to.
+- **The screenshot half of the footage.** Six sessions now.

@@ -1,0 +1,127 @@
+{
+  "case": "verified_run",
+  "review_id": "rev-ead968ab9f94",
+  "round_id": "rev-ead968ab9f94-r1",
+  "customer": "Meridian Health Systems",
+  "questions": 150,
+  "final_state": "awaiting_human",
+  "audit_events": 604,
+  "reading": "The first run in this project's history in which a separate agent identity checked the drafted answers. Every answer that carried a draft was checked; the ones that were not checked had no claim to check.",
+  "verification": {
+    "enabled": true,
+    "verifier_engine": [
+      "projects/906988347581/locations/us-central1/reasoningEngines/1255723093024833536"
+    ],
+    "drafting_identities": {
+      "EngineeringAgent": 15,
+      "LegalAgent": 12,
+      "SecurityAgent": 9
+    },
+    "separation_held": true,
+    "checked": 36,
+    "verdicts": {
+      "unknown": 15,
+      "partially_supported": 11,
+      "supported": 10
+    }
+  },
+  "why_the_rest_were_not_checked": {
+    "flagged_no_evidence": 77,
+    "quarantined_by_model_armor": 1,
+    "held_no_draft_to_check": 36,
+    "note": "The third group is the engine-returned-passages-but-no-prose recovery path. There is no drafted claim to check against the passages, so no verdict is recorded and the answer is held for a person with its citations attached."
+  },
+  "answers": {
+    "status": {
+      "flagged_no_evidence": 77,
+      "drafted": 36,
+      "needs_human": 36,
+      "quarantined": 1
+    },
+    "support": {
+      "unknown": 129,
+      "partially_supported": 11,
+      "supported": 10
+    },
+    "confidence": {
+      "low": 114,
+      "medium": 27,
+      "high": 9
+    },
+    "with_at_least_one_citation": 72,
+    "verified_by_recorded": 36
+  },
+  "empty_retrieval_defence": {
+    "confirmed_empty": 79,
+    "recovered_on_retry": 33,
+    "note": "The eighth failure-impersonating-empty, defended. A retrieval that comes back empty is retried before it is believed; these recovered on the retry and would otherwise have been filed as 'no supporting evidence in the corpus'."
+  },
+  "partitions": [
+    {
+      "slowest_question_seconds": 186.4,
+      "department": "security",
+      "questions": 50,
+      "empty_retrievals_confirmed": 33,
+      "remote_calls": 138,
+      "empty_retrievals_recovered": 9,
+      "achieved_concurrency": 5.83,
+      "answers": 50,
+      "cited": 19,
+      "needs_human": 12,
+      "support": {
+        "unknown": 3,
+        "unsupported": 0,
+        "supported": 1,
+        "partially_supported": 3
+      },
+      "flagged_no_evidence": 31,
+      "wall_seconds": 330.98
+    },
+    {
+      "slowest_question_seconds": 85.17,
+      "department": "legal",
+      "questions": 50,
+      "remote_calls": 108,
+      "empty_retrievals_recovered": 8,
+      "achieved_concurrency": 7.1,
+      "answers": 50,
+      "cited": 24,
+      "needs_human": 13,
+      "support": {
+        "unsupported": 0,
+        "unknown": 5,
+        "supported": 3,
+        "partially_supported": 3
+      },
+      "flagged_no_evidence": 25,
+      "wall_seconds": 240.22,
+      "empty_retrievals_confirmed": 25
+    },
+    {
+      "slowest_question_seconds": 78.07,
+      "department": "engineering",
+      "empty_retrievals_confirmed": 21,
+      "remote_calls": 114,
+      "empty_retrievals_recovered": 16,
+      "achieved_concurrency": 6.69,
+      "answers": 43,
+      "cited": 22,
+      "needs_human": 10,
+      "support": {
+        "unsupported": 0,
+        "unknown": 6,
+        "supported": 4,
+        "partially_supported": 2
+      },
+      "flagged_no_evidence": 21,
+      "wall_seconds": 192.45,
+      "questions": 43
+    }
+  ],
+  "guardrail": {
+    "armor_blocked": 1,
+    "filters": {
+      "prompt_injection": 1
+    }
+  }
+}

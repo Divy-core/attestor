@@ -97,8 +97,24 @@ def _detail(event: dict[str, Any]) -> dict[str, Any]:
 
 
 def _actor(event: dict[str, Any], fallback: str) -> str:
-    actor = event.get("actor")
-    return str(actor) if actor else fallback
+    """Who wrote this event, in the name a person would use for them.
+
+    The remote verifier writes its own **engine resource name** as the actor -- a
+    seventy-character `projects/.../reasoningEngines/1255723093024833536` -- and that is
+    exactly right for the audit trail, where the question is which credential did the work.
+    It is wrong as a byline in a 768px column, where it pushes the sentence off the line and
+    tells a reader nothing they can hold onto.
+
+    So the byline is the role and the resource name stays in the expansion, under
+    "Separation of duties", where it is the evidence rather than the label. Nothing is lost:
+    the two names are shown together, one click apart, and the trail itself is untouched.
+    """
+    actor = str(event.get("actor") or "")
+    if not actor:
+        return fallback
+    if actor.startswith("projects/") and "/reasoningEngines/" in actor:
+        return fallback
+    return actor
 
 
 def _question_id(event: dict[str, Any]) -> str:
@@ -903,7 +919,10 @@ def _verification(grouped: dict[str, list[dict[str, Any]]], labels: dict[str, st
         "answer",
     )
 
-    identities = sorted({_actor(event, "VerifierAgent") for event in events})
+    # The RAW actor here, not the byline. This block is the evidence for separation of
+    # duties, and the evidence is the credential -- an engine resource name is exactly what
+    # an auditor needs to compare against the drafting identity beside it.
+    identities = sorted({str(event.get("actor") or "VerifierAgent") for event in events})
     drafters = sorted({str(_detail(event).get("drafted_by") or "") for event in events} - {""})
 
     details = [

@@ -45,6 +45,10 @@ if the only way to hand work in is a CLI.
 | 7 | Agent Runtime dashboard | Console → Agent Runtime | `fleet-deployment.json` | `services/runtime/deploy_fleet.py` |
 | 8 | Model Armor template | Console → Model Armor | `armor-smoke-output.txt`, `run-injected.json` | `tools/armor_smoke.py` |
 | 9 | The `.run.app` URL responding | browser | — | `curl <control-plane>/health` |
+| 10 | **The verifier's verdict distribution** — a second identity checking the first's work | `/reviews/rev-ead968ab9f94` → the VerifierAgent post, expanded | `verified-run-150.json` | the run itself |
+| 11 | **The chat front door** — drop a questionnaire, watch the fleet report into the thread | `/` | `verified-run-150.json` | drag the .xlsx onto the composer |
+| 12 | **Asking the thread** — a question answered from the audit trail, expanded to the rows it was read from | `/reviews/{id}` | the trail itself | type it |
+| 13 | **A command refusing** — `send the pack` on a review that never arrived by email | `/reviews/{id}` | the trail itself | type it |
 
 ---
 
@@ -157,3 +161,50 @@ place this interface could be accused of dressing up someone else's evidence as 
 
 **Still outstanding, and still needing a human with a browser:** every visual capture above.
 Phase 6 makes them cheaper and does not make them done.
+
+
+**10 — The verifier's verdict distribution.** This is the beat the project owed since Phase 6
+and did not have until 24 August. Open `rev-ead968ab9f94` and expand the **VerifierAgent**
+post. It reads:
+
+> Checked 36 answers against the passages they cite — 10 supported · 11 partially · 15 could
+> not be checked.
+
+Then open **Separation of duties** inside it, which is the whole point of the beat. The
+verifying identity is
+`projects/906988347581/locations/us-central1/reasoningEngines/1255723093024833536`; the
+drafting identities beside it are `SecurityAgent`, `LegalAgent` and `EngineeringAgent`. Two
+different credentials, and the verdict is refused outright when they are equal.
+
+Say the honest sentence about the denominator, because a judge will ask why 36 and not 150.
+Of the 150 questions: 77 had no passages at all and are flagged rather than answered, 1 was
+quarantined by Model Armor, and 36 are the engine-returned-passages-but-no-prose recovery
+path, where there is no drafted claim to check. **Every answer that carried a draft was
+checked.** The 15 `unknown` are the verifier declining to decide, and they are reported
+rather than folded into the passes.
+
+Worth one more sentence if there is room: `empty_retrievals_recovered: 33`. Thirty-three
+retrievals came back empty, were retried rather than believed, and returned passages on the
+second attempt. Without that defence they would have been filed as "no supporting evidence in
+the corpus" — the eighth failure-impersonating-empty, doing its job in a live run.
+
+**11 — The chat front door.** Start at `/` with no conversation open: a heading, a composer,
+and nothing else. Drop the questionnaire on the composer. The dialog takes the customer name,
+and the moment it publishes, the conversation appears in the rail and the fleet starts
+reporting into the thread — TriageAgent first, then three department agents with their
+counters rising, then the verifier, then the assembler holding what a person has to see. Do
+not click anything while it runs.
+
+**12 — Asking the thread.** Type `who approved Q47`, or `what is outstanding`. The reply is
+composed from the audit trail with **no model call**, and expanding it shows the question
+text, its cell in the customer's file, the model that triaged it, the drafting agent, the
+verdict, and every audit row the answer was read out of. Say that part out loud: this is not
+a model narrating a run it did not observe.
+
+**13 — A command refusing.** Type `send the pack`. Nothing is written and nothing is
+published; the confirmation names the effect and says it cannot be recalled. Press *Go ahead*
+and the refusal is the interesting half:
+
+> review 'rev-...' did not arrive by email, so there is no thread to reply on.
+
+A gate that only ever says yes is not a gate.
