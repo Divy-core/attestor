@@ -117,6 +117,7 @@ const config: Config = {
         md: ['var(--text-md)', { lineHeight: '1.4' }],
         lg: ['var(--text-lg)', { lineHeight: '1.2' }],
         xl: ['var(--text-xl)', { lineHeight: '1.1' }],
+        display: ['var(--text-display)', { lineHeight: '1.08', letterSpacing: '-0.02em' }],
       },
       fontWeight: {
         // Three weights, none above 600. Above that a UI face stops reading as chrome.

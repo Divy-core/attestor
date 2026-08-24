@@ -262,6 +262,10 @@
   --text-md: 16px;
   --text-lg: 24px;
   --text-xl: 32px;
+  /* One step above the scale, and only the about page reaches for it. A statement that has
+   * to hold a whole viewport on its own needs a size the console never wants, and putting
+   * it in the ramp rather than as an arbitrary value keeps it checkable. */
+  --text-display: 44px;
 
   --font-ui: var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system, 'Segoe UI',
     sans-serif;
