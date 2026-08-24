@@ -73,9 +73,6 @@ export function FleetBoard({
               The Agent Registry is unreachable, so the deployed engines cannot be listed.
             </p>
             <p className="font-mono text-xs text-secondary">{registryError}</p>
-            <p className="text-sm text-muted">
-              An empty fleet would be a claim. This is a failed read, and it says so.
-            </p>
           </div>
         ) : (
           <FleetRoster members={members} activity={activity} />
@@ -91,9 +88,7 @@ export function FleetBoard({
       {registryError === null && registryAgents.length > 0 ? (
         <section className="flex flex-col gap-4">
           <div className="flex flex-wrap items-baseline justify-between gap-4">
-            <h2 className="text-md text-primary">
-              What each department identity may read
-            </h2>
+            <h2 className="text-md text-primary">Corpus access</h2>
             <Link href="/registry" className="text-sm">
               The registry
             </Link>
@@ -138,9 +133,8 @@ function Inbound({ inbox, error }: { inbox: InboxStatus | null; error: string | 
       {error !== null ? (
         <p className="text-sm text-denied">The mailbox status could not be read. {error}</p>
       ) : inbox === null || !inbox.watching ? (
-        <p className="max-w-prose text-sm text-muted">
-          No mailbox is being watched, so no email starts a review.{' '}
-          <Link href="/connections">Connect one</Link>.
+        <p className="text-sm text-muted">
+          No mailbox connected. <Link href="/connections">Connect</Link>
         </p>
       ) : (
         <dl className="flex flex-wrap items-baseline gap-10">
@@ -160,7 +154,7 @@ function Inbound({ inbox, error }: { inbox: InboxStatus | null; error: string | 
                 inbox.expired ? 'text-denied' : 'text-secondary',
               )}
             >
-              {inbox.expired ? 'EXPIRED — no email is arriving' : `${inbox.expires_in_hours ?? 0}h`}
+              {inbox.expired ? 'expired' : `${inbox.expires_in_hours ?? 0}h`}
             </span>
           </div>
         </dl>

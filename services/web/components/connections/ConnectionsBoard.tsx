@@ -109,7 +109,7 @@ export function ConnectionsBoard({
     );
   }
 
-  const { gmail, drive, slack } = state;
+  const { gmail, drive } = state;
 
   return (
     <div className="flex flex-col gap-6">
@@ -183,9 +183,8 @@ export function ConnectionsBoard({
 
         {gmail.consented === false ? (
           <p className="max-w-prose text-sm text-secondary">
-            No mailbox has granted consent to this deployment, so there is nothing to watch.
-            Consent is a person signing in to a Google account and approving the scopes
-            below; it cannot be granted by this or any other service on their behalf.
+            No mailbox has granted access. A person signs in to a Google account and approves
+            the scopes below.
           </p>
         ) : null}
 
@@ -211,7 +210,7 @@ export function ConnectionsBoard({
 
         {gmail.delivery ? (
           <div className="flex flex-col gap-2">
-            <Label>whether a notification would actually arrive</Label>
+            <Label>delivery</Label>
             <p
               className={cx(
                 'max-w-prose text-sm',
@@ -245,24 +244,8 @@ export function ConnectionsBoard({
             : 'Nothing is filed anywhere. A completed pack stays in this system.'
         }
       >
-        <p className="max-w-prose text-sm text-secondary">
-          Drive is granted in the same consent as the mailbox and has nothing separate to
-          register, so it is connected exactly when that consent exists.
-        </p>
+        <p className="text-sm text-secondary">Granted in the same consent as the mailbox.</p>
         <Scopes scopes={drive.scopes} />
-      </Card>
-
-      <Card
-        title="Slack"
-        account=""
-        connected={slack.connected}
-        status="Not built. Escalations reach a person by email."
-      >
-        <p className="max-w-prose text-sm text-secondary">
-          Listed rather than omitted. An integration that does not exist and one nobody has
-          connected look identical when only the working ones are shown, and the difference
-          is the one a reader is trying to establish.
-        </p>
       </Card>
     </div>
   );

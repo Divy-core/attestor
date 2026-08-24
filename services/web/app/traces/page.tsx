@@ -30,7 +30,7 @@ export default async function TracesIndexPage() {
           ) : reviews.length === 0 ? (
             <Empty
               title="No trails yet"
-              hint="Every agent decision, retrieval, refusal and guardrail block appends to audit_events as it happens. A trail appears here with its review."
+              hint="A trail appears here with its review."
             />
           ) : (
             <ul className="flex flex-col">
@@ -55,10 +55,8 @@ export default async function TracesIndexPage() {
           )}
         </Panel>
         <p className="max-w-prose text-sm leading-relaxed text-muted">
-          Every agent decision, retrieval, refusal and guardrail block appends here as it
-          happens, and nothing is ever edited afterwards — the repository has no update and no
-          delete. A review may have several runs against the same claims: a redelivery, a
-          resume after a person, and a follow-up round are each their own.
+          Append-only. A review may have several runs against the same claims: a redelivery,
+          a resume after a person, and a follow-up round are each their own.
         </p>
       </div>
     </AppShell>

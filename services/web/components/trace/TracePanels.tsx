@@ -44,7 +44,7 @@ export function TracePanels({
         <Panel className="flex min-h-0 flex-1 flex-col overflow-hidden">
           <PanelHeader
             title="Compliance plane"
-            meta="Grouped by question, because the question this answers is “why did we answer yes to Q112?”"
+            meta="Grouped by question"
           />
           <TraceTree events={events} />
         </Panel>
@@ -55,7 +55,7 @@ export function TracePanels({
           <Panel>
             <Empty
               title="Nothing was blocked in this review"
-              hint="Guardrail events appear here when Model Armor refuses content — a prompt injection in a questionnaire cell, or a poisoned passage retrieved from the corpus. An empty list means nothing hostile was submitted, not that screening is off: every question is screened on ingress and every retrieved passage on egress."
+              hint="Guardrail events appear here when Model Armor refuses content. Every question is screened on ingress and every retrieved passage on egress."
             />
           </Panel>
         ) : (

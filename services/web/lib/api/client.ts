@@ -351,8 +351,6 @@ export type DriveConnection = {
   shares_consent_with: string;
 };
 
-export type SlackConnection = { connected: boolean; scopes: ScopeGrant[]; available: boolean };
-
 /**
  * `GET /connections`.
  *
@@ -365,7 +363,6 @@ export type SlackConnection = { connected: boolean; scopes: ScopeGrant[]; availa
 export type Connections = {
   gmail: GmailConnection;
   drive: DriveConnection;
-  slack: SlackConnection;
   manageable: boolean;
   unavailable: string;
 };

@@ -38,8 +38,7 @@ export function ScopeMatrix({ agents }: { agents: RegistryAgent[] }) {
     <div className="overflow-x-auto">
       <table className="w-full min-w-[40rem] border-collapse text-sm">
         <caption className="px-4 pb-2 text-left text-xs text-secondary">
-          A dot is a granted read. A dash is a refusal, enforced by the credential rather than by
-          an instruction.
+          A dot is a granted read. A dash is a refusal enforced by IAM.
         </caption>
         <thead>
           <tr className="border-b border-subtle text-xs text-muted">
@@ -85,7 +84,7 @@ export function ScopeMatrix({ agents }: { agents: RegistryAgent[] }) {
                     ) : (
                       <span
                         className="text-xs text-muted"
-                        title="Holds no corpus binding of its own. Cross-department retrieval asks each scoped agent in turn rather than holding the union of their permissions."
+                        title="Holds no corpus binding"
                       >
                         no corpus
                       </span>

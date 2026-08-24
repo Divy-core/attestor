@@ -144,7 +144,7 @@ function Card({ card }: { card: ReviewCard }) {
           ) : (
             <span
               className="text-xs text-muted"
-              title="The counts for this review could not be read. They are absent rather than zero."
+              title="The counts for this review could not be read"
             >
               not counted
             </span>

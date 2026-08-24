@@ -251,7 +251,7 @@ export function ReviewThread({
           {posts.length === 0 ? (
             <Empty
               title="Nothing has been recorded against this review yet."
-              hint="Posts appear here as each stage reports. The review advances by message delivery, so this fills in on its own."
+              hint="Posts appear here as each stage reports."
             />
           ) : (
             <div className="flex flex-col">

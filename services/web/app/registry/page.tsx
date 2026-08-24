@@ -28,7 +28,6 @@ export default async function RegistryPage() {
   }
 
   const split = partition(agents);
-  const anyIdentityFromRegistry = agents.some((agent) => Boolean(agent.effective_identity));
 
   return (
     <AppShell
@@ -38,20 +37,11 @@ export default async function RegistryPage() {
     >
       <div className="mx-auto flex w-full max-w-page flex-col gap-12 px-6 py-8">
         {error !== null ? (
-          <Failure
-            what="The Agent Registry could not be read."
-            detail={error}
-            action={
-              <span className="text-xs text-secondary">
-                This is a 503, not an empty fleet. The page will not render &ldquo;no agents are
-                registered&rdquo; because a call failed — that would be a lie told in a demo.
-              </span>
-            }
-          />
+          <Failure what="The Agent Registry could not be read." detail={error} />
         ) : agents.length === 0 ? (
           <Empty
             title="No agents catalogued"
-            hint="Agents appear here automatically when they are deployed to Agent Runtime. There is no manual registration step, and nothing on this page creates one — the registry is read, never written."
+            hint="Agents appear here when they are deployed to Agent Runtime."
           />
         ) : (
           <>
@@ -68,42 +58,6 @@ export default async function RegistryPage() {
                 <AgentCard key={agent.agent_id} agent={agent} />
               ))}
             </div>
-
-            <section className="flex flex-col gap-4">
-                <h2 className="text-md text-primary">
-                  What this listing does and does not prove
-                </h2>
-                <p className="max-w-prose text-sm text-secondary">
-                  Every entry above came back from{' '}
-                  <Mono dim>agentregistry.googleapis.com/v1</Mono> with no manual registration
-                  step. That part is the registry&rsquo;s, and it is the claim worth making:
-                  discovery is the platform&rsquo;s job and we did not build a catalogue.
-                </p>
-                {!anyIdentityFromRegistry ? (
-                  <p className="max-w-prose text-sm leading-relaxed text-secondary">
-                    What it does <em>not</em> carry is identity. The list endpoint returns{' '}
-                    <Mono dim>effective_identity</Mono> and <Mono dim>identity_type</Mono> as{' '}
-                    <Mono dim>null</Mono> on every entry, so those rows are left blank rather than
-                    filled in with a plausible-looking value. Identity distinctness is proven
-                    elsewhere and independently — each <Mono dim>agent_id</Mono> names a distinct{' '}
-                    <Mono dim>reasoningEngine</Mono>, each engine resource carries its own{' '}
-                    <Mono dim>spec.effectiveIdentity</Mono>, and the conditioned bucket bindings
-                    refuse a cross-department read. &ldquo;Distinct identities, per the
-                    registry&rdquo; would not be a true sentence about this page.
-                  </p>
-                ) : null}
-                {split.other.length > 0 ? (
-                  <p className="max-w-prose text-sm leading-relaxed text-secondary">
-                    The registry also catalogues{' '}
-                    <span className="text-primary">{split.other.length}</span> agent
-                    {split.other.length === 1 ? '' : 's'} that {split.other.length === 1 ? 'is' : 'are'}{' '}
-                    not part of this fleet —{' '}
-                    {split.other.map((agent) => agent.display_name ?? 'unnamed').join(', ')} — listed
-                    below rather than filtered out, because a count that quietly excludes what
-                    spoils it is not a count.
-                  </p>
-                ) : null}
-            </section>
 
             {split.other.length > 0 ? (
               <Panel flush>

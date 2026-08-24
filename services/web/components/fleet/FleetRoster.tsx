@@ -170,8 +170,7 @@ function Drawer({ member, live }: { member: FleetMember; live: AgentActivity | n
         </div>
       ) : (
         <p className="max-w-prose text-xs text-muted">
-          Nothing on the trail from this agent in the reviews read here. That is idle, not
-          missing — the trail is bounded to the most recent reviews.
+          Nothing on the trail from this agent in the reviews read here.
         </p>
       )}
 

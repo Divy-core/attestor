@@ -109,8 +109,8 @@ export function InjectionDiff({ event }: { event: AuditEvent }) {
             {excerpt}
           </pre>
           <p className="mt-2 max-w-prose text-sm text-secondary">
-            Blocked before it reached a model. The question was quarantined and the rest of the
-            questionnaire continued — one hostile cell does not fail a 312-question review.
+            Blocked before it reached a model. The question was quarantined; the rest of the
+            questionnaire continued.
           </p>
         </div>
       ) : null}

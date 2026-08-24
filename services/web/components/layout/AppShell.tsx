@@ -94,7 +94,7 @@ function Rail({ pathname }: { pathname: string }) {
         </Mono>
         <Mono
           dim
-          title="Region -- everything is us-central1 by design; Model Armor's regional support is narrower than Vertex's"
+          title="Region"
         >
           {env.region}
         </Mono>

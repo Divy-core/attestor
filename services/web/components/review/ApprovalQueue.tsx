@@ -53,9 +53,8 @@ export function ApprovalQueue({
         <div className="w-full border-t border-dashed border-line" />
         <h3 className="pt-3 text-sm font-medium text-primary">Nothing waiting on a human</h3>
         <p className="max-w-prose text-sm text-secondary">
-          Answers arrive here when the system will not stand behind them on its own — a missing
-          citation, a low computed confidence, or a contradiction with something committed to in
-          an earlier round. Approving one publishes a resume message; the dispatcher applies it.
+          Answers arrive here on a missing citation, a low computed confidence, or a
+          contradiction with an earlier round.
         </p>
       </div>
     );
@@ -73,9 +72,7 @@ export function ApprovalQueue({
         />
         {operator.trim() ? null : (
           <span className="text-xs text-muted">
-            Approve and Reject stay disabled until this is filled in. An audit trail whose
-            actor is a constant cannot answer &ldquo;who approved this&rdquo;, which is the
-            question it exists for.
+            Approve and Reject stay disabled until this is filled in.
           </span>
         )}
       </label>
@@ -183,7 +180,7 @@ function ApprovalRow({
           <span className="text-xs text-secondary">
             Published to Pub/Sub. The dispatcher applies it.
           </span>
-          <Mono dim title="Idempotency key. A redelivery of this approval is refused on this value rather than applied twice.">
+          <Mono dim title="Idempotency key">
             {(outcome as { dedupKey: string }).dedupKey}
           </Mono>
         </div>

@@ -856,7 +856,6 @@ def connections(probe: bool = True) -> dict[str, Any]:
             "refusal": "",
         },
         "drive": {"connected": False, "scopes": [], "shares_consent_with": "gmail"},
-        "slack": {"connected": False, "scopes": [], "available": False},
         "manageable": False,
         "unavailable": "",
     }
@@ -887,7 +886,6 @@ def connections(probe: bool = True) -> dict[str, Any]:
         # and the topic. The Firestore-derived fields above are the floor, not a preference.
         payload["gmail"] = {**payload["gmail"], **(remote.get("gmail") or {})}
         payload["drive"] = {**payload["drive"], **(remote.get("drive") or {})}
-        payload["slack"] = {**payload["slack"], **(remote.get("slack") or {})}
         payload["manageable"] = True
     return payload
 

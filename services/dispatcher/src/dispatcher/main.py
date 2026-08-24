@@ -236,7 +236,6 @@ def connections() -> dict[str, Any]:
             ],
             "shares_consent_with": "gmail",
         },
-        "slack": {"connected": False, "scopes": [], "available": False},
     }
 
 

@@ -162,7 +162,7 @@ export function AuditPanel({
         ) : rows.length === 0 ? (
           <Empty
             title="No event matches this filter."
-            hint="Clear the agent or kind filter. Every filter listed here has at least one event behind it, so an empty result means the combination is empty, not the trail."
+            hint="Clear the agent or kind filter."
           />
         ) : (
           <ul>

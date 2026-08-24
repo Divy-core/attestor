@@ -62,8 +62,7 @@ SCOPE_NOTES: dict[str, str] = {
         "Read messages in this mailbox. Needed to see a questionnaire arrive."
     ),
     "https://www.googleapis.com/auth/gmail.send": (
-        "Send as this mailbox. Used only to reply with a finished pack, after a person "
-        "authorises it by name."
+        "Send as this mailbox. Used to reply with a finished pack, after a named approval."
     ),
     "https://www.googleapis.com/auth/gmail.modify": (
         "Label threads in this mailbox. Used to mark what was started, refused, or ignored."
@@ -233,21 +232,14 @@ def check_topic(project: str, topic: str = DEFAULT_TOPIC) -> TopicCheck:
         logger.warning("could not list subscriptions on %s: %s", path, exc)
 
     if not subscriptions:
-        note = (
-            f"Nothing is subscribed to {path}. A watch registered against it would look "
-            "healthy and deliver into a void."
-        )
+        note = f"Nothing is subscribed to {path}."
     elif not checked:
         note = (
-            f"{len(subscriptions)} subscription(s) listen on {path}. Whether Gmail is "
-            "permitted to publish there cannot be checked from this service, so Gmail is "
-            "left to answer it — a registration is refused with its own words if it is not."
+            f"{len(subscriptions)} subscription(s) listen on {path}. Gmail's publisher "
+            "binding could not be read from this service."
         )
     elif not bound:
-        note = (
-            f"Gmail's publisher identity is not permitted to publish to {path}, so a "
-            "registration here would never deliver anything."
-        )
+        note = f"Gmail's publisher identity is not permitted to publish to {path}."
     else:
         note = f"Gmail may publish to {path}, and {len(subscriptions)} subscription(s) listen."
 
@@ -312,9 +304,8 @@ def register(
         # there is no refresh token, so there is nothing to register a watch on -- and that
         # is a state a person can act on, not a fault.
         raise WatchRefused(
-            "No mailbox has granted this deployment access yet, so there is nothing to "
-            "watch. Consent is a person signing in to a Google account and approving the "
-            "scopes; no service can grant it on their behalf."
+            "No mailbox has granted this deployment access. A person signs in to a Google "
+            "account and approves the scopes."
         )
 
     check = check_topic(project, topic)

@@ -63,7 +63,7 @@ export function StreamIndicator({
       {gaps > 0 ? (
         <Mono
           dim
-          title="Sequence gaps detected and backfilled from the read endpoint. A gap is normal after a reconnect; a gap that was not backfilled would be a hole in the record."
+          title="Sequence gaps detected and backfilled from the read endpoint"
         >
           {gaps} backfilled
         </Mono>
@@ -74,7 +74,7 @@ export function StreamIndicator({
         // the 429 in the screen recording. This ratio is the fix, on screen.
         <Mono
           dim
-          title="Events observed on the stream, and the reads they caused. Bursts are collapsed into one read on a trailing edge, so the second number stays far below the first."
+          title="Events observed on the stream, and the reads they caused"
         >
           {observed} events → {reads} reads
         </Mono>

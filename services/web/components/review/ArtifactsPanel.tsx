@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 
-import { Button, Empty, Failure, Key, Label, Mono, cx } from '@/components/ui/primitives';
+import { Button, Empty, Failure, Label, Mono, cx } from '@/components/ui/primitives';
 import type { ArtifactRow } from '@/lib/api/client';
 
 /**
@@ -182,8 +182,8 @@ export function ArtifactsPanel({
           </div>
         ) : !canDeliver ? (
           <p className="max-w-prose text-sm text-muted">
-            This review did not arrive by email, so there is no thread to reply on. Download
-            the pack from Export and send it yourself.
+            This review did not arrive by email. There is no thread to reply on; download the
+            pack from Export.
           </p>
         ) : (
           <>
@@ -191,7 +191,7 @@ export function ArtifactsPanel({
               Replies in the thread the questionnaire arrived on, with the completed workbook
               and the evidence pack attached, and writes a copy to Drive. Answers held for a
               human, unsupported by evidence, or blocked by the guardrail are marked as such in
-              the file rather than omitted.
+              the file.
             </p>
             <label className="flex flex-col gap-2">
               <Label>your name, recorded on the audit trail</Label>
@@ -238,9 +238,7 @@ export function ArtifactsPanel({
                 >
                   Send the pack
                 </Button>
-                <span className="text-xs text-muted">
-                  Not on <Key>⌘K</Key> and not on a shortcut, deliberately.
-                </span>
+
               </div>
             )}
           </>

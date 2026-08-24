@@ -9,7 +9,8 @@
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
-    "tokens": "node scripts/check-tokens.mjs"
+    "tokens": "node scripts/check-tokens.mjs",
+    "copy": "node scripts/check-copy.mjs"
   },
   "dependencies": {
     "geist": "^1.7.2",

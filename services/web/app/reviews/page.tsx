@@ -102,7 +102,7 @@ export default async function ReviewsPage({
                     'ml-auto rounded-sm px-2 py-1 text-sm no-underline hover:no-underline',
                     showArchived ? 'bg-active text-primary' : 'text-secondary hover:bg-hover',
                   )}
-                  title="Dead runs from the quota work. Kept because docs/proof references them."
+                  title="Reviews taken out of the working set"
                 >
                   {showArchived ? 'Hide' : 'Show'} archived ({archivedCount})
                 </Link>
@@ -114,7 +114,7 @@ export default async function ReviewsPage({
               emptyHint={
                 archivedCount > 0 && !showArchived
                   ? `${archivedCount} archived review${archivedCount === 1 ? '' : 's'} are hidden. Show them, or clear the state filter.`
-                  : 'Start one from New review, or email the watched mailbox — a questionnaire arriving there starts a review with nobody involved.'
+                  : 'Start one from New review, or email the watched mailbox.'
               }
             />
           </>

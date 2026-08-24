@@ -4,7 +4,7 @@ SHELL := /bin/bash
 PROJECT_ID ?= $(shell gcloud config get-value project 2>/dev/null)
 REGION     ?= us-central1
 
-.PHONY: help setup lint types test layering check bootstrap deploy teardown fmt types-gen types-check cov seed recall calibrate run verify verify-denial verify-poison verify-consistency
+.PHONY: help setup lint types test layering copy check bootstrap deploy teardown fmt types-gen types-check cov seed recall calibrate run verify verify-denial verify-poison verify-consistency
 
 help: ## Show available targets
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | \
@@ -46,6 +46,11 @@ test: ## pytest
 layering: ## Enforce the package dependency invariant
 	uv run python tools/check_layering.py
 
+copy: ## Fail the build on rationale rendered as product copy
+	@if [ -f services/web/package.json ]; then \
+		cd services/web && node scripts/check-copy.mjs && node scripts/check-tokens.mjs; \
+	fi
+
 types-gen: ## Regenerate services/web/lib/types/generated.ts from attestor_core.protocol
 	uv run python tools/gen_types.py
 
@@ -55,7 +60,7 @@ types-check: ## Fail if the committed generated.ts is stale
 cov: ## Branch coverage on state/ and policy/, which must stay at 100%
 	uv run pytest tests/unit --cov=attestor_core.state --cov=attestor_core.policy --cov-branch --cov-report=term-missing --cov-fail-under=100
 
-check: lint types test layering types-check ## lint + types + test + layering + type drift
+check: lint types test layering types-check copy ## lint + types + test + layering + drift + copy
 
 seed: ## Seed corpus, datastores, and Firestore fixtures (idempotent)
 	PROJECT_ID=$(PROJECT_ID) REGION=$(REGION) uv run python seed/seed.py

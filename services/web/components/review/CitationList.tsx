@@ -39,8 +39,7 @@ export function CitationList({
   if (citations.length === 0) {
     return (
       <p className="border-l-2 border-dashed border-no-evidence py-1 pl-3 text-sm text-secondary">
-        No citations. This answer is not backed by a retrieved passage, and the system says so
-        rather than presenting it as evidenced.
+        No citations. This answer is not backed by a retrieved passage.
       </p>
     );
   }

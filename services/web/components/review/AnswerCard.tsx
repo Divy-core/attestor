@@ -29,7 +29,7 @@ export function AnswerCard({
           <StateBadge state={state} />
         </div>
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-          <Mono dim title="Content-derived question id. Stable across rounds, which is what makes a follow-up recognisable as the same question.">
+          <Mono dim title="Content-derived question id. Stable across rounds.">
             {question.question_id}
           </Mono>
           <span className="text-xs text-muted">{question.department}</span>
