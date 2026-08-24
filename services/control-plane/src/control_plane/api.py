@@ -74,7 +74,14 @@ from attestor_platform.firestore import (
 )
 from attestor_platform.pubsub import WorkPublisher
 from attestor_platform.storage import StorageClient
-from attestor_platform.thread import answer_from_trail, build_thread
+from attestor_platform.thread import (
+    Command,
+    CommandAction,
+    answer_from_trail,
+    build_thread,
+    parse_command,
+    resolve_reference,
+)
 from control_plane import dispatcher_link
 from control_plane.guard import require_capacity, require_write_token
 from control_plane.streaming import RunEventStream
@@ -1159,6 +1166,198 @@ def ask(review_id: str, body: AskRequest, request: Request) -> dict[str, Any]:
         }
     )
     return {"asked_at": asked_at, **composed.as_detail()}
+
+
+class MessageRequest(BaseModel):
+    """A line a person typed into the thread. It is either an instruction or a question."""
+
+    text: str = Field(min_length=1, max_length=1000)
+    #: `Actor` rather than a bare string, for the same reason approvals use it: this lands
+    #: in the append-only record as the person who said it.
+    actor: Actor
+    #: Set on the second call, carrying the action the first call asked about. An
+    #: irreversible command dispatches only when this matches what was recognised.
+    confirm: str = ""
+    #: Optional covering line, used by `send_pack`.
+    note: str = Field(default="", max_length=2000)
+
+
+@router.post("/reviews/{review_id}/message", status_code=status.HTTP_200_OK)
+def message(review_id: str, body: MessageRequest, request: Request) -> dict[str, Any]:
+    """One line in, one of three things out: an answer, a confirmation, or dispatched work.
+
+    ## Why one endpoint rather than two
+
+    The client would otherwise have to decide whether a line is a question or an
+    instruction, which means shipping the command grammar to the browser and keeping two
+    copies of it in step. The grammar lives in `attestor_platform.thread.commands`, it is
+    literal rather than fuzzy, and the server is the only thing that reads it.
+
+    ## The three shapes
+
+    * `answered` -- nothing matched a command pattern, so the line went to the audit trail
+      answerer. No model call; see `attestor_platform.thread.answering`.
+    * `confirm` -- an irreversible command was recognised. Nothing has happened yet. The
+      client re-posts with `confirm` set to the action.
+    * `dispatched` -- a `WorkEnvelope` is on the bus. The trail carries `human_commanded`
+      with the person and the text they typed, so the thread shows the instruction and the
+      work it produced next to each other.
+    """
+    require_write_token(request)
+    review, all_rounds, round_questions, round_answers, events, _truncated = _thread_inputs(
+        review_id, None
+    )
+    target = max(all_rounds, key=lambda item: item.ordinal, default=None)
+
+    command = parse_command(
+        body.text,
+        resolve_question=lambda line: resolve_reference(line, round_questions),
+    )
+    if command is None:
+        composed = answer_from_trail(
+            body.text,
+            review=review,
+            questions=round_questions,
+            answers=round_answers,
+            events=events,
+        )
+        asked_at = _record_exchange(review_id, events, body.actor, body.text, composed)
+        return {"kind": "answered", "asked_at": asked_at, **composed.as_detail()}
+
+    if command.irreversible and body.confirm != command.action.value:
+        # Nothing is written here. A confirmation prompt is not an event.
+        return {
+            "kind": "confirm",
+            "action": command.action.value,
+            "prompt": command.prompt,
+            "text": command.text,
+        }
+
+    if target is None:
+        raise HTTPException(status.HTTP_409_CONFLICT, f"review {review_id!r} has no rounds")
+
+    return {"kind": "dispatched", **_dispatch_command(review, target, command, body)}
+
+
+def _record_exchange(
+    review_id: str,
+    events: list[dict[str, Any]],
+    actor: str,
+    text: str,
+    composed: Any,
+) -> str:
+    """Append both halves of a question and its answer. Returns when it was asked."""
+    run_id = next(
+        (str(e["run_id"]) for e in events if e.get("run_id")),
+        f"ask-{uuid.uuid4().hex[:8]}",
+    )
+    round_id = next((str(e["round_id"]) for e in events if e.get("round_id")), None)
+    asked_at = datetime.now(UTC).isoformat()
+    audit().append_safe(
+        {
+            "kind": "human_asked",
+            "review_id": review_id,
+            "run_id": run_id,
+            "round_id": round_id,
+            "question_id": composed.question_id,
+            "actor": actor,
+            "occurred_at": asked_at,
+            "detail": {"question": text},
+        }
+    )
+    audit().append_safe(
+        {
+            "kind": "orchestrator_answered",
+            "review_id": review_id,
+            "run_id": run_id,
+            "round_id": round_id,
+            "question_id": composed.question_id,
+            "actor": "Orchestrator",
+            "occurred_at": _just_after(asked_at),
+            "detail": composed.as_detail(),
+        }
+    )
+    return asked_at
+
+
+#: A recognised command to the envelope it publishes. `export` is the one that publishes
+#: nothing: the workbook is built on demand by `GET /export`, so the command opens the
+#: panel and the trail records that somebody asked for it.
+_COMMAND_KINDS: dict[CommandAction, WorkKind | None] = {
+    CommandAction.SEND_PACK: WorkKind.DELIVER_PACK,
+    CommandAction.REDRAFT: WorkKind.DRAFT_ANSWER,
+    CommandAction.EXPORT: None,
+}
+
+
+def _dispatch_command(
+    review: Review, target: Round, command: Command, body: MessageRequest
+) -> dict[str, Any]:
+    """Publish the work a recognised command asks for, and record who asked for it.
+
+    `human_commanded` is appended before the publish, with the name and the line typed
+    verbatim. Of the two orderings, a record of an instruction whose publish then failed is
+    the one that can be investigated; a publish with no record of who asked is not.
+    """
+    kind = _COMMAND_KINDS[command.action]
+    run_id = f"cmd-{int(time.time())}-{uuid.uuid4().hex[:6]}"
+    payload: dict[str, Any] = {}
+
+    if command.action is CommandAction.SEND_PACK:
+        thread = inbox_state().thread_for_review(review.review_id)
+        if not thread or not thread.get("thread_id"):
+            # Refused here rather than in the handler, so a person reading the thread gets
+            # a sentence instead of a dead letter they have to go looking for.
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                f"review {review.review_id!r} did not arrive by email, so there is no "
+                "thread to reply on.",
+            )
+        payload = {"approved_by": body.actor, "note": body.note}
+
+    envelope = None
+    if kind is not None:
+        envelope = WorkEnvelope.for_work(
+            message_id=f"{run_id}-{review.review_id}",
+            review_id=review.review_id,
+            run_id=run_id,
+            round_id=target.round_id,
+            # A redraft names its question on the ENVELOPE, not in the payload.
+            # `DRAFT_ANSWER` validates against `EmptyPayload`, which forbids extras, so a
+            # `question_ids` field would fail at publish -- and the envelope has carried a
+            # `question_id` since Phase 1 precisely so per-question work needs no payload.
+            question_id=command.question_id,
+            kind=kind,
+            payload=payload,
+        )
+
+    audit().append_safe(
+        {
+            "kind": "human_commanded",
+            "review_id": review.review_id,
+            "run_id": run_id,
+            "round_id": target.round_id,
+            "question_id": command.question_id,
+            "actor": body.actor,
+            "detail": {
+                **command.as_detail(),
+                "work": kind.value if kind is not None else "none",
+                "dedup_key": envelope.dedup_key if envelope is not None else "",
+            },
+        }
+    )
+    if envelope is not None:
+        publisher().publish(envelope)
+
+    return {
+        "action": command.action.value,
+        "run_id": run_id,
+        "round_id": target.round_id,
+        "work": kind.value if kind is not None else "none",
+        "dedup_key": envelope.dedup_key if envelope is not None else "",
+        "question_id": command.question_id,
+        "question_label": command.question_label,
+    }
 
 
 def _just_after(iso: str) -> str:

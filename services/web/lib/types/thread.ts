@@ -95,3 +95,31 @@ export type AskReply = {
   details: ThreadDetail[];
   question_id: string | null;
 };
+
+/**
+ * What `POST /reviews/{id}/message` returns.
+ *
+ * One line in, one of three things out. The client does not decide which — the command
+ * grammar lives in `attestor_platform.thread.commands` and the server is the only thing
+ * that reads it, so there is one copy of it rather than two that drift.
+ */
+export type MessageReply =
+  /** Nothing matched a command. The line was answered from the audit trail. */
+  | ({ kind: 'answered' } & AskReply)
+  /**
+   * An irreversible command was recognised and **nothing has happened**. Re-post with
+   * `confirm` set to `action` to go through with it.
+   */
+  | { kind: 'confirm'; action: string; prompt: string; text: string }
+  /** A work envelope is on the bus. */
+  | {
+      kind: 'dispatched';
+      action: string;
+      run_id: string;
+      round_id: string;
+      /** The `WorkKind` published, or `none` for a command that produces no work. */
+      work: string;
+      dedup_key: string;
+      question_id: string | null;
+      question_label: string;
+    };

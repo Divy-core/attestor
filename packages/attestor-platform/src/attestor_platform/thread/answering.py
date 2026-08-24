@@ -758,7 +758,19 @@ _Handler = Callable[
 #: Probe words to handler. Order matters -- the first match wins, so the specific
 #: subjects come before the general status question.
 _ROUND_HANDLERS: tuple[tuple[tuple[str, ...], _Handler], ...] = (
-    (("held", "waiting on", "needs a human", "needs human", "pending", "approve"), _held),
+    (
+        (
+            "held",
+            "waiting on",
+            "needs a human",
+            "needs human",
+            "pending",
+            "approve",
+            "outstanding",
+            "left to do",
+        ),
+        _held,
+    ),
     (("verif", "grounded", "supported", "unsupported", "checked the answer"), _verification),
     (("block", "armor", "injection", "poison", "refus", "denied", "denial"), _blocked),
     (("commit", "contradict", "consisten", "promised", "prior round"), _commitments),

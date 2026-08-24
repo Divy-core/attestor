@@ -146,15 +146,40 @@ const config: Config = {
       // rail is 200px because that is what four nav labels and a revision id need, and
       // rounding it to a spacing step would be a worse number chosen for a tidier reason.
       width: {
+        // A square control on the row grid: the composer's attach button, whose height is
+        // set by the row and whose width has to match it or the button is an oblong.
+        row: 'var(--row-height)',
         rail: '200px',
         list: '420px',
+        // The conversation rail on the chat surface. Wider than the nav rail because it
+        // carries customer names and a line of status, and narrower than the list pane
+        // because it is navigation, not content.
+        conversations: '260px',
+        // What the conversation rail collapses to under 1200px: a dot and nothing else.
+        'conversations-collapsed': '56px',
+        // The panel that slides in beside the thread.
+        panel: '520px',
       },
       minWidth: {
         detail: '360px',
       },
+      minHeight: {
+        row: 'var(--row-height)',
+      },
       maxWidth: {
         prose: '68ch',
         list: '520px',
+        // What the side panel covers the column with below 1280px, where 768 + 520 does
+        // not fit and squeezing the column is the wrong thing to give up.
+        panel: '520px',
+        // The chat column, and the single most important number in this layout.
+        //
+        // The review page before this was full width, and long lines are what made it
+        // unreadable -- a 1920px monitor gave a 1600px measure, roughly 200 characters, so
+        // the eye lost its place on every return sweep. 768px at this type size is a little
+        // over 90 characters, which is wide enough for a table inside a disclosure and
+        // narrow enough to read continuously.
+        column: '768px',
         // A measure for full-width pages. Content that runs the whole width of a 1920px
         // monitor is unreadable, and a console that fills every pixel because it can is the
         // difference between dense and cluttered.

@@ -116,7 +116,22 @@ export function NewReviewRailAction() {
   );
 }
 
-function NewReviewDialog({ onClose }: { onClose: () => void }) {
+/**
+ * The dialog, opened either from the rail or by a file arriving in the composer.
+ *
+ * `file` pre-loads the drop target, so handing a questionnaire to the chat lands here with
+ * the file already chosen and only the customer left to name. A drop that created a review
+ * outright would be the one effect in the product with no confirmation at all.
+ */
+export function NewReviewDialog({
+  onClose,
+  file: initial = null,
+  onStarted,
+}: {
+  onClose: () => void;
+  file?: File | null;
+  onStarted?: (reviewId: string) => void;
+}) {
   const router = useRouter();
   const ids = useId();
   const fileInput = useRef<HTMLInputElement>(null);
@@ -124,7 +139,7 @@ function NewReviewDialog({ onClose }: { onClose: () => void }) {
   const [customer, setCustomer] = useState('');
   const [framework, setFramework] = useState<Framework>('caiq');
   const [residency, setResidency] = useState<Residency>('us');
-  const [file, setFile] = useState<File | null>(null);
+  const [file, setFile] = useState<File | null>(initial);
   const [dragging, setDragging] = useState(false);
 
   const [progress, setProgress] = useState<StartProgress | null>(null);
@@ -150,7 +165,8 @@ function NewReviewDialog({ onClose }: { onClose: () => void }) {
       );
       // `replace` rather than `push`: the dialog's state is not something to come back to with
       // the back button, and the review page is where the work now is.
-      router.replace(`/reviews/${result.reviewId}`);
+      if (onStarted) onStarted(result.reviewId);
+      else router.replace(`/reviews/${result.reviewId}`);
     } catch (cause) {
       setProgress(null);
       setError(
@@ -159,7 +175,7 @@ function NewReviewDialog({ onClose }: { onClose: () => void }) {
           : { detail: String(cause), status: 0 },
       );
     }
-  }, [ready, file, customer, framework, residency, router]);
+  }, [ready, file, customer, framework, residency, router, onStarted]);
 
   return (
     <Modal

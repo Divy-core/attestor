@@ -70,6 +70,10 @@ const ALLOWED: ReadonlyArray<{ method: Method; pattern: RegExp }> = [
   // appended to the audit trail; it spends nothing, calls no model, and reaches no
   // engine. See `attestor_platform.thread.answering` for why that last part matters.
   { method: 'POST', pattern: /^reviews\/[^/]+\/ask$/ },
+  // One line typed into the thread. The server decides whether it is a question or
+  // an instruction; an irreversible one comes back as a confirmation and dispatches
+  // only on a second call carrying the action by name.
+  { method: 'POST', pattern: /^reviews\/[^/]+\/message$/ },
   // Connecting the mailbox. The write that replaced a CLI command printed in the
   // product; it registers the Gmail watch through the one service holding the
   // credential. DELETE stops it.

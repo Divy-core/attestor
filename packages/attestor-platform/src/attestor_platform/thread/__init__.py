@@ -22,7 +22,19 @@ append-only collection as everything else, because a conversation about a compli
 decision belongs in the compliance record.
 """
 
-from attestor_platform.thread.answering import Composed, answer_from_trail, resolve_question
+from attestor_platform.thread.answering import (
+    Composed,
+    answer_from_trail,
+    resolve_question,
+    resolve_reference,
+)
+
+# `Action` here is a *fleet command*; `model.Action` is a control rendered inside a
+# post. Two different things, both correctly named in their own module, so the one
+# that crosses the package boundary is renamed rather than the other shadowed.
+from attestor_platform.thread.commands import Action as CommandAction
+from attestor_platform.thread.commands import Command
+from attestor_platform.thread.commands import parse as parse_command
 from attestor_platform.thread.model import (
     Action,
     Detail,
@@ -35,6 +47,8 @@ from attestor_platform.thread.projection import build_thread, question_labels
 
 __all__ = [
     "Action",
+    "Command",
+    "CommandAction",
     "Composed",
     "Detail",
     "Post",
@@ -43,6 +57,8 @@ __all__ = [
     "Thread",
     "answer_from_trail",
     "build_thread",
+    "parse_command",
     "question_labels",
     "resolve_question",
+    "resolve_reference",
 ]

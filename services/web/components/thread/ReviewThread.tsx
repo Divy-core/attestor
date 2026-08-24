@@ -5,12 +5,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ApprovalQueue } from '@/components/review/ApprovalQueue';
 import { StreamIndicator } from '@/components/review/StreamIndicator';
 import { ThreadPost } from '@/components/thread/ThreadPost';
-import { Button, Empty, Failure, Label, Mono, cx } from '@/components/ui/primitives';
+import { Button, Empty, Failure, Mono } from '@/components/ui/primitives';
 import type { AnswerRow, QuestionRow } from '@/lib/api/client';
-import { useOperator } from '@/lib/operator';
 import { createPoller } from '@/lib/poll';
 import { openRunStream, type RunEventFrame, type StreamHealth } from '@/lib/sse';
-import type { AskReply, ThreadAction, ThreadPayload, ThreadPost as Post } from '@/lib/types/thread';
+import type { ThreadAction, ThreadPayload, ThreadPost as Post } from '@/lib/types/thread';
 
 /**
  * The review, as the conversation that produced it. The primary surface of the product.
@@ -51,9 +50,19 @@ type Props = {
   initialAnswers: AnswerRow[];
   /** Set when the server-side read failed. The failure is rendered, never an empty thread. */
   loadError: string | null;
-  /** Jump to the questions grid, focused on one row. Owned by the page's tabs. */
+  /** Jump to the questions grid, focused on one row. Owned by the page's panel. */
   onOpenQuestions?: (questionId?: string) => void;
   onOpenArtifacts?: () => void;
+  /**
+   * Bumped by the composer after it records or dispatches something.
+   *
+   * The composer lives outside this component now -- it is the surface's, not the thread's
+   * -- so "something happened, re-read" arrives as a changing number rather than as a
+   * callback handed downward and back up again.
+   */
+  refreshToken?: number;
+  /** Rendered under the last post: stream health, and the composer itself. */
+  footer?: React.ReactNode;
 };
 
 /** No more than one read per this many milliseconds, however many events arrive. */
@@ -69,6 +78,8 @@ export function ReviewThread({
   loadError,
   onOpenQuestions,
   onOpenArtifacts,
+  refreshToken = 0,
+  footer,
 }: Props) {
   const [thread, setThread] = useState<ThreadPayload | null>(initialThread);
   const [questions, setQuestions] = useState(initialQuestions);
@@ -158,6 +169,18 @@ export function ReviewThread({
     [],
   );
 
+  // The composer said something landed. Not coalesced: a person pressed a key and is
+  // waiting to see the result, which is the one case where being current beats being
+  // sparing. Skipped on the first render, where `initialThread` is already fresh.
+  const firstRefresh = useRef(true);
+  useEffect(() => {
+    if (firstRefresh.current) {
+      firstRefresh.current = false;
+      return;
+    }
+    void refetch().catch(() => {});
+  }, [refreshToken, refetch]);
+
   useEffect(() => {
     if (runId === null) return undefined;
     const stream = openRunStream(runId, {
@@ -233,7 +256,7 @@ export function ReviewThread({
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto w-full max-w-page px-6 py-6">
+        <div className="mx-auto w-full max-w-column px-6 py-8">
           {refreshError !== null ? (
             <div className="pb-4">
               <Failure what="The last refresh failed." detail={refreshError} />
@@ -283,169 +306,26 @@ export function ReviewThread({
         </div>
       </div>
 
-      <Composer
-        reviewId={reviewId}
-        onAsked={() => poller.now()}
-        onOpenQuestions={onOpenQuestions}
-        status={
-          runId === null ? null : (
-            <StreamIndicator
-              health={health}
-              detail={healthDetail}
-              polling={polling}
-              lastSeq={lastSeq}
-              gaps={gaps}
-              observed={observed}
-              reads={reads}
-            />
-          )
-        }
-      />
-    </div>
-  );
-}
-
-/**
- * Where a person asks the thread something.
- *
- * The reply is composed by the control plane out of this review's own audit trail and no
- * model is called — see `attestor_platform/thread/answering.py`, which explains at length
- * why that is the whole point rather than a shortcut. The reply is rendered here
- * immediately and *also* appended to the trail, so the next reader of this thread sees the
- * exchange in place, three weeks later, with the same blocks behind it.
- */
-function Composer({
-  reviewId,
-  onAsked,
-  onOpenQuestions,
-  status,
-}: {
-  reviewId: string;
-  onAsked: () => void;
-  onOpenQuestions?: (questionId?: string) => void;
-  status: React.ReactNode;
-}) {
-  const [operator, setOperator] = useOperator();
-  const [question, setQuestion] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [reply, setReply] = useState<AskReply | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  const submit = useCallback(async () => {
-    const asked = question.trim();
-    if (!asked || !operator.trim()) return;
-    setBusy(true);
-    setError(null);
-    try {
-      const response = await fetch(
-        `/api/attestor/reviews/${encodeURIComponent(reviewId)}/ask`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ question: asked, asked_by: operator.trim() }),
-        },
-      );
-      const payload: unknown = await response.json();
-      if (!response.ok) {
-        const detail =
-          payload && typeof payload === 'object' && 'detail' in payload
-            ? String((payload as { detail: unknown }).detail)
-            : `The control plane returned ${response.status}.`;
-        setError(detail);
-        return;
-      }
-      setReply(payload as AskReply);
-      setQuestion('');
-      // The exchange is already in the trail; this pulls it into the thread above so the
-      // reply the person is reading and the reply the record holds are the same object.
-      onAsked();
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause));
-    } finally {
-      setBusy(false);
-    }
-  }, [question, operator, reviewId, onAsked]);
-
-  return (
-    <div className="shrink-0 border-t border-subtle">
-      {reply !== null ? (
-        <div className="mx-auto w-full max-w-page px-6 pt-4">
-          <div className="flex flex-col gap-2 border-l-2 border-cited pl-3">
-            <p className="text-sm text-primary">{reply.answer}</p>
-            {reply.lines.map((line) => (
-              <p key={line} className="max-w-prose text-xs text-muted">
-                {line}
-              </p>
-            ))}
-            <div className="flex items-center gap-3">
-              <span className="text-xs text-muted">
-                Composed from {reply.details.length} block
-                {reply.details.length === 1 ? '' : 's'} of this review&rsquo;s record. It is
-                in the thread above, and in the audit trail.
-              </span>
-              {reply.question_id && onOpenQuestions ? (
-                <button
-                  type="button"
-                  onClick={() => onOpenQuestions(reply.question_id as string)}
-                  className="text-xs text-accent-text hover:underline"
-                >
-                  Open the question
-                </button>
-              ) : null}
-              <Button tone="ghost" small onClick={() => setReply(null)}>
-                Dismiss
-              </Button>
-            </div>
+      {footer !== undefined ? (
+        <div className="shrink-0 border-t border-subtle">
+          <div className="mx-auto flex w-full max-w-column flex-col gap-2 px-6 py-4">
+            {footer}
+            {runId !== null ? (
+              <div className="flex items-center justify-end">
+                <StreamIndicator
+                  health={health}
+                  detail={healthDetail}
+                  polling={polling}
+                  lastSeq={lastSeq}
+                  gaps={gaps}
+                  observed={observed}
+                  reads={reads}
+                />
+              </div>
+            ) : null}
           </div>
         </div>
       ) : null}
-
-      {error !== null ? (
-        <div className="mx-auto w-full max-w-page px-6 pt-4">
-          <Failure what="That question was not recorded." detail={error} />
-        </div>
-      ) : null}
-
-      <div className="mx-auto flex w-full max-w-page items-end gap-3 px-6 py-4">
-        <div className="flex min-w-0 flex-1 flex-col gap-2">
-          <input
-            value={question}
-            onChange={(event) => setQuestion(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter' && !event.shiftKey) {
-                event.preventDefault();
-                void submit();
-              }
-            }}
-            placeholder="Ask this review something — a question number, what is held, what was refused"
-            aria-label="Ask the thread"
-            className={cx(
-              'h-row w-full rounded-sm bg-sunken px-3 text-sm text-primary outline-none',
-              'placeholder:text-muted',
-            )}
-          />
-          {operator.trim() ? null : (
-            <label className="flex items-center gap-2">
-              <Label>your name, recorded against what you ask</Label>
-              <input
-                value={operator}
-                onChange={(event) => setOperator(event.target.value)}
-                placeholder="who is asking"
-                className="h-row-dense w-full max-w-list rounded-sm bg-sunken px-2 text-xs text-primary outline-none placeholder:text-muted"
-              />
-            </label>
-          )}
-        </div>
-        <Button
-          tone="primary"
-          onClick={() => void submit()}
-          disabled={busy || !question.trim() || !operator.trim()}
-          title={operator.trim() ? undefined : 'Enter your name first'}
-        >
-          {busy ? 'Asking' : 'Ask'}
-        </Button>
-        {status ? <div className="shrink-0 pb-1">{status}</div> : null}
-      </div>
     </div>
   );
 }

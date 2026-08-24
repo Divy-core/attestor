@@ -27,6 +27,14 @@ import type { ThreadDetail, ThreadPost as Post, ThreadAction } from '@/lib/types
  * twelve controls on a page whose premise is that it can be read in ten seconds. One
  * control per post, and expanding shows what happened — which is how the question is
  * actually asked ("what did the verifier do?"), not block by block.
+ *
+ * ## Only the human's turns get a container
+ *
+ * Everything the fleet says is prose on the page. A bubble around an agent's turn makes it
+ * look like a chat participant of the same kind as the person, and there are ten of them
+ * to one of you — the page would be almost entirely containers, which is a shape that reads
+ * as a transcript rather than as a record. The person's own turns are boxed, so the eye can
+ * find where they intervened by scanning for the only thing that is boxed.
  */
 
 export function ThreadPost({
@@ -44,6 +52,24 @@ export function ThreadPost({
 }) {
   const [open, setOpen] = useState(defaultOpen);
   const expandable = post.details.length > 0;
+
+  // A person's own turn. Boxed, right-aligned label, no spine: it is not a step the fleet
+  // took, it is the thing that interrupted them.
+  if (post.kind === 'asked') {
+    return (
+      <article className="flex flex-col items-end gap-1 pb-6">
+        <div className="max-w-[85%] rounded border border-line bg-surface px-4 py-3">
+          <p className="whitespace-pre-wrap text-base text-primary">{post.summary}</p>
+        </div>
+        <span className="flex items-baseline gap-2 text-xs text-muted">
+          {post.actor}
+          <span title={absolute(post.at)}>
+            <Mono dim>{clock(post.at)}</Mono>
+          </span>
+        </span>
+      </article>
+    );
+  }
 
   return (
     <article className="grid grid-cols-[16px_minmax(0,1fr)] gap-4">
@@ -91,9 +117,9 @@ export function ThreadPost({
             ▸
           </span>
           <span className="min-w-0 flex-1">
-            <span className="block text-base text-primary">{post.summary}</span>
+            <span className="block text-base leading-relaxed text-primary">{post.summary}</span>
             {post.lines.map((line) => (
-              <span key={line} className="mt-1 block max-w-prose text-sm text-muted">
+              <span key={line} className="mt-1 block text-sm leading-relaxed text-muted">
                 {line}
               </span>
             ))}

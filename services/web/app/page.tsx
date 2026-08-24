@@ -1,97 +1,48 @@
-import { FleetBoard } from '@/components/fleet/FleetBoard';
-import { AppShell } from '@/components/layout/AppShell';
+import { ChatEmpty } from '@/components/chat/ChatEmpty';
+import { ChatShell } from '@/components/chat/ChatShell';
 import { Failure } from '@/components/ui/primitives';
-import {
-  ApiError,
-  api,
-  type AuditEvent,
-  type InboxStatus,
-  type RegistryAgent,
-  type ReviewRow,
-} from '@/lib/api/client';
-import { activityByActor, reviewsWorthReading, roster } from '@/lib/fleet';
-import { isDepartmentEngine } from '@/lib/registry';
+import { ApiError, api, type InboxStatus, type ReviewCard } from '@/lib/api/client';
 
 export const dynamic = 'force-dynamic';
 
 /**
- * The landing page is the fleet, not a list of reviews.
+ * The front door.
  *
- * A list of reviews is the least interesting true thing about this system. What is
- * interesting is that six agents exist with distinct identities, that a department engine is
- * refused another department's corpus by IAM rather than by instruction, and that a review
- * can start because an email arrived. None of that was visible before Phase 7, and for
- * scoring purposes invisible is the same as absent.
+ * It was the fleet board — eight agents and their permissions, which is the most interesting
+ * *architecture* in the project and not the thing anyone opens a product to do. The fleet
+ * board is still there, at `/fleet`, and this is a conversation with the system instead.
  *
- * ## Every read here degrades on its own
- *
- * Four independent reads, each caught separately. A failed registry read renders as a failed
- * read — never as an empty fleet, which would be a claim rather than an error. The reviews
- * list, the mailbox status and the audit trails are the same: any one of them can be
- * unavailable without taking the page down or, worse, taking it down to something that looks
- * like a working system with nothing in it.
+ * Two reads, both allowed to fail on their own. A rail that could not be listed renders as a
+ * failure; the composer still works, because handing a questionnaire in does not depend on
+ * knowing what came before it.
  */
-export default async function FleetPage() {
-  const [registryResult, reviewsResult, inboxResult] = await Promise.allSettled([
-    api.listRegistry(),
-    api.listReviews(50),
+export default async function ChatPage() {
+  const [reviewResult, inboxResult] = await Promise.allSettled([
+    api.reviewBoard(100, false),
     api.inbox(),
   ]);
 
-  const registry: RegistryAgent[] =
-    registryResult.status === 'fulfilled' ? registryResult.value : [];
-  const registryError =
-    registryResult.status === 'rejected' ? describe(registryResult.reason) : null;
-
-  const allReviews: ReviewRow[] = reviewsResult.status === 'fulfilled' ? reviewsResult.value : [];
-  const reviewsError = reviewsResult.status === 'rejected' ? describe(reviewsResult.reason) : null;
+  const reviews: ReviewCard[] =
+    reviewResult.status === 'fulfilled' ? reviewResult.value : [];
+  const error =
+    reviewResult.status === 'rejected'
+      ? reviewResult.reason instanceof ApiError
+        ? reviewResult.reason.human
+        : String(reviewResult.reason)
+      : null;
 
   const inbox: InboxStatus | null = inboxResult.status === 'fulfilled' ? inboxResult.value : null;
-  const inboxError = inboxResult.status === 'rejected' ? describe(inboxResult.reason) : null;
-
-  const visible = allReviews.filter((review) => !review.archived);
-
-  // Bounded. Every review's audit trail is a separate query of up to a thousand documents,
-  // and a landing page must not become a scan of the whole collection as runs accumulate.
-  const trails = await Promise.allSettled(
-    reviewsWorthReading(visible).map((review) => api.listAudit(review.review_id, 1000)),
-  );
-  const events: AuditEvent[] = trails.flatMap((trail) =>
-    trail.status === 'fulfilled' ? trail.value : [],
-  );
-
-  const members = roster(registry);
-  const activity = activityByActor(events);
+  const watching = inbox?.watching && !inbox.expired ? inbox.address : null;
 
   return (
-    <AppShell
-      pathname="/"
-      title="Fleet"
-      meta={
-        registryError === null
-          ? `${members.length} agents · ${visible.length} live reviews`
-          : undefined
-      }
-      reviews={visible}
-    >
-      {reviewsError !== null ? (
-        <div className="p-4">
-          <Failure what="The control plane could not be reached." detail={reviewsError} />
+    <ChatShell reviews={reviews} activeId={null}>
+      {error !== null ? (
+        <div className="p-6">
+          <Failure what="The control plane could not be reached." detail={error} />
         </div>
       ) : (
-        <FleetBoard
-          members={members}
-          activity={activity}
-          registryAgents={registry.filter(isDepartmentEngine)}
-          inbox={inbox}
-          inboxError={inboxError}
-          registryError={registryError}
-        />
+        <ChatEmpty watching={watching} />
       )}
-    </AppShell>
+    </ChatShell>
   );
-}
-
-function describe(cause: unknown): string {
-  return cause instanceof ApiError ? cause.human : String(cause);
 }

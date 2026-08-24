@@ -20,13 +20,14 @@ import { env } from '@/lib/env';
  */
 
 export const NAV: ReadonlyArray<{ href: string; label: string; match: string; hint: string }> = [
+  { href: '/', label: 'Chat', match: '^/$', hint: 'The fleet, as a conversation' },
   {
     href: '/reviews',
     label: 'Reviews',
     match: '^/reviews',
     hint: 'Every review, sorted by what needs attention',
   },
-  { href: '/', label: 'Fleet', match: '^/$', hint: 'What each agent is doing right now' },
+  { href: '/fleet', label: 'Fleet', match: '^/fleet', hint: 'What each agent is doing right now' },
   {
     href: '/connections',
     label: 'Connections',

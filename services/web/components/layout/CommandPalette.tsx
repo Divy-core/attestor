@@ -52,7 +52,7 @@ const NAVIGATION: readonly Command[] = [
     id: 'nav-fleet',
     label: 'Fleet',
     hint: 'What each agent is doing right now',
-    href: '/',
+    href: '/fleet',
     group: 'Go to',
   },
   {
