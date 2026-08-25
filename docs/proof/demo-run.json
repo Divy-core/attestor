@@ -1,0 +1,151 @@
+{
+  "case": "demo_run",
+  "review_id": "rev-b6c7fd460d9a",
+  "round_id": "rev-b6c7fd460d9a-r1",
+  "customer": "Meridian Health Systems",
+  "questions": 150,
+  "final_state": "awaiting_human",
+  "audit_events": 613,
+  "wall_seconds": 805.6,
+  "started_by": "an upload through the chat composer",
+  "reading": "The run this submission quotes. It is the same 150 questions as verified-run-150.json, through the same deployed dispatcher and the same engines, with one change: the empty-retrieval backoff now outlasts the per-minute session quota that was emptying the retrievals. Citation rate went from 48% to 91% and the number of answers a separate identity could check went from 36 to 79.",
+  "answers": {
+    "status": {
+      "drafted": 73,
+      "flagged_no_evidence": 13,
+      "needs_human": 63,
+      "quarantined": 1
+    },
+    "with_at_least_one_citation": 136,
+    "citation_rate": 0.9067,
+    "confidence": {
+      "medium": 52,
+      "low": 77,
+      "high": 21
+    },
+    "support": {
+      "unknown": 96,
+      "supported": 29,
+      "partially_supported": 21,
+      "unsupported": 4
+    }
+  },
+  "verification": {
+    "enabled": true,
+    "checked": 79,
+    "verdicts": {
+      "supported": 29,
+      "unknown": 25,
+      "partially_supported": 21,
+      "unsupported": 4
+    },
+    "verifier_engine": [
+      "projects/906988347581/locations/us-central1/reasoningEngines/1255723093024833536"
+    ],
+    "drafting_identities": {
+      "LegalAgent": 22,
+      "EngineeringAgent": 27,
+      "SecurityAgent": 30
+    },
+    "separation_held": true,
+    "note": "Four answers came back unsupported -- the verifier reading a drafted claim against the passages it cites and saying they do not hold it up. The previous run recorded none, because it had a third as many drafts to check."
+  },
+  "empty_retrieval_defence": {
+    "confirmed_empty": 14,
+    "recovered_on_retry": 120,
+    "backoff_seconds": 25.0,
+    "note": "The ninth failure-impersonating-empty, defended once its mechanism was known. A per-minute quota on ADK session event appends was dropping the engine's tool-response mid-stream, and the old 3-second backoff retried three times inside the same exhausted minute. At 25 seconds the attempts span the quota window. See docs/proof/the-24-percent.md."
+  },
+  "guardrail": {
+    "armor_blocked": 2,
+    "filters": {
+      "sensitive_data": 1,
+      "prompt_injection": 1
+    }
+  },
+  "partitions": [
+    {
+      "empty_retrievals_recovered": 31,
+      "empty_retrievals_confirmed": 5,
+      "achieved_concurrency": 3.97,
+      "wall_seconds": 651.67,
+      "questions": 55,
+      "remote_calls": 92,
+      "department": "security",
+      "cited": 39
+    },
+    {
+      "empty_retrievals_recovered": 27,
+      "empty_retrievals_confirmed": 1,
+      "wall_seconds": 505.89,
+      "flagged_no_evidence": 1,
+      "achieved_concurrency": 4.48,
+      "questions": 50,
+      "needs_human": 27,
+      "remote_calls": 83,
+      "cited": 48,
+      "department": "legal"
+    },
+    {
+      "empty_retrievals_recovered": 31,
+      "empty_retrievals_confirmed": 4,
+      "achieved_concurrency": 3.09,
+      "wall_seconds": 97.55,
+      "flagged_no_evidence": 0,
+      "questions": 10,
+      "needs_human": 6,
+      "remote_calls": 95,
+      "cited": 10,
+      "department": "security"
+    },
+    {
+      "empty_retrievals_recovered": 1,
+      "empty_retrievals_confirmed": 0,
+      "flagged_no_evidence": 0,
+      "achieved_concurrency": 0.98,
+      "wall_seconds": 63.07,
+      "questions": 1,
+      "needs_human": 1,
+      "remote_calls": 2,
+      "cited": 1,
+      "department": "engineering"
+    },
+    {
+      "empty_retrievals_recovered": 30,
+      "empty_retrievals_confirmed": 4,
+      "achieved_concurrency": 4.87,
+      "wall_seconds": 473.63,
+      "questions": 45,
+      "remote_calls": 84,
+      "cited": 38,
+      "department": "engineering"
+    }
+  ],
+  "partition_note": "Five drafting stages for three departments. The 25-second backoff pushed the two longest partitions past the 600-second ack deadline, so Pub/Sub redelivered them and the 900-second lease refused the duplicate with 409 HELD -- visible in the dispatcher log -- while the original kept working. The small trailing stages are the questions that had not been written when the redelivery arrived. No question was drafted twice and no duplicate answers were written.",
+  "against_the_previous_run": {
+    "previous": "verified-run-150.json",
+    "citation_rate": {
+      "before": 0.48,
+      "after": 0.9067
+    },
+    "flagged_no_evidence": {
+      "before": 77,
+      "after": 13
+    },
+    "checked_by_a_separate_identity": {
+      "before": 36,
+      "after": 79
+    },
+    "empty_retrievals": {
+      "before": {
+        "confirmed": 79,
+        "recovered": 33
+      },
+      "after": {
+        "confirmed": 14,
+        "recovered": 120
+      }
+    },
+    "what_changed": "EMPTY_RETRIEVAL_BACKOFF_SECONDS 3.0 -> 25.0 and REMOTE_DRAFT_CONCURRENCY 8 -> 5, both in services/dispatcher/src/dispatcher/remote.py. Same questions, same corpus, same engines, same customer name."
+  }
+}

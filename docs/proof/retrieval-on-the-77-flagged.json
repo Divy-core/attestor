@@ -1,0 +1,3928 @@
+{
+  "armor": "on, both paths",
+  "audit_run_id": "compare-1787649484",
+  "case": "citation_gap_side_by_side",
+  "complete": true,
+  "concurrency": 3,
+  "deployed": {
+    "citation_rate": 0.8333,
+    "cited": 25,
+    "flagged_no_evidence": 5,
+    "mean_passage_count": 6.83,
+    "mean_top_score": 0.6899,
+    "quarantined": 0,
+    "seconds_total": 1270.4,
+    "zero_passage_questions": 0
+  },
+  "engine_ran_no_search": 0,
+  "engine_said_insufficient": 5,
+  "held_constant": "question text and triaged department read from Firestore; same guard, audit sink and prior commitments as runner.py builds in production; only the execution location of retrieval and drafting differs",
+  "local": {
+    "citation_rate": 0.7667,
+    "cited": 23,
+    "flagged_no_evidence": 7,
+    "mean_passage_count": 4.33,
+    "mean_top_score": 0.684,
+    "quarantined": 0,
+    "seconds_total": 878.4,
+    "zero_passage_questions": 4
+  },
+  "mean_document_jaccard": 0.7119,
+  "per_question": [
+    {
+      "department": "engineering",
+      "deployed": {
+        "answer_prefix": "Kestrel publishes service status at `status.kestreldata.com`, which is hosted by Statuspage on infrastructure independent of Kestrel's own environment to prevent shared failure domains. The status pag",
+        "blocked": false,
+        "citation_count": 5,
+        "confidence": "medium",
+        "denied": false,
+        "engine_events": 3,
+        "engine_passages_before_dedup": 5,
+        "engine_queries_run": [
+          "Where is your service status published? status page",
+          "service status published? status page"
+        ],
+        "engine_said_insufficient": false,
+        "engine_text_prefix": "Kestrel publishes service status at `status.kestreldata.com`, which is hosted by Statuspage on infrastructure independent of Kestrel's own environment to prevent shared failure domains. The status page provides per-component status across both US and EU instances, details current and historical inci",
+        "engine_tool_calls": 1,
+        "error": null,
+        "max_score": 0.7549,
+        "mean_score": 0.6427,
+        "needs_human": false,
+        "passage_count": 5,
+        "passages": [
+          {
+            "chars": 601,
+            "document": "service-operations-and-support",
+            "score": 0.7549,
+            "section": "1. Status page",
+            "uri": "gs://attestor-505506-corpus/engineering/service-operations-and-support.txt"
+          },
+          {
+            "chars": 693,
+            "document": "availability-sla",
+            "score": 0.6367,
+            "section": "2. Definitions",
+            "uri": "gs://attestor-505506-corpus/engineering/availability-sla.txt"
+          },
+          {
+            "chars": 541,
+            "document": "service-operations-and-support",
+            "score": 0.6093,
+            "section": "6. Monitoring and alerting",
+            "uri": "gs://attestor-505506-corpus/engineering/service-operations-and-support.txt"
+          },
+          {
+            "chars": 258,
+            "document": "availability-sla",
+            "score": 0.6066,
+            "section": "5. Historical performance",
+            "uri": "gs://attestor-505506-corpus/engineering/availability-sla.txt"
+          },
+          {
+            "chars": 210,
+            "document": "availability-sla",
+            "score": 0.6058,
+            "section": "Availability Service Level Agreement",
+            "uri": "gs://attestor-505506-corpus/engineering/availability-sla.txt"
+          }
+        ],
+        "seconds": 50.69,
+        "status": "drafted"
+      },
+      "documents_in_common": [
+        "gs://attestor-505506-corpus/engineering/availability-sla.txt",
+        "gs://attestor-505506-corpus/engineering/service-operations-and-support.txt"
+      ],
+      "jaccard_documents": 1.0,
+      "local": {
+        "answer_prefix": "Service status is published at `status.kestreldata.com`, which is hosted by Statuspage on infrastructure independent of Kestrel's own [1]. The page shows per-component status for the US and EU instanc",
+        "blocked": false,
+        "citation_count": 5,
+        "confidence": "medium",
+        "denied": false,
+        "error": null,
+        "max_score": 0.7158,
+        "mean_score": 0.6311,
+        "needs_human": false,
+        "passage_count": 5,
+        "passages": [
+          {
+            "chars": 601,
+            "document": "service-operations-and-support",
+            "score": 0.7158,
+            "section": "1. Status page",
+            "uri": "gs://attestor-505506-corpus/engineering/service-operations-and-support.txt"
+          },
+          {
+            "chars": 258,
+            "document": "availability-sla",
+            "score": 0.6149,
+            "section": "5. Historical performance",
+            "uri": "gs://attestor-505506-corpus/engineering/availability-sla.txt"
+          },
+          {
+            "chars": 210,
+            "document": "availability-sla",
+            "score": 0.6149,
+            "section": "Availability Service Level Agreement",
+            "uri": "gs://attestor-505506-corpus/engineering/availability-sla.txt"
+          },
+          {
+            "chars": 693,
+            "document": "availability-sla",
+            "score": 0.6077,
+            "section": "2. Definitions",
+            "uri": "gs://attestor-505506-corpus/engineering/availability-sla.txt"
+          },
+          {
+            "chars": 405,
+            "document": "service-operations-and-support",
+            "score": 0.6024,
+            "section": "7. Incident communication to customers",
+            "uri": "gs://attestor-505506-corpus/engineering/service-operations-and-support.txt"
+          }
+        ],
+        "seconds": 55.71,
+        "status": "drafted"
+      },
+      "question_id": "00b0cb7516875c90",
+      "text": "Where is your service status published?"
+    },
+    {
+      "department": "legal",
+      "deployed": {
+        "answer_prefix": "EU customer content and uploaded analytics datasets\u2014including all backups and replicated log ships\u2014never leave the EEA and remain hosted in `eu-west-1` (*transfer-impact-assessment*, Section 2, \"The t",
+        "blocked": false,
+        "citation_count": 5,
+        "confidence": "medium",
+        "denied": false,
+        "engine_events": 3,
+        "engine_passages_before_dedup": 5,
+        "engine_queries_run": [
+          "EU customer data processed outside EEA backups data residency transfer"
+        ],
+        "engine_said_insufficient": false,
+        "engine_text_prefix": "EU customer content and uploaded analytics datasets\u2014including all backups and replicated log ships\u2014never leave the EEA and remain hosted in `eu-west-1` (*transfer-impact-assessment*, Section 2, \"The transfers assessed\"; Section 5, \"Supplementary measures relied on\"). Customers provisioned on the EU ",
+        "engine_tool_calls": 1,
+        "error": null,
+        "max_score": 0.7149,
+        "mean_score": 0.679,
+        "needs_human": false,
+        "passage_count": 5,
+        "passages": [
+          {
+            "chars": 1200,
+            "document": "transfer-impact-assessment",
+            "score": 0.7149,
+            "section": "5. Supplementary measures relied on",
+            "uri": "gs://attestor-505506-corpus/legal/transfer-impact-assessment.txt"
+          },
+          {
+            "chars": 849,
+            "document": "transfer-impact-assessment",
+            "score": 0.6878,
+            "section": "2. The transfers assessed",
+            "uri": "gs://attestor-505506-corpus/legal/transfer-impact-assessment.txt"
+          },
+          {
+            "chars": 307,
+            "document": "subprocessor-list",
+            "score": 0.6783,
+            "section": "EU data residency",
+            "uri": "gs://attestor-505506-corpus/legal/subprocessor-list.txt"
+          },
+          {
+            "chars": 643,
+            "document": "subprocessor-list",
+            "score": 0.6581,
+            "section": "Infrastructure subprocessors",
+            "uri": "gs://attestor-505506-corpus/legal/subprocessor-list.txt"
+          },
+          {
+            "chars": 744,
+            "document": "transfer-impact-assessment",
+            "score": 0.6557,
+            "section": "3. Transfer mechanism",
+            "uri": "gs://attestor-505506-corpus/legal/transfer-impact-assessment.txt"
+          }
+        ],
+        "seconds": 63.77,
+        "status": "drafted"
+      },
+      "documents_in_common": [
+        "gs://attestor-505506-corpus/legal/subprocessor-list.txt",
+        "gs://attestor-505506-corpus/legal/transfer-impact-assessment.txt"
+      ],
+      "jaccard_documents": 1.0,
+      "local": {
+        "answer_prefix": "EU customer content, including backups and replicated log ships, remains in `eu-west-1` and is never transferred or processed outside the EEA [1][2]. However, limited operational data (such as account",
+        "blocked": false,
+        "citation_count": 5,
+        "confidence": "medium",
+        "denied": false,
+        "error": null,
+        "max_score": 0.6816,
+        "mean_score": 0.652,
+        "needs_human": false,
+        "passage_count": 5,
+        "passages": [
+          {
+            "chars": 1379,
+            "document": "transfer-impact-assessment",
+            "score": 0.6816,
+            "section": "5. Supplementary measures relied on",
+            "uri": "gs://attestor-505506-corpus/legal/transfer-impact-assessment.txt"
+          },
+          {
+            "chars": 849,
+            "document": "transfer-impact-assessment",
+            "score": 0.6665,
+            "section": "2. The transfers assessed",
+            "uri": "gs://attestor-505506-corpus/legal/transfer-impact-assessment.txt"
+          },
+          {
+            "chars": 307,
+            "document": "subprocessor-list",
+            "score": 0.6387,
+            "section": "EU data residency",
+            "uri": "gs://attestor-505506-corpus/legal/subprocessor-list.txt"
+          },
+          {
+            "chars": 643,
+            "document": "subprocessor-list",
+            "score": 0.6374,
+            "section": "Infrastructure subprocessors",
+            "uri": "gs://attestor-505506-corpus/legal/subprocessor-list.txt"
+          },
+          {
+            "chars": 600,
+            "document": "subprocessor-list",
+            "score": 0.6355,
+            "section": "Operational subprocessors",
+            "uri": "gs://attestor-505506-corpus/legal/subprocessor-list.txt"
+          }
+        ],
+        "seconds": 45.72,
+        "status": "drafted"
+      },
+      "question_id": "3965d4ea5f324d01",
+      "text": "Will EU customer data ever be processed outside the EEA, including backups?"
+    },
+    {
+      "department": "security",
+      "deployed": {
+        "answer_prefix": "Hardware-backed multi-factor authentication (WebAuthn / FIDO2, YubiKey 5 series) is mandatory for every human account. SMS and TOTP are no longer accepted; both factors were retired on June 30, 2025, ",
+        "blocked": false,
+        "citation_count": 5,
+        "confidence": "medium",
+        "denied": false,
+        "engine_events": 5,
+        "engine_passages_before_dedup": 5,
+        "engine_queries_run": [
+          "Which MFA factors are permitted? Are SMS or TOTP still accepted?",
+          "MFA factors are permitted? Are SMS or TOTP still accepted",
+          "MFA factors are permitted? Are SMS or TOTP still accepted multi-factor authentication",
+          "multi-factor authentication MFA factors SMS TOTP",
+          "multi-factor authentication MFA factors SMS TOTP multi-factor authentication"
+        ],
+        "engine_said_insufficient": false,
+        "engine_text_prefix": "Hardware-backed multi-factor authentication (WebAuthn / FIDO2, YubiKey 5 series) is mandatory for every human account. SMS and TOTP are no longer accepted; both factors were retired on June 30, 2025, in accordance with the RISK-2025-0031 treatment plan. This hardware-backed MFA requirement applies a",
+        "engine_tool_calls": 2,
+        "error": null,
+        "max_score": 0.6489,
+        "mean_score": 0.5642,
+        "needs_human": false,
+        "passage_count": 5,
+        "passages": [
+          {
+            "chars": 383,
+            "document": "access-control-standard",
+            "score": 0.6489,
+            "section": "2. Multi-factor authentication",
+            "uri": "gs://attestor-505506-corpus/security/access-control-standard.txt"
+          },
+          {
+            "chars": 284,
+            "document": "access-control-standard",
+            "score": 0.5841,
+            "section": "9. Password requirements",
+            "uri": "gs://attestor-505506-corpus/security/access-control-standard.txt"
+          },
+          {
+            "chars": 381,
+            "document": "access-control-standard",
+            "score": 0.5386,
+            "section": "3. Role-based access",
+            "uri": "gs://attestor-505506-corpus/security/access-control-standard.txt"
+          },
+          {
+            "chars": 432,
+            "document": "access-control-standard",
+            "score": 0.5376,
+            "section": "1. Identity provider",
+            "uri": "gs://attestor-505506-corpus/security/access-control-standard.txt"
+          },
+          {
+            "chars": 264,
+            "document": "access-control-standard",
+            "score": 0.5117,
+            "section": "10. Remote access",
+            "uri": "gs://attestor-505506-corpus/security/access-control-standard.txt"
+          }
+        ],
+        "seconds": 92.46,
+        "status": "drafted"
+      },
+      "documents_in_common": [],
+      "jaccard_documents": 0.0,
+      "local": {
+        "answer_prefix": "No supporting evidence was found in the corpus for this question.",
+        "blocked": false,
+        "citation_count": 0,
+        "confidence": "low",
+        "denied": false,
+        "error": null,
+        "max_score": null,
+        "mean_score": null,
+        "needs_human": true,
+        "passage_count": 0,
+        "passages": [],
+        "seconds": 16.91,
+        "status": "flagged_no_evidence"
+      },
+      "question_id": "2695d3d1faf7051c",
+      "text": "Which MFA factors are permitted? Are SMS or TOTP still accepted?"
+    },
+    {
+      "department": "unassigned",
+      "deployed": {
+        "answer_prefix": "No supporting evidence was found in the corpus for this question.",
+        "blocked": false,
+        "citation_count": 0,
+        "confidence": "low",
+        "denied": false,
+        "engine_events": 7,
+        "engine_passages_before_dedup": 5,
+        "engine_queries_run": [
+          "environmental sustainability carbon reporting",
+          "sustainability carbon emissions energy green",
+          "datacenter cloud provider infrastructure hosting"
+        ],
+        "engine_said_insufficient": true,
+        "engine_text_prefix": "INSUFFICIENT_EVIDENCE",
+        "engine_tool_calls": 3,
+        "error": null,
+        "max_score": 0.5815,
+        "mean_score": 0.5661,
+        "needs_human": true,
+        "passage_count": 5,
+        "passages": [
+          {
+            "chars": 211,
+            "document": "infrastructure-architecture-overview",
+            "score": 0.5815,
+            "section": "Infrastructure Architecture Overview",
+            "uri": "gs://attestor-505506-corpus/engineering/infrastructure-architecture-overview.txt"
+          },
+          {
+            "chars": 607,
+            "document": "infrastructure-architecture-overview",
+            "score": 0.5706,
+            "section": "1. Cloud footprint",
+            "uri": "gs://attestor-505506-corpus/engineering/infrastructure-architecture-overview.txt"
+          },
+          {
+            "chars": 462,
+            "document": "infrastructure-architecture-overview",
+            "score": 0.561,
+            "section": "6. Network",
+            "uri": "gs://attestor-505506-corpus/engineering/infrastructure-architecture-overview.txt"
+          },
+          {
+            "chars": 415,
+            "document": "infrastructure-architecture-overview",
+            "score": 0.5608,
+            "section": "3. Compute",
+            "uri": "gs://attestor-505506-corpus/engineering/infrastructure-architecture-overview.txt"
+          },
+          {
+            "chars": 203,
+            "document": "infrastructure-architecture-overview",
+            "score": 0.5566,
+            "section": "7. Observability",
+            "uri": "gs://attestor-505506-corpus/engineering/infrastructure-architecture-overview.txt"
+          }
+        ],
+        "seconds": 137.15,
+        "status": "flagged_no_evidence"
+      },
+      "documents_in_common": [],
+      "jaccard_documents": 0.0,
+      "local": {
+        "answer_prefix": "No supporting evidence was found in the corpus for this question.",
+        "blocked": false,
+        "citation_count": 0,
+        "confidence": "low",
+        "denied": false,
+        "error": null,
+        "max_score": null,
+        "mean_score": null,
+        "needs_human": true,
+        "passage_count": 0,
+        "passages": [],
+        "seconds": 13.58,
+        "status": "flagged_no_evidence"
+      },
+      "question_id": "e244c23e3dcea5b3",
+      "text": "Describe your approach to environmental sustainability and carbon reporting."
+    },
+    {
+      "department": "engineering",
+      "deployed": {
+        "answer_prefix": "No supporting evidence was found in the corpus for this question.",
+        "blocked": false,
+        "citation_count": 0,
+        "confidence": "low",
+        "denied": false,
+        "engine_events": 9,
+        "engine_passages_before_dedup": 10,
+        "engine_queries_run": [
+          "SCIM user provisioning",
+          "SCIM",
+          "provisioning",
+          "SSO SAML authentication user",
+          "SSO SAML authentication user single sign-on SAML OIDC federation",
+          "api-and-integration-standard",
+          "user creation directory identity provisioning"
+        ],
+        "engine_said_insufficient": true,
+        "engine_text_prefix": "INSUFFICIENT_EVIDENCE",
+        "engine_tool_calls": 6,
+        "error": null,
+        "max_score": 0.7048,
+        "mean_score": 0.6295,
+        "needs_human": true,
+        "passage_count": 7,
+        "passages": [
+          {
+            "chars": 278,
+            "document": "api-and-integration-standard",
+            "score": 0.7048,
+            "section": "API, Authentication and Integration Standard",
+            "uri": "gs://attestor-505506-corpus/engineering/api-and-integration-standard.txt"
+          },
+          {
+            "chars": 296,
+            "document": "api-and-integration-standard",
+            "score": 0.6694,
+            "section": "9. Integration security review",
+            "uri": "gs://attestor-505506-corpus/engineering/api-and-integration-standard.txt"
+          },
+          {
+            "chars": 702,
+            "document": "api-and-integration-standard",
+            "score": 0.6223,
+            "section": "4. Single sign-on",
+            "uri": "gs://attestor-505506-corpus/engineering/api-and-integration-standard.txt"
+          },
+          {
+            "chars": 680,
+            "document": "api-and-integration-standard",
+            "score": 0.6153,
+            "section": "7. Versioning and deprecation",
+            "uri": "gs://attestor-505506-corpus/engineering/api-and-integration-standard.txt"
+          },
+          {
+            "chars": 308,
+            "document": "change-management-procedure",
+            "score": 0.6082,
+            "section": "6. Customer notification",
+            "uri": "gs://attestor-505506-corpus/engineering/change-management-procedure.txt"
+          },
+          {
+            "chars": 643,
+            "document": "api-and-integration-standard",
+            "score": 0.5983,
+            "section": "1. API authentication",
+            "uri": "gs://attestor-505506-corpus/engineering/api-and-integration-standard.txt"
+          },
+          {
+            "chars": 354,
+            "document": "api-and-integration-standard",
+            "score": 0.5882,
+            "section": "5. Session management",
+            "uri": "gs://attestor-505506-corpus/engineering/api-and-integration-standard.txt"
+          }
+        ],
+        "seconds": 25.22,
+        "status": "flagged_no_evidence"
+      },
+      "documents_in_common": [],
+      "jaccard_documents": 0.0,
+      "local": {
+        "answer_prefix": "No supporting evidence was found in the corpus for this question.",
+        "blocked": false,
+        "citation_count": 0,
+        "confidence": "low",
+        "denied": false,
+        "error": null,
+        "max_score": null,
+        "mean_score": null,
+        "needs_human": true,
+        "passage_count": 0,
+        "passages": [],
+        "seconds": 5.89,
+        "status": "flagged_no_evidence"
+      },
+      "question_id": "0500f3c0a6e7f012",
+      "text": "Do you support SCIM user provisioning?"
+    },
+    {
+      "department": "legal",
+      "deployed": {
+        "answer_prefix": "Yes. Under Kestrel Data's Government Requests Policy and Transparency Report (*government-requests-and-transparency-report*, Section 2, \"How a request is handled\"), Kestrel notifies the affected custo",
+        "blocked": false,
+        "citation_count": 7,
+        "confidence": "medium",
+        "denied": false,
+        "engine_events": 7,
+        "engine_passages_before_dedup": 15,
+        "engine_queries_run": [
+          "government request customer data notification",
+          "notify customer government request gag order challenge law enforcement",
+          "\"How a request is handled\" \"Notify\" \"Minimise\""
+        ],
+        "engine_said_insufficient": false,
+        "engine_text_prefix": "Yes. Under Kestrel Data's Government Requests Policy and Transparency Report (*government-requests-and-transparency-report*, Section 2, \"How a request is handled\"), Kestrel notifies the affected customer before disclosing their data, unless legally prohibited from doing so. \n\nWhere the data requeste",
+        "engine_tool_calls": 3,
+        "error": null,
+        "max_score": 0.6653,
+        "mean_score": 0.6402,
+        "needs_human": false,
+        "passage_count": 7,
+        "passages": [
+          {
+            "chars": 301,
+            "document": "government-requests-and-transparency-report",
+            "score": 0.6653,
+            "section": "Government Requests Policy and Transparency Report",
+            "uri": "gs://attestor-505506-corpus/legal/government-requests-and-transparency-report.txt"
+          },
+          {
+            "chars": 471,
+            "document": "government-requests-and-transparency-report",
+            "score": 0.6624,
+            "section": "1. Who may receive a request",
+            "uri": "gs://attestor-505506-corpus/legal/government-requests-and-transparency-report.txt"
+          },
+          {
+            "chars": 416,
+            "document": "government-requests-and-transparency-report",
+            "score": 0.6378,
+            "section": "5. Emergency disclosure requests",
+            "uri": "gs://attestor-505506-corpus/legal/government-requests-and-transparency-report.txt"
+          },
+          {
+            "chars": 310,
+            "document": "government-requests-and-transparency-report",
+            "score": 0.6324,
+            "section": "6. Records",
+            "uri": "gs://attestor-505506-corpus/legal/government-requests-and-transparency-report.txt"
+          },
+          {
+            "chars": 258,
+            "document": "data-subject-rights-procedure",
+            "score": 0.6288,
+            "section": "9. Records",
+            "uri": "gs://attestor-505506-corpus/legal/data-subject-rights-procedure.txt"
+          },
+          {
+            "chars": 1200,
+            "document": "government-requests-and-transparency-report",
+            "score": 0.6274,
+            "section": "2. How a request is handled",
+            "uri": "gs://attestor-505506-corpus/legal/government-requests-and-transparency-report.txt"
+          },
+          {
+            "chars": 250,
+            "document": "data-subject-rights-procedure",
+            "score": 0.6271,
+            "section": "Data Subject Rights Procedure",
+            "uri": "gs://attestor-505506-corpus/legal/data-subject-rights-procedure.txt"
+          }
+        ],
+        "seconds": 25.9,
+        "status": "drafted"
+      },
+      "documents_in_common": [
+        "gs://attestor-505506-corpus/legal/government-requests-and-transparency-report.txt"
+      ],
+      "jaccard_documents": 0.5,
+      "local": {
+        "answer_prefix": "Yes. Kestrel notifies the affected customer before disclosing their data, unless legally prohibited from doing so [2]. Where a non-disclosure order applies, Kestrel seeks to have it lifted or time-lim",
+        "blocked": false,
+        "citation_count": 5,
+        "confidence": "medium",
+        "denied": false,
+        "error": null,
+        "max_score": 0.6928,
+        "mean_score": 0.6626,
+        "needs_human": false,
+        "passage_count": 5,
+        "passages": [
+          {
+            "chars": 471,
+            "document": "government-requests-and-transparency-report",
+            "score": 0.6928,
+            "section": "1. Who may receive a request",
+            "uri": "gs://attestor-505506-corpus/legal/government-requests-and-transparency-report.txt"
+          },
+          {
+            "chars": 1339,
+            "document": "government-requests-and-transparency-report",
+            "score": 0.6642,
+            "section": "2. How a request is handled",
+            "uri": "gs://attestor-505506-corpus/legal/government-requests-and-transparency-report.txt"
+          },
+          {
+            "chars": 301,
+            "document": "government-requests-and-transparency-report",
+            "score": 0.6571,
+            "section": "Government Requests Policy and Transparency Report",
+            "uri": "gs://attestor-505506-corpus/legal/government-requests-and-transparency-report.txt"
+          },
+          {
+            "chars": 416,
+            "document": "government-requests-and-transparency-report",
+            "score": 0.6523,
+            "section": "5. Emergency disclosure requests",
+            "uri": "gs://attestor-505506-corpus/legal/government-requests-and-transparency-report.txt"
+          },
+          {
+            "chars": 932,
+            "document": "government-requests-and-transparency-report",
+            "score": 0.6466,
+            "section": "3. Transparency report",
+            "uri": "gs://attestor-505506-corpus/legal/government-requests-and-transparency-report.txt"
+          }
+        ],
+        "seconds": 33.71,
+        "status": "drafted"
+      },
+      "question_id": "4417f3b8bcd163b9",
+      "text": "Will you notify customers of a government request for their data?"
+    },
+    {
+      "department": "security",
+      "deployed": {
+        "answer_prefix": "Held for a human. The department engine retrieved supporting passages for this question but returned no drafted answer, so there is evidence to work from and no draft to review. The passages are cited",
+        "blocked": false,
+        "citation_count": 5,
+        "confidence": "low",
+        "denied": false,
+        "engine_events": 2,
+        "engine_passages_before_dedup": 5,
+        "engine_queries_run": [
+          "Information Security Policy"
+        ],
+        "engine_said_insufficient": false,
+        "engine_text_prefix": "",
+        "engine_tool_calls": 1,
+        "error": null,
+        "max_score": 0.6892,
+        "mean_score": 0.6561,
+        "needs_human": true,
+        "passage_count": 5,
+        "passages": [
+          {
+            "chars": 339,
+            "document": "information-security-policy",
+            "score": 0.6892,
+            "section": "Information Security Policy",
+            "uri": "gs://attestor-505506-corpus/security/information-security-policy.txt"
+          },
+          {
+            "chars": 532,
+            "document": "information-security-policy",
+            "score": 0.6601,
+            "section": "1. Purpose and scope",
+            "uri": "gs://attestor-505506-corpus/security/information-security-policy.txt"
+          },
+          {
+            "chars": 280,
+            "document": "information-security-policy",
+            "score": 0.6484,
+            "section": "10. Exceptions",
+            "uri": "gs://attestor-505506-corpus/security/information-security-policy.txt"
+          },
+          {
+            "chars": 735,
+            "document": "information-security-policy",
+            "score": 0.6449,
+            "section": "5. Information classification",
+            "uri": "gs://attestor-505506-corpus/security/information-security-policy.txt"
+          },
+          {
+            "chars": 398,
+            "document": "risk-management-and-governance",
+            "score": 0.638,
+            "section": "8. Policy management",
+            "uri": "gs://attestor-505506-corpus/security/risk-management-and-governance.txt"
+          }
+        ],
+        "seconds": 23.12,
+        "status": "needs_human"
+      },
+      "documents_in_common": [
+        "gs://attestor-505506-corpus/security/information-security-policy.txt",
+        "gs://attestor-505506-corpus/security/risk-management-and-governance.txt"
+      ],
+      "jaccard_documents": 0.5,
+      "local": {
+        "answer_prefix": "Kestrel Data\u2019s Information Security Policy (Document ID: KD-SEC-001, Version 4.2) is owned by Chief Information Security Officer Marcus Oyelaran and was approved by the Board Audit & Risk Committee on",
+        "blocked": false,
+        "citation_count": 5,
+        "confidence": "medium",
+        "denied": false,
+        "error": null,
+        "max_score": 0.6924,
+        "mean_score": 0.6494,
+        "needs_human": false,
+        "passage_count": 5,
+        "passages": [
+          {
+            "chars": 339,
+            "document": "information-security-policy",
+            "score": 0.6924,
+            "section": "Information Security Policy",
+            "uri": "gs://attestor-505506-corpus/security/information-security-policy.txt"
+          },
+          {
+            "chars": 398,
+            "document": "risk-management-and-governance",
+            "score": 0.6463,
+            "section": "8. Policy management",
+            "uri": "gs://attestor-505506-corpus/security/risk-management-and-governance.txt"
+          },
+          {
+            "chars": 268,
+            "document": "network-security-standard",
+            "score": 0.6397,
+            "section": "Network Security Standard",
+            "uri": "gs://attestor-505506-corpus/security/network-security-standard.txt"
+          },
+          {
+            "chars": 280,
+            "document": "information-security-policy",
+            "score": 0.6368,
+            "section": "10. Exceptions",
+            "uri": "gs://attestor-505506-corpus/security/information-security-policy.txt"
+          },
+          {
+            "chars": 291,
+            "document": "personnel-security-and-training",
+            "score": 0.632,
+            "section": "Personnel Security and Security Training Programme",
+            "uri": "gs://attestor-505506-corpus/security/personnel-security-and-training.txt"
+          }
+        ],
+        "seconds": 43.32,
+        "status": "drafted"
+      },
+      "question_id": "63f607a454bdaf7d",
+      "text": "Provide your Information Security Policy."
+    },
+    {
+      "department": "unassigned",
+      "deployed": {
+        "answer_prefix": "No supporting evidence was found in the corpus for this question.",
+        "blocked": false,
+        "citation_count": 0,
+        "confidence": "low",
+        "denied": false,
+        "engine_events": 5,
+        "engine_passages_before_dedup": 0,
+        "engine_queries_run": [
+          "How many employees and contractors does your organisation have?",
+          "employees and contractors does your organisation have",
+          "employees contractors headcount"
+        ],
+        "engine_said_insufficient": true,
+        "engine_text_prefix": "INSUFFICIENT_EVIDENCE",
+        "engine_tool_calls": 2,
+        "error": null,
+        "max_score": 0.6039,
+        "mean_score": 0.5878,
+        "needs_human": true,
+        "passage_count": 5,
+        "passages": [
+          {
+            "chars": 312,
+            "document": "personnel-security-and-training",
+            "score": 0.6039,
+            "section": "3. Acceptable use and policy acknowledgement",
+            "uri": "gs://attestor-505506-corpus/security/personnel-security-and-training.txt"
+          },
+          {
+            "chars": 673,
+            "document": "acceptable-use-policy",
+            "score": 0.5933,
+            "section": "1. Company devices",
+            "uri": "gs://attestor-505506-corpus/security/acceptable-use-policy.txt"
+          },
+          {
+            "chars": 544,
+            "document": "company-and-security-programme-overview",
+            "score": 0.5816,
+            "section": "1. The company",
+            "uri": "gs://attestor-505506-corpus/security/company-and-security-programme-overview.txt"
+          },
+          {
+            "chars": 368,
+            "document": "legal-and-regulatory-history",
+            "score": 0.5809,
+            "section": "8. Statements in this document",
+            "uri": "gs://attestor-505506-corpus/legal/legal-and-regulatory-history.txt"
+          },
+          {
+            "chars": 404,
+            "document": "personnel-security-and-training",
+            "score": 0.5795,
+            "section": "2. Confidentiality obligations",
+            "uri": "gs://attestor-505506-corpus/security/personnel-security-and-training.txt"
+          }
+        ],
+        "seconds": 84.48,
+        "status": "flagged_no_evidence"
+      },
+      "documents_in_common": [
+        "gs://attestor-505506-corpus/legal/legal-and-regulatory-history.txt",
+        "gs://attestor-505506-corpus/security/acceptable-use-policy.txt",
+        "gs://attestor-505506-corpus/security/company-and-security-programme-overview.txt",
+        "gs://attestor-505506-corpus/security/personnel-security-and-training.txt"
+      ],
+      "jaccard_documents": 1.0,
+      "local": {
+        "answer_prefix": "As of 1 February 2026, Kestrel employs 187 employees and engages 24 contractors [1][3].",
+        "blocked": false,
+        "citation_count": 5,
+        "confidence": "medium",
+        "denied": false,
+        "error": null,
+        "max_score": 0.6039,
+        "mean_score": 0.5878,
+        "needs_human": false,
+        "passage_count": 5,
+        "passages": [
+          {
+            "chars": 312,
+            "document": "personnel-security-and-training",
+            "score": 0.6039,
+            "section": "3. Acceptable use and policy acknowledgement",
+            "uri": "gs://attestor-505506-corpus/security/personnel-security-and-training.txt"
+          },
+          {
+            "chars": 673,
+            "document": "acceptable-use-policy",
+            "score": 0.5933,
+            "section": "1. Company devices",
+            "uri": "gs://attestor-505506-corpus/security/acceptable-use-policy.txt"
+          },
+          {
+            "chars": 544,
+            "document": "company-and-security-programme-overview",
+            "score": 0.5816,
+            "section": "1. The company",
+            "uri": "gs://attestor-505506-corpus/security/company-and-security-programme-overview.txt"
+          },
+          {
+            "chars": 368,
+            "document": "legal-and-regulatory-history",
+            "score": 0.5809,
+            "section": "8. Statements in this document",
+            "uri": "gs://attestor-505506-corpus/legal/legal-and-regulatory-history.txt"
+          },
+          {
+            "chars": 404,
+            "document": "personnel-security-and-training",
+            "score": 0.5795,
+            "section": "2. Confidentiality obligations",
+            "uri": "gs://attestor-505506-corpus/security/personnel-security-and-training.txt"
+          }
+        ],
+        "seconds": 50.93,
+        "status": "drafted"
+      },
+      "question_id": "e6cf5f2192f0d002",
+      "text": "How many employees and contractors does your organisation have?"
+    },
+    {
+      "department": "engineering",
+      "deployed": {
+        "answer_prefix": "No supporting evidence was found in the corpus for this question.",
+        "blocked": false,
+        "citation_count": 0,
+        "confidence": "low",
+        "denied": false,
+        "engine_events": 17,
+        "engine_passages_before_dedup": 30,
+        "engine_queries_run": [
+          "product telemetry retention period how long",
+          "telemetry retention",
+          "retention",
+          "telemetry",
+          "audit log retained delete",
+          "KD-ENG",
+          "Datadog logs",
+          "service operations support logs"
+        ],
+        "engine_said_insufficient": true,
+        "engine_text_prefix": "INSUFFICIENT_EVIDENCE",
+        "engine_tool_calls": 8,
+        "error": null,
+        "max_score": 0.6576,
+        "mean_score": 0.5848,
+        "needs_human": true,
+        "passage_count": 15,
+        "passages": [
+          {
+            "chars": 282,
+            "document": "service-operations-and-support",
+            "score": 0.6576,
+            "section": "Service Operations, Maintenance and Support",
+            "uri": "gs://attestor-505506-corpus/engineering/service-operations-and-support.txt"
+          },
+          {
+            "chars": 508,
+            "document": "data-flow-and-shared-responsibility",
+            "score": 0.6105,
+            "section": "2. What crosses a boundary, and what does not",
+            "uri": "gs://attestor-505506-corpus/engineering/data-flow-and-shared-responsibility.txt"
+          },
+          {
+            "chars": 405,
+            "document": "service-operations-and-support",
+            "score": 0.6101,
+            "section": "7. Incident communication to customers",
+            "uri": "gs://attestor-505506-corpus/engineering/service-operations-and-support.txt"
+          },
+          {
+            "chars": 552,
+            "document": "service-operations-and-support",
+            "score": 0.5916,
+            "section": "3. Support channels and hours",
+            "uri": "gs://attestor-505506-corpus/engineering/service-operations-and-support.txt"
+          },
+          {
+            "chars": 817,
+            "document": "service-operations-and-support",
+            "score": 0.59,
+            "section": "4. Support severity definitions and response targets",
+            "uri": "gs://attestor-505506-corpus/engineering/service-operations-and-support.txt"
+          },
+          {
+            "chars": 384,
+            "document": "data-flow-and-shared-responsibility",
+            "score": 0.5876,
+            "section": "6. Where processing occurs",
+            "uri": "gs://attestor-505506-corpus/engineering/data-flow-and-shared-responsibility.txt"
+          },
+          {
+            "chars": 614,
+            "document": "data-flow-and-shared-responsibility",
+            "score": 0.5873,
+            "section": "3. The shared responsibility model",
+            "uri": "gs://attestor-505506-corpus/engineering/data-flow-and-shared-responsibility.txt"
+          },
+          {
+            "chars": 278,
+            "document": "api-and-integration-standard",
+            "score": 0.5835,
+            "section": "API, Authentication and Integration Standard",
+            "uri": "gs://attestor-505506-corpus/engineering/api-and-integration-standard.txt"
+          },
+          {
+            "chars": 601,
+            "document": "service-operations-and-support",
+            "score": 0.5811,
+            "section": "1. Status page",
+            "uri": "gs://attestor-505506-corpus/engineering/service-operations-and-support.txt"
+          },
+          {
+            "chars": 288,
+            "document": "sdlc-policy",
+            "score": 0.5798,
+            "section": "5. Dependency policy",
+            "uri": "gs://attestor-505506-corpus/engineering/sdlc-policy.txt"
+          },
+          {
+            "chars": 258,
+            "document": "sdlc-policy",
+            "score": 0.5773,
+            "section": "Secure Software Development Lifecycle Policy",
+            "uri": "gs://attestor-505506-corpus/engineering/sdlc-policy.txt"
+          },
+          {
+            "chars": 303,
+            "document": "data-flow-and-shared-responsibility",
+            "score": 0.5724,
+            "section": "5. Categories of customer data",
+            "uri": "gs://attestor-505506-corpus/engineering/data-flow-and-shared-responsibility.txt"
+          },
+          {
+            "chars": 1200,
+            "document": "data-flow-and-shared-responsibility",
+            "score": 0.5658,
+            "section": "1. Data flow, end to end",
+            "uri": "gs://attestor-505506-corpus/engineering/data-flow-and-shared-responsibility.txt"
+          },
+          {
+            "chars": 291,
+            "document": "data-flow-and-shared-responsibility",
+            "score": 0.544,
+            "section": "Data Flow and Shared Responsibility Model",
+            "uri": "gs://attestor-505506-corpus/engineering/data-flow-and-shared-responsibility.txt"
+          },
+          {
+            "chars": 459,
+            "document": "data-flow-and-shared-responsibility",
+            "score": 0.5329,
+            "section": "4. Complementary user entity controls",
+            "uri": "gs://attestor-505506-corpus/engineering/data-flow-and-shared-responsibility.txt"
+          }
+        ],
+        "seconds": 41.18,
+        "status": "flagged_no_evidence"
+      },
+      "documents_in_common": [
+        "gs://attestor-505506-corpus/engineering/data-flow-and-shared-responsibility.txt"
+      ],
+      "jaccard_documents": 0.25,
+      "local": {
+        "answer_prefix": "No supporting evidence was found in the corpus for this question.",
+        "blocked": false,
+        "citation_count": 0,
+        "confidence": "low",
+        "denied": false,
+        "error": null,
+        "max_score": 0.5795,
+        "mean_score": 0.57,
+        "needs_human": true,
+        "passage_count": 5,
+        "passages": [
+          {
+            "chars": 1711,
+            "document": "data-flow-and-shared-responsibility",
+            "score": 0.5795,
+            "section": "1. Data flow, end to end",
+            "uri": "gs://attestor-505506-corpus/engineering/data-flow-and-shared-responsibility.txt"
+          },
+          {
+            "chars": 508,
+            "document": "data-flow-and-shared-responsibility",
+            "score": 0.5786,
+            "section": "2. What crosses a boundary, and what does not",
+            "uri": "gs://attestor-505506-corpus/engineering/data-flow-and-shared-responsibility.txt"
+          },
+          {
+            "chars": 614,
+            "document": "data-flow-and-shared-responsibility",
+            "score": 0.5738,
+            "section": "3. The shared responsibility model",
+            "uri": "gs://attestor-505506-corpus/engineering/data-flow-and-shared-responsibility.txt"
+          },
+          {
+            "chars": 303,
+            "document": "data-flow-and-shared-responsibility",
+            "score": 0.5639,
+            "section": "5. Categories of customer data",
+            "uri": "gs://attestor-505506-corpus/engineering/data-flow-and-shared-responsibility.txt"
+          },
+          {
+            "chars": 384,
+            "document": "data-flow-and-shared-responsibility",
+            "score": 0.5545,
+            "section": "6. Where processing occurs",
+            "uri": "gs://attestor-505506-corpus/engineering/data-flow-and-shared-responsibility.txt"
+          }
+        ],
+        "seconds": 16.35,
+        "status": "flagged_no_evidence"
+      },
+      "question_id": "0e4ef530b2637b18",
+      "text": "How long is product telemetry retained?"
+    },
+    {
+      "department": "legal",
+      "deployed": {
+        "answer_prefix": "Following contract termination, customers are provided a 30-day export window to retrieve their data through the platform (`data-retention-schedule`, Section \"1. Customer data\"; `data-processing-agree",
+        "blocked": false,
+        "citation_count": 5,
+        "confidence": "medium",
+        "denied": false,
+        "engine_events": 3,
+        "engine_passages_before_dedup": 5,
+        "engine_queries_run": [
+          "How long is customer data retained after contract termination?",
+          "is customer data retained after contract termination"
+        ],
+        "engine_said_insufficient": false,
+        "engine_text_prefix": "Following contract termination, customers are provided a 30-day export window to retrieve their data through the platform (`data-retention-schedule`, Section \"1. Customer data\"; `data-processing-agreement`, Section \"8. Deletion and return\"). \n\nAfter the 30-day export window concludes, customer data ",
+        "engine_tool_calls": 1,
+        "error": null,
+        "max_score": 0.7521,
+        "mean_score": 0.7349,
+        "needs_human": false,
+        "passage_count": 5,
+        "passages": [
+          {
+            "chars": 788,
+            "document": "data-retention-schedule",
+            "score": 0.7521,
+            "section": "1. Customer data",
+            "uri": "gs://attestor-505506-corpus/legal/data-retention-schedule.txt"
+          },
+          {
+            "chars": 502,
+            "document": "master-agreement-summary",
+            "score": 0.7446,
+            "section": "7. Term, termination and transition",
+            "uri": "gs://attestor-505506-corpus/legal/master-agreement-summary.txt"
+          },
+          {
+            "chars": 253,
+            "document": "data-retention-schedule",
+            "score": 0.736,
+            "section": "6. Exceptions",
+            "uri": "gs://attestor-505506-corpus/legal/data-retention-schedule.txt"
+          },
+          {
+            "chars": 413,
+            "document": "data-processing-agreement",
+            "score": 0.7343,
+            "section": "8. Deletion and return",
+            "uri": "gs://attestor-505506-corpus/legal/data-processing-agreement.txt"
+          },
+          {
+            "chars": 587,
+            "document": "data-retention-schedule",
+            "score": 0.7073,
+            "section": "2. Kestrel-controlled data",
+            "uri": "gs://attestor-505506-corpus/legal/data-retention-schedule.txt"
+          }
+        ],
+        "seconds": 25.81,
+        "status": "drafted"
+      },
+      "documents_in_common": [
+        "gs://attestor-505506-corpus/legal/data-processing-agreement.txt",
+        "gs://attestor-505506-corpus/legal/data-retention-schedule.txt",
+        "gs://attestor-505506-corpus/legal/master-agreement-summary.txt"
+      ],
+      "jaccard_documents": 1.0,
+      "local": {
+        "answer_prefix": "Following contract termination, customers have a 30-day export window to retrieve their data [1][2][4]. After the export window, customer data in live systems is deleted within 90 days (or within 30 d",
+        "blocked": false,
+        "citation_count": 5,
+        "confidence": "medium",
+        "denied": false,
+        "error": null,
+        "max_score": 0.7521,
+        "mean_score": 0.7349,
+        "needs_human": false,
+        "passage_count": 5,
+        "passages": [
+          {
+            "chars": 788,
+            "document": "data-retention-schedule",
+            "score": 0.7521,
+            "section": "1. Customer data",
+            "uri": "gs://attestor-505506-corpus/legal/data-retention-schedule.txt"
+          },
+          {
+            "chars": 502,
+            "document": "master-agreement-summary",
+            "score": 0.7446,
+            "section": "7. Term, termination and transition",
+            "uri": "gs://attestor-505506-corpus/legal/master-agreement-summary.txt"
+          },
+          {
+            "chars": 253,
+            "document": "data-retention-schedule",
+            "score": 0.736,
+            "section": "6. Exceptions",
+            "uri": "gs://attestor-505506-corpus/legal/data-retention-schedule.txt"
+          },
+          {
+            "chars": 413,
+            "document": "data-processing-agreement",
+            "score": 0.7343,
+            "section": "8. Deletion and return",
+            "uri": "gs://attestor-505506-corpus/legal/data-processing-agreement.txt"
+          },
+          {
+            "chars": 587,
+            "document": "data-retention-schedule",
+            "score": 0.7073,
+            "section": "2. Kestrel-controlled data",
+            "uri": "gs://attestor-505506-corpus/legal/data-retention-schedule.txt"
+          }
+        ],
+        "seconds": 27.35,
+        "status": "drafted"
+      },
+      "question_id": "44d9658bcdf8256e",
+      "text": "How long is customer data retained after contract termination?"
+    },
+    {
+      "department": "security",
+      "deployed": {
+        "answer_prefix": "Enterprise-tier customers can retrieve tenant-scoped audit events for their organization through the Audit API (`GET /v2/audit/events`), covering the previous 365 days (`logging-monitoring-standard`, ",
+        "blocked": false,
+        "citation_count": 5,
+        "confidence": "medium",
+        "denied": false,
+        "engine_events": 3,
+        "engine_passages_before_dedup": 5,
+        "engine_queries_run": [
+          "customer accessible audit logs retention duration how far back"
+        ],
+        "engine_said_insufficient": false,
+        "engine_text_prefix": "Enterprise-tier customers can retrieve tenant-scoped audit events for their organization through the Audit API (`GET /v2/audit/events`), covering the previous 365 days (`logging-monitoring-standard`, Section 6, \"Customer access to logs\"). \n\nKestrel does not provide direct customer access to internal",
+        "engine_tool_calls": 1,
+        "error": null,
+        "max_score": 0.7381,
+        "mean_score": 0.6686,
+        "needs_human": false,
+        "passage_count": 5,
+        "passages": [
+          {
+            "chars": 368,
+            "document": "logging-monitoring-standard",
+            "score": 0.7381,
+            "section": "2. Retention",
+            "uri": "gs://attestor-505506-corpus/security/logging-monitoring-standard.txt"
+          },
+          {
+            "chars": 336,
+            "document": "logging-monitoring-standard",
+            "score": 0.6959,
+            "section": "6. Customer access to logs",
+            "uri": "gs://attestor-505506-corpus/security/logging-monitoring-standard.txt"
+          },
+          {
+            "chars": 363,
+            "document": "logging-monitoring-standard",
+            "score": 0.6504,
+            "section": "3. Tamper resistance",
+            "uri": "gs://attestor-505506-corpus/security/logging-monitoring-standard.txt"
+          },
+          {
+            "chars": 361,
+            "document": "cloud-security-posture-standard",
+            "score": 0.6306,
+            "section": "8. Logging and evidence",
+            "uri": "gs://attestor-505506-corpus/security/cloud-security-posture-standard.txt"
+          },
+          {
+            "chars": 1043,
+            "document": "logging-monitoring-standard",
+            "score": 0.6281,
+            "section": "1. What is logged",
+            "uri": "gs://attestor-505506-corpus/security/logging-monitoring-standard.txt"
+          }
+        ],
+        "seconds": 23.86,
+        "status": "drafted"
+      },
+      "documents_in_common": [
+        "gs://attestor-505506-corpus/security/cloud-security-posture-standard.txt",
+        "gs://attestor-505506-corpus/security/logging-monitoring-standard.txt"
+      ],
+      "jaccard_documents": 1.0,
+      "local": {
+        "answer_prefix": "Enterprise-tier customers can retrieve tenant-scoped audit events covering the previous 365 days via the Audit API (`GET /v2/audit/events`) [1]. Kestrel does not expose its own infrastructure logs dir",
+        "blocked": false,
+        "citation_count": 5,
+        "confidence": "medium",
+        "denied": false,
+        "error": null,
+        "max_score": 0.728,
+        "mean_score": 0.659,
+        "needs_human": false,
+        "passage_count": 5,
+        "passages": [
+          {
+            "chars": 336,
+            "document": "logging-monitoring-standard",
+            "score": 0.728,
+            "section": "6. Customer access to logs",
+            "uri": "gs://attestor-505506-corpus/security/logging-monitoring-standard.txt"
+          },
+          {
+            "chars": 368,
+            "document": "logging-monitoring-standard",
+            "score": 0.6858,
+            "section": "2. Retention",
+            "uri": "gs://attestor-505506-corpus/security/logging-monitoring-standard.txt"
+          },
+          {
+            "chars": 1043,
+            "document": "logging-monitoring-standard",
+            "score": 0.6368,
+            "section": "1. What is logged",
+            "uri": "gs://attestor-505506-corpus/security/logging-monitoring-standard.txt"
+          },
+          {
+            "chars": 361,
+            "document": "cloud-security-posture-standard",
+            "score": 0.6249,
+            "section": "8. Logging and evidence",
+            "uri": "gs://attestor-505506-corpus/security/cloud-security-posture-standard.txt"
+          },
+          {
+            "chars": 363,
+            "document": "logging-monitoring-standard",
+            "score": 0.6195,
+            "section": "3. Tamper resistance",
+            "uri": "gs://attestor-505506-corpus/security/logging-monitoring-standard.txt"
+          }
+        ],
+        "seconds": 34.94,
+        "status": "drafted"
+      },
+      "question_id": "6d95310d925975c8",
+      "text": "How far back are customer-accessible audit logs available?"
+    },
+    {
+      "department": "engineering",
+      "deployed": {
+        "answer_prefix": "Yes, Kestrel Data maintains a documented and approved Cloud Exit and Portability Plan (KD-ENG-010, version 1.7), aligned with SOC 2 (A1.2, CC9.1), ISO 27001:2022 (A.5.19, A.5.21, A.5.30), and EBA/DORA",
+        "blocked": false,
+        "citation_count": 6,
+        "confidence": "medium",
+        "denied": false,
+        "engine_events": 5,
+        "engine_passages_before_dedup": 10,
+        "engine_queries_run": [
+          "cloud provider exit plan migration",
+          "cloud-exit-and-portability-plan scope overview strategy"
+        ],
+        "engine_said_insufficient": false,
+        "engine_text_prefix": "Yes, Kestrel Data maintains a documented and approved Cloud Exit and Portability Plan (KD-ENG-010, version 1.7), aligned with SOC 2 (A1.2, CC9.1), ISO 27001:2022 (A.5.19, A.5.21, A.5.30), and EBA/DORA standards (`cloud-exit-and-portability-plan`, \"Cloud Exit and Portability Plan\").\n\nKey elements of ",
+        "engine_tool_calls": 2,
+        "error": null,
+        "max_score": 0.7182,
+        "mean_score": 0.6585,
+        "needs_human": false,
+        "passage_count": 6,
+        "passages": [
+          {
+            "chars": 277,
+            "document": "cloud-exit-and-portability-plan",
+            "score": 0.7182,
+            "section": "Cloud Exit and Portability Plan",
+            "uri": "gs://attestor-505506-corpus/engineering/cloud-exit-and-portability-plan.txt"
+          },
+          {
+            "chars": 247,
+            "document": "cloud-exit-and-portability-plan",
+            "score": 0.6851,
+            "section": "2. Exit triggers",
+            "uri": "gs://attestor-505506-corpus/engineering/cloud-exit-and-portability-plan.txt"
+          },
+          {
+            "chars": 419,
+            "document": "cloud-exit-and-portability-plan",
+            "score": 0.6749,
+            "section": "5. Customer-facing continuity during an exit",
+            "uri": "gs://attestor-505506-corpus/engineering/cloud-exit-and-portability-plan.txt"
+          },
+          {
+            "chars": 644,
+            "document": "cloud-exit-and-portability-plan",
+            "score": 0.6692,
+            "section": "4. Estimated exit timeline",
+            "uri": "gs://attestor-505506-corpus/engineering/cloud-exit-and-portability-plan.txt"
+          },
+          {
+            "chars": 1200,
+            "document": "cloud-exit-and-portability-plan",
+            "score": 0.6165,
+            "section": "3. Portability by design",
+            "uri": "gs://attestor-505506-corpus/engineering/cloud-exit-and-portability-plan.txt"
+          },
+          {
+            "chars": 339,
+            "document": "cloud-exit-and-portability-plan",
+            "score": 0.5868,
+            "section": "8. Testing",
+            "uri": "gs://attestor-505506-corpus/engineering/cloud-exit-and-portability-plan.txt"
+          }
+        ],
+        "seconds": 24.15,
+        "status": "drafted"
+      },
+      "documents_in_common": [
+        "gs://attestor-505506-corpus/engineering/cloud-exit-and-portability-plan.txt"
+      ],
+      "jaccard_documents": 1.0,
+      "local": {
+        "answer_prefix": "Yes, Kestrel maintains a documented Cloud Exit and Portability Plan (Document ID: KD-ENG-010, Version 1.7, approved 30 January 2026) [3]. The plan defines exit triggers from AWS, customer continuity a",
+        "blocked": false,
+        "citation_count": 5,
+        "confidence": "medium",
+        "denied": false,
+        "error": null,
+        "max_score": 0.7021,
+        "mean_score": 0.6589,
+        "needs_human": false,
+        "passage_count": 5,
+        "passages": [
+          {
+            "chars": 247,
+            "document": "cloud-exit-and-portability-plan",
+            "score": 0.7021,
+            "section": "2. Exit triggers",
+            "uri": "gs://attestor-505506-corpus/engineering/cloud-exit-and-portability-plan.txt"
+          },
+          {
+            "chars": 419,
+            "document": "cloud-exit-and-portability-plan",
+            "score": 0.6723,
+            "section": "5. Customer-facing continuity during an exit",
+            "uri": "gs://attestor-505506-corpus/engineering/cloud-exit-and-portability-plan.txt"
+          },
+          {
+            "chars": 277,
+            "document": "cloud-exit-and-portability-plan",
+            "score": 0.6649,
+            "section": "Cloud Exit and Portability Plan",
+            "uri": "gs://attestor-505506-corpus/engineering/cloud-exit-and-portability-plan.txt"
+          },
+          {
+            "chars": 644,
+            "document": "cloud-exit-and-portability-plan",
+            "score": 0.6415,
+            "section": "4. Estimated exit timeline",
+            "uri": "gs://attestor-505506-corpus/engineering/cloud-exit-and-portability-plan.txt"
+          },
+          {
+            "chars": 731,
+            "document": "cloud-exit-and-portability-plan",
+            "score": 0.6135,
+            "section": "6. Customer's own exit from Kestrel",
+            "uri": "gs://attestor-505506-corpus/engineering/cloud-exit-and-portability-plan.txt"
+          }
+        ],
+        "seconds": 22.11,
+        "status": "drafted"
+      },
+      "question_id": "0fb76cfe1d8a2c9c",
+      "text": "Do you have a documented exit plan from your cloud provider?"
+    },
+    {
+      "department": "legal",
+      "deployed": {
+        "answer_prefix": "Kestrel does not use customer content to train machine learning models, whether proprietary or third-party; this restriction is contractually established in the Master Subscription Agreement and Data ",
+        "blocked": false,
+        "citation_count": 17,
+        "confidence": "medium",
+        "denied": false,
+        "engine_events": 11,
+        "engine_passages_before_dedup": 20,
+        "engine_queries_run": [
+          "generative AI customer data use policy",
+          "artificial intelligence AI machine learning customer data MSA DPA",
+          "artificial intelligence AI machine learning customer data MSA DPA data processing agreement processor controller",
+          "sub-processor list artificial intelligence OpenAI Anthropic LLM",
+          "sub-processor list artificial intelligence OpenAI Anthropic LLM single sign-on SAML OIDC federation",
+          "\"generative AI\"",
+          "\"machine learning\""
+        ],
+        "engine_said_insufficient": false,
+        "engine_text_prefix": "Kestrel does not use customer content to train machine learning models, whether proprietary or third-party; this restriction is contractually established in the Master Subscription Agreement and Data Processing Agreement (Privacy Policy, KD-LEG-003 \u00a73; DPA Annex 2, KD-LEG-001 \u00a76). \n\nFurthermore, Kes",
+        "engine_tool_calls": 5,
+        "error": null,
+        "max_score": 0.6993,
+        "mean_score": 0.6157,
+        "needs_human": false,
+        "passage_count": 17,
+        "passages": [
+          {
+            "chars": 271,
+            "document": "subprocessor-list",
+            "score": 0.6993,
+            "section": "Subprocessor List",
+            "uri": "gs://attestor-505506-corpus/legal/subprocessor-list.txt"
+          },
+          {
+            "chars": 643,
+            "document": "subprocessor-list",
+            "score": 0.6552,
+            "section": "Infrastructure subprocessors",
+            "uri": "gs://attestor-505506-corpus/legal/subprocessor-list.txt"
+          },
+          {
+            "chars": 411,
+            "document": "privacy-policy",
+            "score": 0.6542,
+            "section": "3. What we do not do",
+            "uri": "gs://attestor-505506-corpus/legal/privacy-policy.txt"
+          },
+          {
+            "chars": 401,
+            "document": "dpia-register",
+            "score": 0.6473,
+            "section": "5. Automated decision-making",
+            "uri": "gs://attestor-505506-corpus/legal/dpia-register.txt"
+          },
+          {
+            "chars": 297,
+            "document": "dpia-register",
+            "score": 0.6454,
+            "section": "7. Availability",
+            "uri": "gs://attestor-505506-corpus/legal/dpia-register.txt"
+          },
+          {
+            "chars": 253,
+            "document": "data-retention-schedule",
+            "score": 0.6443,
+            "section": "6. Exceptions",
+            "uri": "gs://attestor-505506-corpus/legal/data-retention-schedule.txt"
+          },
+          {
+            "chars": 600,
+            "document": "subprocessor-list",
+            "score": 0.635,
+            "section": "Operational subprocessors",
+            "uri": "gs://attestor-505506-corpus/legal/subprocessor-list.txt"
+          },
+          {
+            "chars": 419,
+            "document": "data-processing-agreement",
+            "score": 0.6278,
+            "section": "Data Processing Agreement (Template)",
+            "uri": "gs://attestor-505506-corpus/legal/data-processing-agreement.txt"
+          },
+          {
+            "chars": 622,
+            "document": "dpia-register",
+            "score": 0.6261,
+            "section": "1. When Kestrel performs a DPIA",
+            "uri": "gs://attestor-505506-corpus/legal/dpia-register.txt"
+          },
+          {
+            "chars": 451,
+            "document": "privacy-policy",
+            "score": 0.6249,
+            "section": "Privacy Policy",
+            "uri": "gs://attestor-505506-corpus/legal/privacy-policy.txt"
+          },
+          {
+            "chars": 354,
+            "document": "data-subject-rights-procedure",
+            "score": 0.6243,
+            "section": "7. Objection, restriction, and automated decision-making",
+            "uri": "gs://attestor-505506-corpus/legal/data-subject-rights-procedure.txt"
+          },
+          {
+            "chars": 1072,
+            "document": "gdpr-records-of-processing",
+            "score": 0.6234,
+            "section": "Part A - Kestrel as Processor (Art. 30(2))",
+            "uri": "gs://attestor-505506-corpus/legal/gdpr-records-of-processing.txt"
+          },
+          {
+            "chars": 870,
+            "document": "privacy-policy",
+            "score": 0.6174,
+            "section": "2. What we collect as controller",
+            "uri": "gs://attestor-505506-corpus/legal/privacy-policy.txt"
+          },
+          {
+            "chars": 358,
+            "document": "subprocessor-list",
+            "score": 0.5474,
+            "section": "Changes in the last 12 months",
+            "uri": "gs://attestor-505506-corpus/legal/subprocessor-list.txt"
+          },
+          {
+            "chars": 307,
+            "document": "subprocessor-list",
+            "score": 0.5455,
+            "section": "EU data residency",
+            "uri": "gs://attestor-505506-corpus/legal/subprocessor-list.txt"
+          },
+          {
+            "chars": 228,
+            "document": "dpa-annex-2-technical-measures",
+            "score": 0.535,
+            "section": "6. Data minimisation",
+            "uri": "gs://attestor-505506-corpus/legal/dpa-annex-2-technical-measures.txt"
+          },
+          {
+            "chars": 878,
+            "document": "dpia-register",
+            "score": 0.514,
+            "section": "3. Special category data",
+            "uri": "gs://attestor-505506-corpus/legal/dpia-register.txt"
+          }
+        ],
+        "seconds": 64.61,
+        "status": "drafted"
+      },
+      "documents_in_common": [
+        "gs://attestor-505506-corpus/legal/data-subject-rights-procedure.txt",
+        "gs://attestor-505506-corpus/legal/dpia-register.txt",
+        "gs://attestor-505506-corpus/legal/privacy-policy.txt"
+      ],
+      "jaccard_documents": 0.375,
+      "local": {
+        "answer_prefix": "No supporting evidence was found in the corpus for this question.",
+        "blocked": false,
+        "citation_count": 0,
+        "confidence": "low",
+        "denied": false,
+        "error": null,
+        "max_score": 0.6433,
+        "mean_score": 0.6116,
+        "needs_human": true,
+        "passage_count": 5,
+        "passages": [
+          {
+            "chars": 411,
+            "document": "privacy-policy",
+            "score": 0.6433,
+            "section": "3. What we do not do",
+            "uri": "gs://attestor-505506-corpus/legal/privacy-policy.txt"
+          },
+          {
+            "chars": 401,
+            "document": "dpia-register",
+            "score": 0.6112,
+            "section": "5. Automated decision-making",
+            "uri": "gs://attestor-505506-corpus/legal/dpia-register.txt"
+          },
+          {
+            "chars": 354,
+            "document": "data-subject-rights-procedure",
+            "score": 0.6083,
+            "section": "7. Objection, restriction, and automated decision-making",
+            "uri": "gs://attestor-505506-corpus/legal/data-subject-rights-procedure.txt"
+          },
+          {
+            "chars": 878,
+            "document": "dpia-register",
+            "score": 0.6017,
+            "section": "3. Special category data",
+            "uri": "gs://attestor-505506-corpus/legal/dpia-register.txt"
+          },
+          {
+            "chars": 583,
+            "document": "dpia-register",
+            "score": 0.5933,
+            "section": "4. Children's data",
+            "uri": "gs://attestor-505506-corpus/legal/dpia-register.txt"
+          }
+        ],
+        "seconds": 17.59,
+        "status": "flagged_no_evidence"
+      },
+      "question_id": "57cfdf37f82b13d8",
+      "text": "Do you permit use of generative AI tools with customer data?"
+    },
+    {
+      "department": "security",
+      "deployed": {
+        "answer_prefix": "Kestrel Data's remediation service level agreement (SLA) for Critical severity vulnerabilities (CVSS 9.0\u201310.0) is **7 days** (Vulnerability Management Policy, Section 1: Remediation SLAs). \n\nSeverity ",
+        "blocked": false,
+        "citation_count": 5,
+        "confidence": "medium",
+        "denied": false,
+        "engine_events": 3,
+        "engine_passages_before_dedup": 5,
+        "engine_queries_run": [
+          "What is your remediation SLA for Critical severity vulnerabilities?",
+          "your remediation SLA for Critical severity vulnerabilities",
+          "your remediation SLA for Critical severity vulnerabilities service level agreement uptime availability credits"
+        ],
+        "engine_said_insufficient": false,
+        "engine_text_prefix": "Kestrel Data's remediation service level agreement (SLA) for Critical severity vulnerabilities (CVSS 9.0\u201310.0) is **7 days** (Vulnerability Management Policy, Section 1: Remediation SLAs). \n\nSeverity is assigned based on the CVSS v3.1 base score adjusted for exploitability and exposure, with interne",
+        "engine_tool_calls": 1,
+        "error": null,
+        "max_score": 0.7616,
+        "mean_score": 0.6731,
+        "needs_human": false,
+        "passage_count": 5,
+        "passages": [
+          {
+            "chars": 622,
+            "document": "vulnerability-management-policy",
+            "score": 0.7616,
+            "section": "1. Remediation SLAs",
+            "uri": "gs://attestor-505506-corpus/security/vulnerability-management-policy.txt"
+          },
+          {
+            "chars": 186,
+            "document": "vulnerability-management-policy",
+            "score": 0.695,
+            "section": "6. Exceptions",
+            "uri": "gs://attestor-505506-corpus/security/vulnerability-management-policy.txt"
+          },
+          {
+            "chars": 497,
+            "document": "cloud-security-posture-standard",
+            "score": 0.6433,
+            "section": "6. Handling a vulnerability with no upstream fix",
+            "uri": "gs://attestor-505506-corpus/security/cloud-security-posture-standard.txt"
+          },
+          {
+            "chars": 244,
+            "document": "vulnerability-management-policy",
+            "score": 0.6357,
+            "section": "Vulnerability Management Policy",
+            "uri": "gs://attestor-505506-corpus/security/vulnerability-management-policy.txt"
+          },
+          {
+            "chars": 526,
+            "document": "vulnerability-management-policy",
+            "score": 0.6301,
+            "section": "3. Patch management",
+            "uri": "gs://attestor-505506-corpus/security/vulnerability-management-policy.txt"
+          }
+        ],
+        "seconds": 85.48,
+        "status": "drafted"
+      },
+      "documents_in_common": [
+        "gs://attestor-505506-corpus/security/cloud-security-posture-standard.txt",
+        "gs://attestor-505506-corpus/security/vulnerability-management-policy.txt"
+      ],
+      "jaccard_documents": 1.0,
+      "local": {
+        "answer_prefix": "The remediation SLA for Critical severity vulnerabilities (CVSS 9.0\u201310.0) is 7 days [1]. In 2025, measured compliance with this SLA was 100% (11 of 11) [1].",
+        "blocked": false,
+        "citation_count": 5,
+        "confidence": "medium",
+        "denied": false,
+        "error": null,
+        "max_score": 0.7616,
+        "mean_score": 0.6731,
+        "needs_human": false,
+        "passage_count": 5,
+        "passages": [
+          {
+            "chars": 622,
+            "document": "vulnerability-management-policy",
+            "score": 0.7616,
+            "section": "1. Remediation SLAs",
+            "uri": "gs://attestor-505506-corpus/security/vulnerability-management-policy.txt"
+          },
+          {
+            "chars": 186,
+            "document": "vulnerability-management-policy",
+            "score": 0.695,
+            "section": "6. Exceptions",
+            "uri": "gs://attestor-505506-corpus/security/vulnerability-management-policy.txt"
+          },
+          {
+            "chars": 497,
+            "document": "cloud-security-posture-standard",
+            "score": 0.6433,
+            "section": "6. Handling a vulnerability with no upstream fix",
+            "uri": "gs://attestor-505506-corpus/security/cloud-security-posture-standard.txt"
+          },
+          {
+            "chars": 244,
+            "document": "vulnerability-management-policy",
+            "score": 0.6357,
+            "section": "Vulnerability Management Policy",
+            "uri": "gs://attestor-505506-corpus/security/vulnerability-management-policy.txt"
+          },
+          {
+            "chars": 526,
+            "document": "vulnerability-management-policy",
+            "score": 0.6301,
+            "section": "3. Patch management",
+            "uri": "gs://attestor-505506-corpus/security/vulnerability-management-policy.txt"
+          }
+        ],
+        "seconds": 27.86,
+        "status": "drafted"
+      },
+      "question_id": "6e1bfd9d7dee0752",
+      "text": "What is your remediation SLA for Critical severity vulnerabilities?"
+    },
+    {
+      "department": "engineering",
+      "deployed": {
+        "answer_prefix": "Under Kestrel's third-party library policy, the following open source licences are prohibited:\n\n* GPL-2.0\n* GPL-3.0\n* AGPL-1.0\n* AGPL-3.0\n* SSPL\n* BUSL\n* Commons Clause\n* Any licence without a clear g",
+        "blocked": false,
+        "citation_count": 5,
+        "confidence": "medium",
+        "denied": false,
+        "engine_events": 3,
+        "engine_passages_before_dedup": 5,
+        "engine_queries_run": [
+          "prohibited open source licenses"
+        ],
+        "engine_said_insufficient": false,
+        "engine_text_prefix": "Under Kestrel's third-party library policy, the following open source licences are prohibited:\n\n* GPL-2.0\n* GPL-3.0\n* AGPL-1.0\n* AGPL-3.0\n* SSPL\n* BUSL\n* Commons Clause\n* Any licence without a clear grant\n\nAGPL and SSPL are specifically prohibited because Kestrel distributes a network service. Licen",
+        "engine_tool_calls": 1,
+        "error": null,
+        "max_score": 0.6935,
+        "mean_score": 0.6158,
+        "needs_human": false,
+        "passage_count": 5,
+        "passages": [
+          {
+            "chars": 519,
+            "document": "third-party-library-policy",
+            "score": 0.6935,
+            "section": "2. Licence policy",
+            "uri": "gs://attestor-505506-corpus/engineering/third-party-library-policy.txt"
+          },
+          {
+            "chars": 484,
+            "document": "third-party-library-policy",
+            "score": 0.6289,
+            "section": "1. Adding a dependency",
+            "uri": "gs://attestor-505506-corpus/engineering/third-party-library-policy.txt"
+          },
+          {
+            "chars": 223,
+            "document": "third-party-library-policy",
+            "score": 0.6061,
+            "section": "7. Internal forks",
+            "uri": "gs://attestor-505506-corpus/engineering/third-party-library-policy.txt"
+          },
+          {
+            "chars": 235,
+            "document": "third-party-library-policy",
+            "score": 0.5882,
+            "section": "6. Unmaintained dependencies",
+            "uri": "gs://attestor-505506-corpus/engineering/third-party-library-policy.txt"
+          },
+          {
+            "chars": 199,
+            "document": "third-party-library-policy",
+            "score": 0.5621,
+            "section": "Third-Party Library Policy",
+            "uri": "gs://attestor-505506-corpus/engineering/third-party-library-policy.txt"
+          }
+        ],
+        "seconds": 51.09,
+        "status": "drafted"
+      },
+      "documents_in_common": [
+        "gs://attestor-505506-corpus/engineering/third-party-library-policy.txt"
+      ],
+      "jaccard_documents": 1.0,
+      "local": {
+        "answer_prefix": "The open source licences prohibited in Kestrel's codebase are GPL-2.0, GPL-3.0, AGPL-1.0, AGPL-3.0, SSPL, BUSL, Commons Clause, and any licence without a clear grant [1]. Licence compliance is automat",
+        "blocked": false,
+        "citation_count": 5,
+        "confidence": "medium",
+        "denied": false,
+        "error": null,
+        "max_score": 0.6991,
+        "mean_score": 0.6503,
+        "needs_human": false,
+        "passage_count": 5,
+        "passages": [
+          {
+            "chars": 519,
+            "document": "third-party-library-policy",
+            "score": 0.6991,
+            "section": "2. Licence policy",
+            "uri": "gs://attestor-505506-corpus/engineering/third-party-library-policy.txt"
+          },
+          {
+            "chars": 223,
+            "document": "third-party-library-policy",
+            "score": 0.6568,
+            "section": "7. Internal forks",
+            "uri": "gs://attestor-505506-corpus/engineering/third-party-library-policy.txt"
+          },
+          {
+            "chars": 484,
+            "document": "third-party-library-policy",
+            "score": 0.6513,
+            "section": "1. Adding a dependency",
+            "uri": "gs://attestor-505506-corpus/engineering/third-party-library-policy.txt"
+          },
+          {
+            "chars": 235,
+            "document": "third-party-library-policy",
+            "score": 0.6327,
+            "section": "6. Unmaintained dependencies",
+            "uri": "gs://attestor-505506-corpus/engineering/third-party-library-policy.txt"
+          },
+          {
+            "chars": 199,
+            "document": "third-party-library-policy",
+            "score": 0.6116,
+            "section": "Third-Party Library Policy",
+            "uri": "gs://attestor-505506-corpus/engineering/third-party-library-policy.txt"
+          }
+        ],
+        "seconds": 44.15,
+        "status": "drafted"
+      },
+      "question_id": "111705fd8c9c5cde",
+      "text": "What open source licences are prohibited in your codebase? Provide supporting evidence."
+    },
+    {
+      "department": "legal",
+      "deployed": {
+        "answer_prefix": "No, Kestrel Data does not sell personal data to third parties and has never done so, nor does Kestrel share personal data with advertising networks (`privacy-policy`, Section 3, \"What we do not do\"). ",
+        "blocked": false,
+        "citation_count": 5,
+        "confidence": "medium",
+        "denied": false,
+        "engine_events": 3,
+        "engine_passages_before_dedup": 5,
+        "engine_queries_run": [
+          "Do you sell personal data to third parties?",
+          "sell personal data to third parties",
+          "sell personal data to third parties personal data privacy data subject"
+        ],
+        "engine_said_insufficient": false,
+        "engine_text_prefix": "No, Kestrel Data does not sell personal data to third parties and has never done so, nor does Kestrel share personal data with advertising networks (`privacy-policy`, Section 3, \"What we do not do\"). \n\nAdditionally, under the CCPA/CPRA and applicable US state privacy laws, Kestrel acts as a service ",
+        "engine_tool_calls": 1,
+        "error": null,
+        "max_score": 0.6847,
+        "mean_score": 0.6396,
+        "needs_human": false,
+        "passage_count": 5,
+        "passages": [
+          {
+            "chars": 411,
+            "document": "privacy-policy",
+            "score": 0.6847,
+            "section": "3. What we do not do",
+            "uri": "gs://attestor-505506-corpus/legal/privacy-policy.txt"
+          },
+          {
+            "chars": 693,
+            "document": "data-subject-rights-procedure",
+            "score": 0.6467,
+            "section": "8. California and other US state rights",
+            "uri": "gs://attestor-505506-corpus/legal/data-subject-rights-procedure.txt"
+          },
+          {
+            "chars": 870,
+            "document": "privacy-policy",
+            "score": 0.6277,
+            "section": "2. What we collect as controller",
+            "uri": "gs://attestor-505506-corpus/legal/privacy-policy.txt"
+          },
+          {
+            "chars": 619,
+            "document": "privacy-policy",
+            "score": 0.624,
+            "section": "5. Your rights",
+            "uri": "gs://attestor-505506-corpus/legal/privacy-policy.txt"
+          },
+          {
+            "chars": 257,
+            "document": "privacy-policy",
+            "score": 0.6149,
+            "section": "6. International transfers",
+            "uri": "gs://attestor-505506-corpus/legal/privacy-policy.txt"
+          }
+        ],
+        "seconds": 23.25,
+        "status": "drafted"
+      },
+      "documents_in_common": [
+        "gs://attestor-505506-corpus/legal/data-subject-rights-procedure.txt",
+        "gs://attestor-505506-corpus/legal/privacy-policy.txt"
+      ],
+      "jaccard_documents": 1.0,
+      "local": {
+        "answer_prefix": "No, Kestrel does not sell personal data, and has never done so [1][2]. Kestrel also does not share personal data with advertising networks or for cross-context behavioural advertising [1][2].",
+        "blocked": false,
+        "citation_count": 5,
+        "confidence": "medium",
+        "denied": false,
+        "error": null,
+        "max_score": 0.6847,
+        "mean_score": 0.6396,
+        "needs_human": false,
+        "passage_count": 5,
+        "passages": [
+          {
+            "chars": 411,
+            "document": "privacy-policy",
+            "score": 0.6847,
+            "section": "3. What we do not do",
+            "uri": "gs://attestor-505506-corpus/legal/privacy-policy.txt"
+          },
+          {
+            "chars": 693,
+            "document": "data-subject-rights-procedure",
+            "score": 0.6467,
+            "section": "8. California and other US state rights",
+            "uri": "gs://attestor-505506-corpus/legal/data-subject-rights-procedure.txt"
+          },
+          {
+            "chars": 870,
+            "document": "privacy-policy",
+            "score": 0.6277,
+            "section": "2. What we collect as controller",
+            "uri": "gs://attestor-505506-corpus/legal/privacy-policy.txt"
+          },
+          {
+            "chars": 619,
+            "document": "privacy-policy",
+            "score": 0.624,
+            "section": "5. Your rights",
+            "uri": "gs://attestor-505506-corpus/legal/privacy-policy.txt"
+          },
+          {
+            "chars": 257,
+            "document": "privacy-policy",
+            "score": 0.6149,
+            "section": "6. International transfers",
+            "uri": "gs://attestor-505506-corpus/legal/privacy-policy.txt"
+          }
+        ],
+        "seconds": 36.09,
+        "status": "drafted"
+      },
+      "question_id": "697fb3f5a22fc947",
+      "text": "Do you sell personal data to third parties?"
+    },
+    {
+      "department": "security",
+      "deployed": {
+        "answer_prefix": "No exceptions were noted in Kestrel Data's most recent SOC 2 Type II report. According to the SOC 2 Control Matrix (KD-SEC-012, section \"SOC 2 Control Matrix\"), the audit covered the period from 1 Jan",
+        "blocked": false,
+        "citation_count": 5,
+        "confidence": "medium",
+        "denied": false,
+        "engine_events": 3,
+        "engine_passages_before_dedup": 5,
+        "engine_queries_run": [
+          "Were any exceptions noted in your most recent SOC 2 report?",
+          "Were any exceptions noted in your most recent SOC 2 report SOC 2 Type II audit report trust services criteria"
+        ],
+        "engine_said_insufficient": false,
+        "engine_text_prefix": "No exceptions were noted in Kestrel Data's most recent SOC 2 Type II report. According to the SOC 2 Control Matrix (KD-SEC-012, section \"SOC 2 Control Matrix\"), the audit covered the period from 1 January through 31 December 2025, was issued on 14 March 2026 by Prescient Assurance LLP, and resulted ",
+        "engine_tool_calls": 1,
+        "error": null,
+        "max_score": 0.6961,
+        "mean_score": 0.6695,
+        "needs_human": false,
+        "passage_count": 5,
+        "passages": [
+          {
+            "chars": 492,
+            "document": "soc2-control-matrix",
+            "score": 0.6961,
+            "section": "SOC 2 Control Matrix",
+            "uri": "gs://attestor-505506-corpus/security/soc2-control-matrix.txt"
+          },
+          {
+            "chars": 300,
+            "document": "risk-management-and-governance",
+            "score": 0.675,
+            "section": "9. Exceptions",
+            "uri": "gs://attestor-505506-corpus/security/risk-management-and-governance.txt"
+          },
+          {
+            "chars": 438,
+            "document": "access-control-standard",
+            "score": 0.6627,
+            "section": "5. Customer data access",
+            "uri": "gs://attestor-505506-corpus/security/access-control-standard.txt"
+          },
+          {
+            "chars": 291,
+            "document": "risk-management-and-governance",
+            "score": 0.6587,
+            "section": "Risk Management and Security Governance",
+            "uri": "gs://attestor-505506-corpus/security/risk-management-and-governance.txt"
+          },
+          {
+            "chars": 367,
+            "document": "soc2-control-matrix",
+            "score": 0.655,
+            "section": "Complementary user entity controls",
+            "uri": "gs://attestor-505506-corpus/security/soc2-control-matrix.txt"
+          }
+        ],
+        "seconds": 36.35,
+        "status": "drafted"
+      },
+      "documents_in_common": [
+        "gs://attestor-505506-corpus/security/access-control-standard.txt",
+        "gs://attestor-505506-corpus/security/risk-management-and-governance.txt",
+        "gs://attestor-505506-corpus/security/soc2-control-matrix.txt"
+      ],
+      "jaccard_documents": 0.75,
+      "local": {
+        "answer_prefix": "No exceptions were noted in Kestrel's most recent SOC 2 report. The independent auditor, Prescient Assurance LLP, issued an unqualified opinion with no exceptions noted for the report period of 1 Janu",
+        "blocked": false,
+        "citation_count": 5,
+        "confidence": "medium",
+        "denied": false,
+        "error": null,
+        "max_score": 0.6973,
+        "mean_score": 0.666,
+        "needs_human": false,
+        "passage_count": 5,
+        "passages": [
+          {
+            "chars": 492,
+            "document": "soc2-control-matrix",
+            "score": 0.6973,
+            "section": "SOC 2 Control Matrix",
+            "uri": "gs://attestor-505506-corpus/security/soc2-control-matrix.txt"
+          },
+          {
+            "chars": 300,
+            "document": "risk-management-and-governance",
+            "score": 0.6636,
+            "section": "9. Exceptions",
+            "uri": "gs://attestor-505506-corpus/security/risk-management-and-governance.txt"
+          },
+          {
+            "chars": 438,
+            "document": "access-control-standard",
+            "score": 0.6596,
+            "section": "5. Customer data access",
+            "uri": "gs://attestor-505506-corpus/security/access-control-standard.txt"
+          },
+          {
+            "chars": 291,
+            "document": "risk-management-and-governance",
+            "score": 0.6556,
+            "section": "Risk Management and Security Governance",
+            "uri": "gs://attestor-505506-corpus/security/risk-management-and-governance.txt"
+          },
+          {
+            "chars": 519,
+            "document": "company-and-security-programme-overview",
+            "score": 0.654,
+            "section": "6. Scope of certification",
+            "uri": "gs://attestor-505506-corpus/security/company-and-security-programme-overview.txt"
+          }
+        ],
+        "seconds": 20.14,
+        "status": "drafted"
+      },
+      "question_id": "6f1a6e6b2b86627a",
+      "text": "Please confirm: Were any exceptions noted in your most recent SOC 2 report?"
+    },
+    {
+      "department": "engineering",
+      "deployed": {
+        "answer_prefix": "Kestrel Insight is a multi-tenant platform with logical isolation. There is no per-customer infrastructure, single-tenant deployment option, or customer-VPC option (`infrastructure-architecture-overvi",
+        "blocked": false,
+        "citation_count": 5,
+        "confidence": "medium",
+        "denied": false,
+        "engine_events": 3,
+        "engine_passages_before_dedup": 5,
+        "engine_queries_run": [
+          "platform multi-tenant single-tenant architecture tenancy"
+        ],
+        "engine_said_insufficient": false,
+        "engine_text_prefix": "Kestrel Insight is a multi-tenant platform with logical isolation. There is no per-customer infrastructure, single-tenant deployment option, or customer-VPC option (`infrastructure-architecture-overview`, Section 5. Tenant isolation).\n\nTenant isolation is enforced across three distinct layers:\n1. **",
+        "engine_tool_calls": 1,
+        "error": null,
+        "max_score": 0.6529,
+        "mean_score": 0.6116,
+        "needs_human": false,
+        "passage_count": 5,
+        "passages": [
+          {
+            "chars": 926,
+            "document": "infrastructure-architecture-overview",
+            "score": 0.6529,
+            "section": "5. Tenant isolation",
+            "uri": "gs://attestor-505506-corpus/engineering/infrastructure-architecture-overview.txt"
+          },
+          {
+            "chars": 211,
+            "document": "infrastructure-architecture-overview",
+            "score": 0.621,
+            "section": "Infrastructure Architecture Overview",
+            "uri": "gs://attestor-505506-corpus/engineering/infrastructure-architecture-overview.txt"
+          },
+          {
+            "chars": 203,
+            "document": "infrastructure-architecture-overview",
+            "score": 0.612,
+            "section": "7. Observability",
+            "uri": "gs://attestor-505506-corpus/engineering/infrastructure-architecture-overview.txt"
+          },
+          {
+            "chars": 372,
+            "document": "infrastructure-architecture-overview",
+            "score": 0.5929,
+            "section": "4. Data layer",
+            "uri": "gs://attestor-505506-corpus/engineering/infrastructure-architecture-overview.txt"
+          },
+          {
+            "chars": 430,
+            "document": "infrastructure-architecture-overview",
+            "score": 0.5791,
+            "section": "2. Account structure",
+            "uri": "gs://attestor-505506-corpus/engineering/infrastructure-architecture-overview.txt"
+          }
+        ],
+        "seconds": 40.14,
+        "status": "drafted"
+      },
+      "documents_in_common": [
+        "gs://attestor-505506-corpus/engineering/infrastructure-architecture-overview.txt"
+      ],
+      "jaccard_documents": 0.333,
+      "local": {
+        "answer_prefix": "Kestrel Insight is multi-tenant with logical isolation enforced across the database, application, and storage layers [1]. There is no per-customer infrastructure, no single-tenant deployment option, a",
+        "blocked": false,
+        "citation_count": 5,
+        "confidence": "medium",
+        "denied": false,
+        "error": null,
+        "max_score": 0.674,
+        "mean_score": 0.6303,
+        "needs_human": false,
+        "passage_count": 5,
+        "passages": [
+          {
+            "chars": 926,
+            "document": "infrastructure-architecture-overview",
+            "score": 0.674,
+            "section": "5. Tenant isolation",
+            "uri": "gs://attestor-505506-corpus/engineering/infrastructure-architecture-overview.txt"
+          },
+          {
+            "chars": 956,
+            "document": "data-flow-and-shared-responsibility",
+            "score": 0.6333,
+            "section": "3. The shared responsibility model",
+            "uri": "gs://attestor-505506-corpus/engineering/data-flow-and-shared-responsibility.txt"
+          },
+          {
+            "chars": 702,
+            "document": "api-and-integration-standard",
+            "score": 0.619,
+            "section": "4. Single sign-on",
+            "uri": "gs://attestor-505506-corpus/engineering/api-and-integration-standard.txt"
+          },
+          {
+            "chars": 607,
+            "document": "infrastructure-architecture-overview",
+            "score": 0.6187,
+            "section": "1. Cloud footprint",
+            "uri": "gs://attestor-505506-corpus/engineering/infrastructure-architecture-overview.txt"
+          },
+          {
+            "chars": 1711,
+            "document": "data-flow-and-shared-responsibility",
+            "score": 0.6064,
+            "section": "1. Data flow, end to end",
+            "uri": "gs://attestor-505506-corpus/engineering/data-flow-and-shared-responsibility.txt"
+          }
+        ],
+        "seconds": 16.61,
+        "status": "drafted"
+      },
+      "question_id": "1b34790f27921abc",
+      "text": "Is your platform multi-tenant or single-tenant?"
+    },
+    {
+      "department": "legal",
+      "deployed": {
+        "answer_prefix": "Kestrel is not currently self-certified under the EU-US Data Privacy Framework (*Standard Contractual Clauses Summary*, Section 3; *Transfer Impact Assessment*, Section 3). \n\nWhile self-certification ",
+        "blocked": false,
+        "citation_count": 5,
+        "confidence": "medium",
+        "denied": false,
+        "engine_events": 3,
+        "engine_passages_before_dedup": 5,
+        "engine_queries_run": [
+          "EU-US Data Privacy Framework self-certified"
+        ],
+        "engine_said_insufficient": false,
+        "engine_text_prefix": "Kestrel is not currently self-certified under the EU-US Data Privacy Framework (*Standard Contractual Clauses Summary*, Section 3; *Transfer Impact Assessment*, Section 3). \n\nWhile self-certification is under evaluation, no commitment date has been set (*Standard Contractual Clauses Summary*, Sectio",
+        "engine_tool_calls": 1,
+        "error": null,
+        "max_score": 0.7026,
+        "mean_score": 0.6361,
+        "needs_human": false,
+        "passage_count": 5,
+        "passages": [
+          {
+            "chars": 304,
+            "document": "standard-contractual-clauses-summary",
+            "score": 0.7026,
+            "section": "3. EU-US Data Privacy Framework",
+            "uri": "gs://attestor-505506-corpus/legal/standard-contractual-clauses-summary.txt"
+          },
+          {
+            "chars": 744,
+            "document": "transfer-impact-assessment",
+            "score": 0.6439,
+            "section": "3. Transfer mechanism",
+            "uri": "gs://attestor-505506-corpus/legal/transfer-impact-assessment.txt"
+          },
+          {
+            "chars": 1200,
+            "document": "transfer-impact-assessment",
+            "score": 0.619,
+            "section": "5. Supplementary measures relied on",
+            "uri": "gs://attestor-505506-corpus/legal/transfer-impact-assessment.txt"
+          },
+          {
+            "chars": 1126,
+            "document": "dpia-register",
+            "score": 0.6083,
+            "section": "2. Completed assessments",
+            "uri": "gs://attestor-505506-corpus/legal/dpia-register.txt"
+          },
+          {
+            "chars": 730,
+            "document": "transfer-impact-assessment",
+            "score": 0.6067,
+            "section": "6. Conclusion",
+            "uri": "gs://attestor-505506-corpus/legal/transfer-impact-assessment.txt"
+          }
+        ],
+        "seconds": 50.8,
+        "status": "drafted"
+      },
+      "documents_in_common": [
+        "gs://attestor-505506-corpus/legal/dpia-register.txt",
+        "gs://attestor-505506-corpus/legal/standard-contractual-clauses-summary.txt",
+        "gs://attestor-505506-corpus/legal/transfer-impact-assessment.txt"
+      ],
+      "jaccard_documents": 1.0,
+      "local": {
+        "answer_prefix": "No, Kestrel is not currently self-certified under the EU-US Data Privacy Framework [1][2]. Data transfers instead rely on Standard Contractual Clauses (SCCs) combined with technical, organizational, a",
+        "blocked": false,
+        "citation_count": 5,
+        "confidence": "medium",
+        "denied": false,
+        "error": null,
+        "max_score": 0.7172,
+        "mean_score": 0.6583,
+        "needs_human": false,
+        "passage_count": 5,
+        "passages": [
+          {
+            "chars": 304,
+            "document": "standard-contractual-clauses-summary",
+            "score": 0.7172,
+            "section": "3. EU-US Data Privacy Framework",
+            "uri": "gs://attestor-505506-corpus/legal/standard-contractual-clauses-summary.txt"
+          },
+          {
+            "chars": 744,
+            "document": "transfer-impact-assessment",
+            "score": 0.6633,
+            "section": "3. Transfer mechanism",
+            "uri": "gs://attestor-505506-corpus/legal/transfer-impact-assessment.txt"
+          },
+          {
+            "chars": 1379,
+            "document": "transfer-impact-assessment",
+            "score": 0.6475,
+            "section": "5. Supplementary measures relied on",
+            "uri": "gs://attestor-505506-corpus/legal/transfer-impact-assessment.txt"
+          },
+          {
+            "chars": 1126,
+            "document": "dpia-register",
+            "score": 0.6347,
+            "section": "2. Completed assessments",
+            "uri": "gs://attestor-505506-corpus/legal/dpia-register.txt"
+          },
+          {
+            "chars": 730,
+            "document": "transfer-impact-assessment",
+            "score": 0.6287,
+            "section": "6. Conclusion",
+            "uri": "gs://attestor-505506-corpus/legal/transfer-impact-assessment.txt"
+          }
+        ],
+        "seconds": 18.54,
+        "status": "drafted"
+      },
+      "question_id": "79637364e66c74ed",
+      "text": "Are you self-certified under the EU-US Data Privacy Framework? Provide supporting evidence."
+    },
+    {
+      "department": "security",
+      "deployed": {
+        "answer_prefix": "No cross-tenant data access was achieved during penetration testing. According to the **Penetration Test Executive Summary** (Section 3, \"Findings summary\"), tenant isolation held under every tested c",
+        "blocked": false,
+        "citation_count": 5,
+        "confidence": "medium",
+        "denied": false,
+        "engine_events": 3,
+        "engine_passages_before_dedup": 5,
+        "engine_queries_run": [
+          "Was cross-tenant data access achieved during penetration testing?",
+          "Was cross-tenant data access achieved during penetration testing penetration test security assessment"
+        ],
+        "engine_said_insufficient": false,
+        "engine_text_prefix": "No cross-tenant data access was achieved during penetration testing. According to the **Penetration Test Executive Summary** (Section 3, \"Findings summary\"), tenant isolation held under every tested condition, including direct object reference manipulation, JWT tenant-claim tampering, and GraphQL al",
+        "engine_tool_calls": 1,
+        "error": null,
+        "max_score": 0.7452,
+        "mean_score": 0.6792,
+        "needs_human": false,
+        "passage_count": 5,
+        "passages": [
+          {
+            "chars": 483,
+            "document": "pen-test-executive-summary",
+            "score": 0.7452,
+            "section": "3. Findings summary",
+            "uri": "gs://attestor-505506-corpus/security/pen-test-executive-summary.txt"
+          },
+          {
+            "chars": 517,
+            "document": "pen-test-executive-summary",
+            "score": 0.6716,
+            "section": "1. Scope",
+            "uri": "gs://attestor-505506-corpus/security/pen-test-executive-summary.txt"
+          },
+          {
+            "chars": 242,
+            "document": "pen-test-executive-summary",
+            "score": 0.6683,
+            "section": "2. Methodology",
+            "uri": "gs://attestor-505506-corpus/security/pen-test-executive-summary.txt"
+          },
+          {
+            "chars": 310,
+            "document": "pen-test-executive-summary",
+            "score": 0.6555,
+            "section": "Penetration Test Executive Summary",
+            "uri": "gs://attestor-505506-corpus/security/pen-test-executive-summary.txt"
+          },
+          {
+            "chars": 341,
+            "document": "pen-test-executive-summary",
+            "score": 0.6553,
+            "section": "7. Tester statement",
+            "uri": "gs://attestor-505506-corpus/security/pen-test-executive-summary.txt"
+          }
+        ],
+        "seconds": 18.93,
+        "status": "drafted"
+      },
+      "documents_in_common": [
+        "gs://attestor-505506-corpus/security/pen-test-executive-summary.txt"
+      ],
+      "jaccard_documents": 1.0,
+      "local": {
+        "answer_prefix": "No cross-tenant data access was achieved during penetration testing [1]. Tenant isolation held under every tested condition, including direct object reference manipulation, JWT tenant-claim tampering,",
+        "blocked": false,
+        "citation_count": 5,
+        "confidence": "medium",
+        "denied": false,
+        "error": null,
+        "max_score": 0.7452,
+        "mean_score": 0.6792,
+        "needs_human": false,
+        "passage_count": 5,
+        "passages": [
+          {
+            "chars": 483,
+            "document": "pen-test-executive-summary",
+            "score": 0.7452,
+            "section": "3. Findings summary",
+            "uri": "gs://attestor-505506-corpus/security/pen-test-executive-summary.txt"
+          },
+          {
+            "chars": 517,
+            "document": "pen-test-executive-summary",
+            "score": 0.6716,
+            "section": "1. Scope",
+            "uri": "gs://attestor-505506-corpus/security/pen-test-executive-summary.txt"
+          },
+          {
+            "chars": 242,
+            "document": "pen-test-executive-summary",
+            "score": 0.6683,
+            "section": "2. Methodology",
+            "uri": "gs://attestor-505506-corpus/security/pen-test-executive-summary.txt"
+          },
+          {
+            "chars": 310,
+            "document": "pen-test-executive-summary",
+            "score": 0.6555,
+            "section": "Penetration Test Executive Summary",
+            "uri": "gs://attestor-505506-corpus/security/pen-test-executive-summary.txt"
+          },
+          {
+            "chars": 341,
+            "document": "pen-test-executive-summary",
+            "score": 0.6553,
+            "section": "7. Tester statement",
+            "uri": "gs://attestor-505506-corpus/security/pen-test-executive-summary.txt"
+          }
+        ],
+        "seconds": 60.53,
+        "status": "drafted"
+      },
+      "question_id": "739fcb06bf1dfc76",
+      "text": "Was cross-tenant data access achieved during penetration testing?"
+    },
+    {
+      "department": "engineering",
+      "deployed": {
+        "answer_prefix": "Kestrel Data's production platform is hosted on Amazon Web Services (AWS) across two independent production instances:\n\n* **US Instance:** Hosted in AWS `us-east-1` across three availability zones, se",
+        "blocked": false,
+        "citation_count": 5,
+        "confidence": "medium",
+        "denied": false,
+        "engine_events": 3,
+        "engine_passages_before_dedup": 5,
+        "engine_queries_run": [
+          "In which cloud regions is the production platform hosted?"
+        ],
+        "engine_said_insufficient": false,
+        "engine_text_prefix": "Kestrel Data's production platform is hosted on Amazon Web Services (AWS) across two independent production instances:\n\n* **US Instance:** Hosted in AWS `us-east-1` across three availability zones, serving North America and customers without specific data residency requirements (`infrastructure-arch",
+        "engine_tool_calls": 1,
+        "error": null,
+        "max_score": 0.7249,
+        "mean_score": 0.6561,
+        "needs_human": false,
+        "passage_count": 5,
+        "passages": [
+          {
+            "chars": 607,
+            "document": "infrastructure-architecture-overview",
+            "score": 0.7249,
+            "section": "1. Cloud footprint",
+            "uri": "gs://attestor-505506-corpus/engineering/infrastructure-architecture-overview.txt"
+          },
+          {
+            "chars": 384,
+            "document": "data-flow-and-shared-responsibility",
+            "score": 0.6884,
+            "section": "6. Where processing occurs",
+            "uri": "gs://attestor-505506-corpus/engineering/data-flow-and-shared-responsibility.txt"
+          },
+          {
+            "chars": 372,
+            "document": "infrastructure-architecture-overview",
+            "score": 0.6256,
+            "section": "4. Data layer",
+            "uri": "gs://attestor-505506-corpus/engineering/infrastructure-architecture-overview.txt"
+          },
+          {
+            "chars": 415,
+            "document": "infrastructure-architecture-overview",
+            "score": 0.6224,
+            "section": "3. Compute",
+            "uri": "gs://attestor-505506-corpus/engineering/infrastructure-architecture-overview.txt"
+          },
+          {
+            "chars": 462,
+            "document": "infrastructure-architecture-overview",
+            "score": 0.6193,
+            "section": "6. Network",
+            "uri": "gs://attestor-505506-corpus/engineering/infrastructure-architecture-overview.txt"
+          }
+        ],
+        "seconds": 23.23,
+        "status": "drafted"
+      },
+      "documents_in_common": [
+        "gs://attestor-505506-corpus/engineering/data-flow-and-shared-responsibility.txt",
+        "gs://attestor-505506-corpus/engineering/infrastructure-architecture-overview.txt"
+      ],
+      "jaccard_documents": 1.0,
+      "local": {
+        "answer_prefix": "Kestrel's production platform runs on Amazon Web Services (AWS) across two independent instances: the US instance is hosted in `us-east-1` (3 AZs) and the EU instance is hosted in `eu-west-1` (3 AZs) ",
+        "blocked": false,
+        "citation_count": 5,
+        "confidence": "medium",
+        "denied": false,
+        "error": null,
+        "max_score": 0.7211,
+        "mean_score": 0.6582,
+        "needs_human": false,
+        "passage_count": 5,
+        "passages": [
+          {
+            "chars": 607,
+            "document": "infrastructure-architecture-overview",
+            "score": 0.7211,
+            "section": "1. Cloud footprint",
+            "uri": "gs://attestor-505506-corpus/engineering/infrastructure-architecture-overview.txt"
+          },
+          {
+            "chars": 384,
+            "document": "data-flow-and-shared-responsibility",
+            "score": 0.6906,
+            "section": "6. Where processing occurs",
+            "uri": "gs://attestor-505506-corpus/engineering/data-flow-and-shared-responsibility.txt"
+          },
+          {
+            "chars": 372,
+            "document": "infrastructure-architecture-overview",
+            "score": 0.6339,
+            "section": "4. Data layer",
+            "uri": "gs://attestor-505506-corpus/engineering/infrastructure-architecture-overview.txt"
+          },
+          {
+            "chars": 415,
+            "document": "infrastructure-architecture-overview",
+            "score": 0.6243,
+            "section": "3. Compute",
+            "uri": "gs://attestor-505506-corpus/engineering/infrastructure-architecture-overview.txt"
+          },
+          {
+            "chars": 462,
+            "document": "infrastructure-architecture-overview",
+            "score": 0.6209,
+            "section": "6. Network",
+            "uri": "gs://attestor-505506-corpus/engineering/infrastructure-architecture-overview.txt"
+          }
+        ],
+        "seconds": 51.21,
+        "status": "drafted"
+      },
+      "question_id": "1b90af0e643e63f8",
+      "text": "Please confirm: In which cloud regions is the production platform hosted?"
+    },
+    {
+      "department": "legal",
+      "deployed": {
+        "answer_prefix": "Kestrel Data is not currently self-certified under the EU-US Data Privacy Framework (Standard Contractual Clauses Summary, Section 3; Transfer Impact Assessment, Section 3). \n\nInstead, data transfers ",
+        "blocked": false,
+        "citation_count": 5,
+        "confidence": "medium",
+        "denied": false,
+        "engine_events": 3,
+        "engine_passages_before_dedup": 5,
+        "engine_queries_run": [
+          "Are you self-certified under the EU-US Data Privacy Framework?",
+          "self-certified under the EU-US Data Privacy Framework"
+        ],
+        "engine_said_insufficient": false,
+        "engine_text_prefix": "Kestrel Data is not currently self-certified under the EU-US Data Privacy Framework (Standard Contractual Clauses Summary, Section 3; Transfer Impact Assessment, Section 3). \n\nInstead, data transfers rely on the 2021 Standard Contractual Clauses (Module Two for controller-to-processor transfers and ",
+        "engine_tool_calls": 1,
+        "error": null,
+        "max_score": 0.7067,
+        "mean_score": 0.6395,
+        "needs_human": false,
+        "passage_count": 5,
+        "passages": [
+          {
+            "chars": 304,
+            "document": "standard-contractual-clauses-summary",
+            "score": 0.7067,
+            "section": "3. EU-US Data Privacy Framework",
+            "uri": "gs://attestor-505506-corpus/legal/standard-contractual-clauses-summary.txt"
+          },
+          {
+            "chars": 744,
+            "document": "transfer-impact-assessment",
+            "score": 0.6575,
+            "section": "3. Transfer mechanism",
+            "uri": "gs://attestor-505506-corpus/legal/transfer-impact-assessment.txt"
+          },
+          {
+            "chars": 1200,
+            "document": "transfer-impact-assessment",
+            "score": 0.6174,
+            "section": "5. Supplementary measures relied on",
+            "uri": "gs://attestor-505506-corpus/legal/transfer-impact-assessment.txt"
+          },
+          {
+            "chars": 1126,
+            "document": "dpia-register",
+            "score": 0.6168,
+            "section": "2. Completed assessments",
+            "uri": "gs://attestor-505506-corpus/legal/dpia-register.txt"
+          },
+          {
+            "chars": 297,
+            "document": "dpia-register",
+            "score": 0.5993,
+            "section": "7. Availability",
+            "uri": "gs://attestor-505506-corpus/legal/dpia-register.txt"
+          }
+        ],
+        "seconds": 23.74,
+        "status": "drafted"
+      },
+      "documents_in_common": [
+        "gs://attestor-505506-corpus/legal/dpia-register.txt",
+        "gs://attestor-505506-corpus/legal/standard-contractual-clauses-summary.txt",
+        "gs://attestor-505506-corpus/legal/transfer-impact-assessment.txt"
+      ],
+      "jaccard_documents": 1.0,
+      "local": {
+        "answer_prefix": "No, Kestrel is not currently self-certified under the EU-US Data Privacy Framework [1][2]. Data transfers instead rely on the Standard Contractual Clauses (SCCs) alongside supplementary measures [1][2",
+        "blocked": false,
+        "citation_count": 5,
+        "confidence": "medium",
+        "denied": false,
+        "error": null,
+        "max_score": 0.7067,
+        "mean_score": 0.6395,
+        "needs_human": false,
+        "passage_count": 5,
+        "passages": [
+          {
+            "chars": 304,
+            "document": "standard-contractual-clauses-summary",
+            "score": 0.7067,
+            "section": "3. EU-US Data Privacy Framework",
+            "uri": "gs://attestor-505506-corpus/legal/standard-contractual-clauses-summary.txt"
+          },
+          {
+            "chars": 744,
+            "document": "transfer-impact-assessment",
+            "score": 0.6575,
+            "section": "3. Transfer mechanism",
+            "uri": "gs://attestor-505506-corpus/legal/transfer-impact-assessment.txt"
+          },
+          {
+            "chars": 1379,
+            "document": "transfer-impact-assessment",
+            "score": 0.6174,
+            "section": "5. Supplementary measures relied on",
+            "uri": "gs://attestor-505506-corpus/legal/transfer-impact-assessment.txt"
+          },
+          {
+            "chars": 1126,
+            "document": "dpia-register",
+            "score": 0.6168,
+            "section": "2. Completed assessments",
+            "uri": "gs://attestor-505506-corpus/legal/dpia-register.txt"
+          },
+          {
+            "chars": 297,
+            "document": "dpia-register",
+            "score": 0.5993,
+            "section": "7. Availability",
+            "uri": "gs://attestor-505506-corpus/legal/dpia-register.txt"
+          }
+        ],
+        "seconds": 37.18,
+        "status": "drafted"
+      },
+      "question_id": "7ae3910593621e2c",
+      "text": "Are you self-certified under the EU-US Data Privacy Framework?"
+    },
+    {
+      "department": "security",
+      "deployed": {
+        "answer_prefix": "Marcus Oyelaran, Chief Information Security Officer (CISO), is accountable for information security at Kestrel Data (`risk-management-and-governance`, Section 1. \"Executive accountability\"). \n\nTo ensu",
+        "blocked": false,
+        "citation_count": 5,
+        "confidence": "medium",
+        "denied": false,
+        "engine_events": 3,
+        "engine_passages_before_dedup": 5,
+        "engine_queries_run": [
+          "Who is accountable for information security at executive level?",
+          "is accountable for information security at executive level"
+        ],
+        "engine_said_insufficient": false,
+        "engine_text_prefix": "Marcus Oyelaran, Chief Information Security Officer (CISO), is accountable for information security at Kestrel Data (`risk-management-and-governance`, Section 1. \"Executive accountability\"). \n\nTo ensure security concerns cannot be compromised by delivery schedules, the CISO reports directly to the C",
+        "engine_tool_calls": 1,
+        "error": null,
+        "max_score": 0.7185,
+        "mean_score": 0.6673,
+        "needs_human": false,
+        "passage_count": 5,
+        "passages": [
+          {
+            "chars": 424,
+            "document": "risk-management-and-governance",
+            "score": 0.7185,
+            "section": "1. Executive accountability",
+            "uri": "gs://attestor-505506-corpus/security/risk-management-and-governance.txt"
+          },
+          {
+            "chars": 567,
+            "document": "information-security-policy",
+            "score": 0.6606,
+            "section": "2. Governance",
+            "uri": "gs://attestor-505506-corpus/security/information-security-policy.txt"
+          },
+          {
+            "chars": 653,
+            "document": "risk-management-and-governance",
+            "score": 0.6583,
+            "section": "2. Board oversight",
+            "uri": "gs://attestor-505506-corpus/security/risk-management-and-governance.txt"
+          },
+          {
+            "chars": 227,
+            "document": "company-and-security-programme-overview",
+            "score": 0.6516,
+            "section": "4. Governance",
+            "uri": "gs://attestor-505506-corpus/security/company-and-security-programme-overview.txt"
+          },
+          {
+            "chars": 412,
+            "document": "risk-management-and-governance",
+            "score": 0.6475,
+            "section": "3. Security Steering Group",
+            "uri": "gs://attestor-505506-corpus/security/risk-management-and-governance.txt"
+          }
+        ],
+        "seconds": 19.25,
+        "status": "drafted"
+      },
+      "documents_in_common": [
+        "gs://attestor-505506-corpus/security/company-and-security-programme-overview.txt",
+        "gs://attestor-505506-corpus/security/information-security-policy.txt",
+        "gs://attestor-505506-corpus/security/risk-management-and-governance.txt"
+      ],
+      "jaccard_documents": 1.0,
+      "local": {
+        "answer_prefix": "Marcus Oyelaran, Chief Information Security Officer (CISO), is accountable for information security at Kestrel Data [1]. The CISO reports directly to the Chief Executive Officer and maintains a standi",
+        "blocked": false,
+        "citation_count": 5,
+        "confidence": "medium",
+        "denied": false,
+        "error": null,
+        "max_score": 0.7185,
+        "mean_score": 0.6673,
+        "needs_human": false,
+        "passage_count": 5,
+        "passages": [
+          {
+            "chars": 424,
+            "document": "risk-management-and-governance",
+            "score": 0.7185,
+            "section": "1. Executive accountability",
+            "uri": "gs://attestor-505506-corpus/security/risk-management-and-governance.txt"
+          },
+          {
+            "chars": 567,
+            "document": "information-security-policy",
+            "score": 0.6606,
+            "section": "2. Governance",
+            "uri": "gs://attestor-505506-corpus/security/information-security-policy.txt"
+          },
+          {
+            "chars": 653,
+            "document": "risk-management-and-governance",
+            "score": 0.6583,
+            "section": "2. Board oversight",
+            "uri": "gs://attestor-505506-corpus/security/risk-management-and-governance.txt"
+          },
+          {
+            "chars": 227,
+            "document": "company-and-security-programme-overview",
+            "score": 0.6516,
+            "section": "4. Governance",
+            "uri": "gs://attestor-505506-corpus/security/company-and-security-programme-overview.txt"
+          },
+          {
+            "chars": 412,
+            "document": "risk-management-and-governance",
+            "score": 0.6475,
+            "section": "3. Security Steering Group",
+            "uri": "gs://attestor-505506-corpus/security/risk-management-and-governance.txt"
+          }
+        ],
+        "seconds": 24.73,
+        "status": "drafted"
+      },
+      "question_id": "7581cb932ddd2dfc",
+      "text": "Who is accountable for information security at executive level?"
+    },
+    {
+      "department": "engineering",
+      "deployed": {
+        "answer_prefix": "Kestrel\u2019s network segmentation approach relies on strict subnet isolation, controlled ingress and egress pathways, default-deny security group configurations, and multi-account boundaries:\n\n* **Subnet",
+        "blocked": false,
+        "citation_count": 11,
+        "confidence": "medium",
+        "denied": false,
+        "engine_events": 13,
+        "engine_passages_before_dedup": 20,
+        "engine_queries_run": [
+          "network segmentation approach",
+          "network architecture VPC subnet firewall isolation",
+          "infrastructure production environment security",
+          "infrastructure-architecture-overview compute ingress egress subnets",
+          "Istio service mesh network traffic isolation environment separation",
+          "production staging environment separation isolation VPC"
+        ],
+        "engine_said_insufficient": false,
+        "engine_text_prefix": "Kestrel\u2019s network segmentation approach relies on strict subnet isolation, controlled ingress and egress pathways, default-deny security group configurations, and multi-account boundaries:\n\n* **Subnet Isolation and Workload Placement:** All compute and data services reside entirely within private su",
+        "engine_tool_calls": 6,
+        "error": null,
+        "max_score": 0.6753,
+        "mean_score": 0.616,
+        "needs_human": false,
+        "passage_count": 11,
+        "passages": [
+          {
+            "chars": 462,
+            "document": "infrastructure-architecture-overview",
+            "score": 0.6753,
+            "section": "6. Network",
+            "uri": "gs://attestor-505506-corpus/engineering/infrastructure-architecture-overview.txt"
+          },
+          {
+            "chars": 211,
+            "document": "infrastructure-architecture-overview",
+            "score": 0.6424,
+            "section": "Infrastructure Architecture Overview",
+            "uri": "gs://attestor-505506-corpus/engineering/infrastructure-architecture-overview.txt"
+          },
+          {
+            "chars": 312,
+            "document": "secrets-management-standard",
+            "score": 0.6289,
+            "section": "4. Runtime access",
+            "uri": "gs://attestor-505506-corpus/engineering/secrets-management-standard.txt"
+          },
+          {
+            "chars": 327,
+            "document": "sdlc-policy",
+            "score": 0.6282,
+            "section": "7. Separation of duties",
+            "uri": "gs://attestor-505506-corpus/engineering/sdlc-policy.txt"
+          },
+          {
+            "chars": 956,
+            "document": "data-flow-and-shared-responsibility",
+            "score": 0.6253,
+            "section": "3. The shared responsibility model",
+            "uri": "gs://attestor-505506-corpus/engineering/data-flow-and-shared-responsibility.txt"
+          },
+          {
+            "chars": 415,
+            "document": "infrastructure-architecture-overview",
+            "score": 0.618,
+            "section": "3. Compute",
+            "uri": "gs://attestor-505506-corpus/engineering/infrastructure-architecture-overview.txt"
+          },
+          {
+            "chars": 430,
+            "document": "infrastructure-architecture-overview",
+            "score": 0.6079,
+            "section": "2. Account structure",
+            "uri": "gs://attestor-505506-corpus/engineering/infrastructure-architecture-overview.txt"
+          },
+          {
+            "chars": 926,
+            "document": "infrastructure-architecture-overview",
+            "score": 0.6053,
+            "section": "5. Tenant isolation",
+            "uri": "gs://attestor-505506-corpus/engineering/infrastructure-architecture-overview.txt"
+          },
+          {
+            "chars": 203,
+            "document": "infrastructure-architecture-overview",
+            "score": 0.6009,
+            "section": "7. Observability",
+            "uri": "gs://attestor-505506-corpus/engineering/infrastructure-architecture-overview.txt"
+          },
+          {
+            "chars": 372,
+            "document": "infrastructure-architecture-overview",
+            "score": 0.5769,
+            "section": "4. Data layer",
+            "uri": "gs://attestor-505506-corpus/engineering/infrastructure-architecture-overview.txt"
+          },
+          {
+            "chars": 607,
+            "document": "infrastructure-architecture-overview",
+            "score": 0.5673,
+            "section": "1. Cloud footprint",
+            "uri": "gs://attestor-505506-corpus/engineering/infrastructure-architecture-overview.txt"
+          }
+        ],
+        "seconds": 37.91,
+        "status": "drafted"
+      },
+      "documents_in_common": [
+        "gs://attestor-505506-corpus/engineering/infrastructure-architecture-overview.txt"
+      ],
+      "jaccard_documents": 0.25,
+      "local": {
+        "answer_prefix": "Kestrel isolates all compute and data within private subnets with no public IP addresses assigned to workload instances [1]. Ingress is routed strictly through Cloudflare, an AWS Application Load Bala",
+        "blocked": false,
+        "citation_count": 5,
+        "confidence": "medium",
+        "denied": false,
+        "error": null,
+        "max_score": 0.5858,
+        "mean_score": 0.5436,
+        "needs_human": false,
+        "passage_count": 5,
+        "passages": [
+          {
+            "chars": 462,
+            "document": "infrastructure-architecture-overview",
+            "score": 0.5858,
+            "section": "6. Network",
+            "uri": "gs://attestor-505506-corpus/engineering/infrastructure-architecture-overview.txt"
+          },
+          {
+            "chars": 211,
+            "document": "infrastructure-architecture-overview",
+            "score": 0.5424,
+            "section": "Infrastructure Architecture Overview",
+            "uri": "gs://attestor-505506-corpus/engineering/infrastructure-architecture-overview.txt"
+          },
+          {
+            "chars": 430,
+            "document": "infrastructure-architecture-overview",
+            "score": 0.5383,
+            "section": "2. Account structure",
+            "uri": "gs://attestor-505506-corpus/engineering/infrastructure-architecture-overview.txt"
+          },
+          {
+            "chars": 926,
+            "document": "infrastructure-architecture-overview",
+            "score": 0.5268,
+            "section": "5. Tenant isolation",
+            "uri": "gs://attestor-505506-corpus/engineering/infrastructure-architecture-overview.txt"
+          },
+          {
+            "chars": 415,
+            "document": "infrastructure-architecture-overview",
+            "score": 0.5249,
+            "section": "3. Compute",
+            "uri": "gs://attestor-505506-corpus/engineering/infrastructure-architecture-overview.txt"
+          }
+        ],
+        "seconds": 29.5,
+        "status": "drafted"
+      },
+      "question_id": "2ec6193975a611f0",
+      "text": "Describe your network segmentation approach."
+    },
+    {
+      "department": "legal",
+      "deployed": {
+        "answer_prefix": "No supporting evidence was found in the corpus for this question.",
+        "blocked": false,
+        "citation_count": 0,
+        "confidence": "low",
+        "denied": false,
+        "engine_events": 19,
+        "engine_passages_before_dedup": 35,
+        "engine_queries_run": [
+          "What controls remain the responsibility of the customer?",
+          "controls remain the responsibility of the customer",
+          "customer responsibility shared responsibility customer obligations",
+          "Customer responsibility customer duties account management access credentials",
+          "responsibility",
+          "Customer Controller DPA obligations",
+          "Customer Controller DPA obligations data processing agreement processor controller",
+          "master-agreement-summary",
+          "security-addendum",
+          "\"KD-LEG-008\" OR \"KD-LEG-001\" OR \"KD-LEG-003\" OR \"KD-LEG-005\"",
+          "\"customer\""
+        ],
+        "engine_said_insufficient": true,
+        "engine_text_prefix": "INSUFFICIENT_EVIDENCE",
+        "engine_tool_calls": 9,
+        "error": null,
+        "max_score": 0.7323,
+        "mean_score": 0.6284,
+        "needs_human": true,
+        "passage_count": 24,
+        "passages": [
+          {
+            "chars": 380,
+            "document": "security-addendum",
+            "score": 0.7323,
+            "section": "Security Addendum",
+            "uri": "gs://attestor-505506-corpus/legal/security-addendum.txt"
+          },
+          {
+            "chars": 395,
+            "document": "data-processing-agreement",
+            "score": 0.7092,
+            "section": "1. Roles",
+            "uri": "gs://attestor-505506-corpus/legal/data-processing-agreement.txt"
+          },
+          {
+            "chars": 401,
+            "document": "master-agreement-summary",
+            "score": 0.7051,
+            "section": "Master Subscription Agreement \u2014 Summary of Key Terms",
+            "uri": "gs://attestor-505506-corpus/legal/master-agreement-summary.txt"
+          },
+          {
+            "chars": 1072,
+            "document": "gdpr-records-of-processing",
+            "score": 0.7034,
+            "section": "Part A - Kestrel as Processor (Art. 30(2))",
+            "uri": "gs://attestor-505506-corpus/legal/gdpr-records-of-processing.txt"
+          },
+          {
+            "chars": 591,
+            "document": "data-subject-rights-procedure",
+            "score": 0.6731,
+            "section": "1. Which rights, and against whom",
+            "uri": "gs://attestor-505506-corpus/legal/data-subject-rights-procedure.txt"
+          },
+          {
+            "chars": 512,
+            "document": "data-processing-agreement",
+            "score": 0.6689,
+            "section": "2. Scope and duration",
+            "uri": "gs://attestor-505506-corpus/legal/data-processing-agreement.txt"
+          },
+          {
+            "chars": 274,
+            "document": "master-agreement-summary",
+            "score": 0.6659,
+            "section": "9. Subcontracting",
+            "uri": "gs://attestor-505506-corpus/legal/master-agreement-summary.txt"
+          },
+          {
+            "chars": 362,
+            "document": "master-agreement-summary",
+            "score": 0.6553,
+            "section": "1. Structure",
+            "uri": "gs://attestor-505506-corpus/legal/master-agreement-summary.txt"
+          },
+          {
+            "chars": 232,
+            "document": "standard-contractual-clauses-summary",
+            "score": 0.6513,
+            "section": "Standard Contractual Clauses and Transfer Impact Assessment - Summary",
+            "uri": "gs://attestor-505506-corpus/legal/standard-contractual-clauses-summary.txt"
+          },
+          {
+            "chars": 204,
+            "document": "data-processing-agreement",
+            "score": 0.6489,
+            "section": "11. Liability",
+            "uri": "gs://attestor-505506-corpus/legal/data-processing-agreement.txt"
+          },
+          {
+            "chars": 174,
+            "document": "security-addendum",
+            "score": 0.6307,
+            "section": "8. Changes",
+            "uri": "gs://attestor-505506-corpus/legal/security-addendum.txt"
+          },
+          {
+            "chars": 403,
+            "document": "security-addendum",
+            "score": 0.621,
+            "section": "1. Certifications maintained",
+            "uri": "gs://attestor-505506-corpus/legal/security-addendum.txt"
+          },
+          {
+            "chars": 364,
+            "document": "dpa-annex-2-technical-measures",
+            "score": 0.6197,
+            "section": "5. Organisational measures",
+            "uri": "gs://attestor-505506-corpus/legal/dpa-annex-2-technical-measures.txt"
+          },
+          {
+            "chars": 505,
+            "document": "data-processing-agreement",
+            "score": 0.6166,
+            "section": "9. Audit",
+            "uri": "gs://attestor-505506-corpus/legal/data-processing-agreement.txt"
+          },
+          {
+            "chars": 1200,
+            "document": "transfer-impact-assessment",
+            "score": 0.5932,
+            "section": "5. Supplementary measures relied on",
+            "uri": "gs://attestor-505506-corpus/legal/transfer-impact-assessment.txt"
+          },
+          {
+            "chars": 878,
+            "document": "master-agreement-summary",
+            "score": 0.5929,
+            "section": "6. Audit rights",
+            "uri": "gs://attestor-505506-corpus/legal/master-agreement-summary.txt"
+          },
+          {
+            "chars": 713,
+            "document": "data-subject-rights-procedure",
+            "score": 0.5877,
+            "section": "2. Assisting customers as processor",
+            "uri": "gs://attestor-505506-corpus/legal/data-subject-rights-procedure.txt"
+          },
+          {
+            "chars": 250,
+            "document": "data-subject-rights-procedure",
+            "score": 0.5859,
+            "section": "Data Subject Rights Procedure",
+            "uri": "gs://attestor-505506-corpus/legal/data-subject-rights-procedure.txt"
+          },
+          {
+            "chars": 471,
+            "document": "government-requests-and-transparency-report",
+            "score": 0.5809,
+            "section": "1. Who may receive a request",
+            "uri": "gs://attestor-505506-corpus/legal/government-requests-and-transparency-report.txt"
+          },
+          {
+            "chars": 349,
+            "document": "gdpr-records-of-processing",
+            "score": 0.5764,
+            "section": "GDPR Records of Processing Activities (Art. 30)",
+            "uri": "gs://attestor-505506-corpus/legal/gdpr-records-of-processing.txt"
+          },
+          {
+            "chars": 451,
+            "document": "privacy-policy",
+            "score": 0.576,
+            "section": "Privacy Policy",
+            "uri": "gs://attestor-505506-corpus/legal/privacy-policy.txt"
+          },
+          {
+            "chars": 286,
+            "document": "master-agreement-summary",
+            "score": 0.5719,
+            "section": "10. Service levels",
+            "uri": "gs://attestor-505506-corpus/legal/master-agreement-summary.txt"
+          },
+          {
+            "chars": 284,
+            "document": "master-agreement-summary",
+            "score": 0.5637,
+            "section": "8. Assignment and change of control",
+            "uri": "gs://attestor-505506-corpus/legal/master-agreement-summary.txt"
+          },
+          {
+            "chars": 260,
+            "document": "security-addendum",
+            "score": 0.5524,
+            "section": "2. Encryption commitments",
+            "uri": "gs://attestor-505506-corpus/legal/security-addendum.txt"
+          }
+        ],
+        "seconds": 88.69,
+        "status": "flagged_no_evidence"
+      },
+      "documents_in_common": [
+        "gs://attestor-505506-corpus/legal/data-processing-agreement.txt",
+        "gs://attestor-505506-corpus/legal/master-agreement-summary.txt",
+        "gs://attestor-505506-corpus/legal/security-addendum.txt",
+        "gs://attestor-505506-corpus/legal/transfer-impact-assessment.txt"
+      ],
+      "jaccard_documents": 0.4,
+      "local": {
+        "answer_prefix": "No supporting evidence was found in the corpus for this question.",
+        "blocked": false,
+        "citation_count": 0,
+        "confidence": "low",
+        "denied": false,
+        "error": null,
+        "max_score": 0.6207,
+        "mean_score": 0.6091,
+        "needs_human": true,
+        "passage_count": 5,
+        "passages": [
+          {
+            "chars": 505,
+            "document": "data-processing-agreement",
+            "score": 0.6207,
+            "section": "9. Audit",
+            "uri": "gs://attestor-505506-corpus/legal/data-processing-agreement.txt"
+          },
+          {
+            "chars": 260,
+            "document": "security-addendum",
+            "score": 0.6185,
+            "section": "2. Encryption commitments",
+            "uri": "gs://attestor-505506-corpus/legal/security-addendum.txt"
+          },
+          {
+            "chars": 395,
+            "document": "data-processing-agreement",
+            "score": 0.6068,
+            "section": "1. Roles",
+            "uri": "gs://attestor-505506-corpus/legal/data-processing-agreement.txt"
+          },
+          {
+            "chars": 1379,
+            "document": "transfer-impact-assessment",
+            "score": 0.6049,
+            "section": "5. Supplementary measures relied on",
+            "uri": "gs://attestor-505506-corpus/legal/transfer-impact-assessment.txt"
+          },
+          {
+            "chars": 878,
+            "document": "master-agreement-summary",
+            "score": 0.5948,
+            "section": "6. Audit rights",
+            "uri": "gs://attestor-505506-corpus/legal/master-agreement-summary.txt"
+          }
+        ],
+        "seconds": 16.72,
+        "status": "flagged_no_evidence"
+      },
+      "question_id": "872f44a68c701934",
+      "text": "Please confirm: What controls remain the responsibility of the customer?"
+    },
+    {
+      "department": "security",
+      "deployed": {
+        "answer_prefix": "Yes. CrowdStrike Falcon is deployed on 100% of managed endpoints as well as all production compute nodes (`endpoint-protection-standard`, Section 2: \"Endpoint detection and response\"). All devices wit",
+        "blocked": false,
+        "citation_count": 5,
+        "confidence": "medium",
+        "denied": false,
+        "engine_events": 3,
+        "engine_passages_before_dedup": 5,
+        "engine_queries_run": [
+          "Do you deploy endpoint detection and response on all company devices?",
+          "deploy endpoint detection and response on all company devices"
+        ],
+        "engine_said_insufficient": false,
+        "engine_text_prefix": "Yes. CrowdStrike Falcon is deployed on 100% of managed endpoints as well as all production compute nodes (`endpoint-protection-standard`, Section 2: \"Endpoint detection and response\"). All devices with access to Kestrel systems are company-owned and centrally managed via Kandji for macOS laptops and",
+        "engine_tool_calls": 1,
+        "error": null,
+        "max_score": 0.6414,
+        "mean_score": 0.6074,
+        "needs_human": false,
+        "passage_count": 5,
+        "passages": [
+          {
+            "chars": 776,
+            "document": "endpoint-protection-standard",
+            "score": 0.6414,
+            "section": "2. Endpoint detection and response",
+            "uri": "gs://attestor-505506-corpus/security/endpoint-protection-standard.txt"
+          },
+          {
+            "chars": 403,
+            "document": "endpoint-protection-standard",
+            "score": 0.6122,
+            "section": "8. Patching of endpoints",
+            "uri": "gs://attestor-505506-corpus/security/endpoint-protection-standard.txt"
+          },
+          {
+            "chars": 289,
+            "document": "endpoint-protection-standard",
+            "score": 0.603,
+            "section": "Endpoint Protection and Data Loss Prevention Standard",
+            "uri": "gs://attestor-505506-corpus/security/endpoint-protection-standard.txt"
+          },
+          {
+            "chars": 228,
+            "document": "endpoint-protection-standard",
+            "score": 0.5948,
+            "section": "4. Disk encryption",
+            "uri": "gs://attestor-505506-corpus/security/endpoint-protection-standard.txt"
+          },
+          {
+            "chars": 538,
+            "document": "endpoint-protection-standard",
+            "score": 0.5855,
+            "section": "1. Managed devices",
+            "uri": "gs://attestor-505506-corpus/security/endpoint-protection-standard.txt"
+          }
+        ],
+        "seconds": 12.13,
+        "status": "drafted"
+      },
+      "documents_in_common": [
+        "gs://attestor-505506-corpus/security/endpoint-protection-standard.txt"
+      ],
+      "jaccard_documents": 1.0,
+      "local": {
+        "answer_prefix": "Yes. CrowdStrike Falcon is deployed on 100% of managed endpoints and on all production compute nodes [1]. Endpoint coverage is reconciled nightly against the Kandji and AWS inventories, and any discre",
+        "blocked": false,
+        "citation_count": 5,
+        "confidence": "medium",
+        "denied": false,
+        "error": null,
+        "max_score": 0.6414,
+        "mean_score": 0.6074,
+        "needs_human": false,
+        "passage_count": 5,
+        "passages": [
+          {
+            "chars": 776,
+            "document": "endpoint-protection-standard",
+            "score": 0.6414,
+            "section": "2. Endpoint detection and response",
+            "uri": "gs://attestor-505506-corpus/security/endpoint-protection-standard.txt"
+          },
+          {
+            "chars": 403,
+            "document": "endpoint-protection-standard",
+            "score": 0.6122,
+            "section": "8. Patching of endpoints",
+            "uri": "gs://attestor-505506-corpus/security/endpoint-protection-standard.txt"
+          },
+          {
+            "chars": 289,
+            "document": "endpoint-protection-standard",
+            "score": 0.603,
+            "section": "Endpoint Protection and Data Loss Prevention Standard",
+            "uri": "gs://attestor-505506-corpus/security/endpoint-protection-standard.txt"
+          },
+          {
+            "chars": 228,
+            "document": "endpoint-protection-standard",
+            "score": 0.5948,
+            "section": "4. Disk encryption",
+            "uri": "gs://attestor-505506-corpus/security/endpoint-protection-standard.txt"
+          },
+          {
+            "chars": 538,
+            "document": "endpoint-protection-standard",
+            "score": 0.5855,
+            "section": "1. Managed devices",
+            "uri": "gs://attestor-505506-corpus/security/endpoint-protection-standard.txt"
+          }
+        ],
+        "seconds": 27.45,
+        "status": "drafted"
+      },
+      "question_id": "76423b225a5b7f7d",
+      "text": "Do you deploy endpoint detection and response on all company devices?"
+    },
+    {
+      "department": "engineering",
+      "deployed": {
+        "answer_prefix": "Restore testing is performed through an actual, full restore rather than a backup existence or listing check. Per Kestrel Data's *Backup and Restore Procedure* (Section 4, \"Test results\"), restore tes",
+        "blocked": false,
+        "citation_count": 5,
+        "confidence": "medium",
+        "denied": false,
+        "engine_events": 3,
+        "engine_passages_before_dedup": 5,
+        "engine_queries_run": [
+          "Is restore tested by performing an actual restore, or by verifying backup existence?"
+        ],
+        "engine_said_insufficient": false,
+        "engine_text_prefix": "Restore testing is performed through an actual, full restore rather than a backup existence or listing check. Per Kestrel Data's *Backup and Restore Procedure* (Section 4, \"Test results\"), restore testing is conducted quarterly by executing a real restore into an isolated environment, followed by ru",
+        "engine_tool_calls": 1,
+        "error": null,
+        "max_score": 0.7104,
+        "mean_score": 0.6236,
+        "needs_human": false,
+        "passage_count": 5,
+        "passages": [
+          {
+            "chars": 545,
+            "document": "backup-restore-procedure",
+            "score": 0.7104,
+            "section": "4. Test results",
+            "uri": "gs://attestor-505506-corpus/engineering/backup-restore-procedure.txt"
+          },
+          {
+            "chars": 719,
+            "document": "backup-restore-procedure",
+            "score": 0.6474,
+            "section": "3. Restore procedure",
+            "uri": "gs://attestor-505506-corpus/engineering/backup-restore-procedure.txt"
+          },
+          {
+            "chars": 334,
+            "document": "backup-restore-procedure",
+            "score": 0.6321,
+            "section": "5. Tenant-scoped restore",
+            "uri": "gs://attestor-505506-corpus/engineering/backup-restore-procedure.txt"
+          },
+          {
+            "chars": 195,
+            "document": "backup-restore-procedure",
+            "score": 0.5819,
+            "section": "Backup and Restore Procedure",
+            "uri": "gs://attestor-505506-corpus/engineering/backup-restore-procedure.txt"
+          },
+          {
+            "chars": 325,
+            "document": "backup-restore-procedure",
+            "score": 0.5462,
+            "section": "6. Backup deletion",
+            "uri": "gs://attestor-505506-corpus/engineering/backup-restore-procedure.txt"
+          }
+        ],
+        "seconds": 12.5,
+        "status": "drafted"
+      },
+      "documents_in_common": [
+        "gs://attestor-505506-corpus/engineering/backup-restore-procedure.txt"
+      ],
+      "jaccard_documents": 1.0,
+      "local": {
+        "answer_prefix": "Restore is tested quarterly by performing a real restore into an isolated account, not by verifying backup existence or running a backup-listing check [1][2]. The test process includes executing an in",
+        "blocked": false,
+        "citation_count": 5,
+        "confidence": "medium",
+        "denied": false,
+        "error": null,
+        "max_score": 0.7104,
+        "mean_score": 0.6236,
+        "needs_human": false,
+        "passage_count": 5,
+        "passages": [
+          {
+            "chars": 545,
+            "document": "backup-restore-procedure",
+            "score": 0.7104,
+            "section": "4. Test results",
+            "uri": "gs://attestor-505506-corpus/engineering/backup-restore-procedure.txt"
+          },
+          {
+            "chars": 719,
+            "document": "backup-restore-procedure",
+            "score": 0.6474,
+            "section": "3. Restore procedure",
+            "uri": "gs://attestor-505506-corpus/engineering/backup-restore-procedure.txt"
+          },
+          {
+            "chars": 334,
+            "document": "backup-restore-procedure",
+            "score": 0.6321,
+            "section": "5. Tenant-scoped restore",
+            "uri": "gs://attestor-505506-corpus/engineering/backup-restore-procedure.txt"
+          },
+          {
+            "chars": 195,
+            "document": "backup-restore-procedure",
+            "score": 0.5819,
+            "section": "Backup and Restore Procedure",
+            "uri": "gs://attestor-505506-corpus/engineering/backup-restore-procedure.txt"
+          },
+          {
+            "chars": 325,
+            "document": "backup-restore-procedure",
+            "score": 0.5462,
+            "section": "6. Backup deletion",
+            "uri": "gs://attestor-505506-corpus/engineering/backup-restore-procedure.txt"
+          }
+        ],
+        "seconds": 23.35,
+        "status": "drafted"
+      },
+      "question_id": "44368f60e62fa706",
+      "text": "Is restore tested by performing an actual restore, or by verifying backup existence?"
+    },
+    {
+      "department": "legal",
+      "deployed": {
+        "answer_prefix": "Kestrel Data has never been subject to a regulatory enforcement action, fine, consent decree, undertaking, or formal investigation by any data protection authority, sectoral regulator, or competition ",
+        "blocked": false,
+        "citation_count": 5,
+        "confidence": "medium",
+        "denied": false,
+        "engine_events": 5,
+        "engine_passages_before_dedup": 5,
+        "engine_queries_run": [
+          "regulatory enforcement action penalties fines violations",
+          "regulatory enforcement"
+        ],
+        "engine_said_insufficient": false,
+        "engine_text_prefix": "Kestrel Data has never been subject to a regulatory enforcement action, fine, consent decree, undertaking, or formal investigation by any data protection authority, sectoral regulator, or competition authority (legal-and-regulatory-history \u00a72. Regulatory enforcement). Furthermore, no supervisory aut",
+        "engine_tool_calls": 2,
+        "error": null,
+        "max_score": 0.597,
+        "mean_score": 0.5406,
+        "needs_human": false,
+        "passage_count": 5,
+        "passages": [
+          {
+            "chars": 580,
+            "document": "legal-and-regulatory-history",
+            "score": 0.597,
+            "section": "2. Regulatory enforcement",
+            "uri": "gs://attestor-505506-corpus/legal/legal-and-regulatory-history.txt"
+          },
+          {
+            "chars": 339,
+            "document": "legal-and-regulatory-history",
+            "score": 0.5635,
+            "section": "7. Regulatory scope",
+            "uri": "gs://attestor-505506-corpus/legal/legal-and-regulatory-history.txt"
+          },
+          {
+            "chars": 368,
+            "document": "legal-and-regulatory-history",
+            "score": 0.5205,
+            "section": "8. Statements in this document",
+            "uri": "gs://attestor-505506-corpus/legal/legal-and-regulatory-history.txt"
+          },
+          {
+            "chars": 314,
+            "document": "legal-and-regulatory-history",
+            "score": 0.5164,
+            "section": "3. Complaints",
+            "uri": "gs://attestor-505506-corpus/legal/legal-and-regulatory-history.txt"
+          },
+          {
+            "chars": 782,
+            "document": "legal-and-regulatory-history",
+            "score": 0.5055,
+            "section": "6. Legal hold",
+            "uri": "gs://attestor-505506-corpus/legal/legal-and-regulatory-history.txt"
+          }
+        ],
+        "seconds": 20.93,
+        "status": "drafted"
+      },
+      "documents_in_common": [
+        "gs://attestor-505506-corpus/legal/legal-and-regulatory-history.txt"
+      ],
+      "jaccard_documents": 1.0,
+      "local": {
+        "answer_prefix": "No, Kestrel Data has never been subject to a regulatory enforcement action, fine, consent decree, undertaking, or formal investigation by any data protection authority, sectoral regulator, or competit",
+        "blocked": false,
+        "citation_count": 5,
+        "confidence": "medium",
+        "denied": false,
+        "error": null,
+        "max_score": 0.5924,
+        "mean_score": 0.557,
+        "needs_human": false,
+        "passage_count": 5,
+        "passages": [
+          {
+            "chars": 580,
+            "document": "legal-and-regulatory-history",
+            "score": 0.5924,
+            "section": "2. Regulatory enforcement",
+            "uri": "gs://attestor-505506-corpus/legal/legal-and-regulatory-history.txt"
+          },
+          {
+            "chars": 314,
+            "document": "legal-and-regulatory-history",
+            "score": 0.567,
+            "section": "3. Complaints",
+            "uri": "gs://attestor-505506-corpus/legal/legal-and-regulatory-history.txt"
+          },
+          {
+            "chars": 339,
+            "document": "legal-and-regulatory-history",
+            "score": 0.5495,
+            "section": "7. Regulatory scope",
+            "uri": "gs://attestor-505506-corpus/legal/legal-and-regulatory-history.txt"
+          },
+          {
+            "chars": 368,
+            "document": "legal-and-regulatory-history",
+            "score": 0.5487,
+            "section": "8. Statements in this document",
+            "uri": "gs://attestor-505506-corpus/legal/legal-and-regulatory-history.txt"
+          },
+          {
+            "chars": 782,
+            "document": "legal-and-regulatory-history",
+            "score": 0.5273,
+            "section": "6. Legal hold",
+            "uri": "gs://attestor-505506-corpus/legal/legal-and-regulatory-history.txt"
+          }
+        ],
+        "seconds": 27.04,
+        "status": "drafted"
+      },
+      "question_id": "92130c3994ae1be6",
+      "text": "Has your organisation been subject to a regulatory enforcement action?"
+    },
+    {
+      "department": "security",
+      "deployed": {
+        "answer_prefix": "Yes, Kestrel Data supports SAML 2.0 single sign-on. Identity federation across all systems is managed through Okta using SAML 2.0, as specified in the Information Security Policy (`information-securit",
+        "blocked": false,
+        "citation_count": 8,
+        "confidence": "medium",
+        "denied": false,
+        "engine_events": 9,
+        "engine_passages_before_dedup": 10,
+        "engine_queries_run": [
+          "Do you support SAML or OIDC single sign-on?",
+          "support SAML or OIDC single sign-on",
+          "single sign-on authentication SAML OIDC identity",
+          "authentication",
+          "SAML"
+        ],
+        "engine_said_insufficient": false,
+        "engine_text_prefix": "Yes, Kestrel Data supports SAML 2.0 single sign-on. Identity federation across all systems is managed through Okta using SAML 2.0, as specified in the Information Security Policy (`information-security-policy`, Section 7: \"Access control\") and the Access Control Standard (`access-control-standard`, ",
+        "engine_tool_calls": 4,
+        "error": null,
+        "max_score": 0.6072,
+        "mean_score": 0.5793,
+        "needs_human": false,
+        "passage_count": 8,
+        "passages": [
+          {
+            "chars": 383,
+            "document": "access-control-standard",
+            "score": 0.6072,
+            "section": "2. Multi-factor authentication",
+            "uri": "gs://attestor-505506-corpus/security/access-control-standard.txt"
+          },
+          {
+            "chars": 538,
+            "document": "information-security-policy",
+            "score": 0.5983,
+            "section": "7. Access control",
+            "uri": "gs://attestor-505506-corpus/security/information-security-policy.txt"
+          },
+          {
+            "chars": 381,
+            "document": "access-control-standard",
+            "score": 0.5915,
+            "section": "3. Role-based access",
+            "uri": "gs://attestor-505506-corpus/security/access-control-standard.txt"
+          },
+          {
+            "chars": 432,
+            "document": "access-control-standard",
+            "score": 0.59,
+            "section": "1. Identity provider",
+            "uri": "gs://attestor-505506-corpus/security/access-control-standard.txt"
+          },
+          {
+            "chars": 389,
+            "document": "pen-test-executive-summary",
+            "score": 0.5852,
+            "section": "6. Two accepted low findings",
+            "uri": "gs://attestor-505506-corpus/security/pen-test-executive-summary.txt"
+          },
+          {
+            "chars": 384,
+            "document": "access-control-standard",
+            "score": 0.5686,
+            "section": "8. Service accounts and machine identity",
+            "uri": "gs://attestor-505506-corpus/security/access-control-standard.txt"
+          },
+          {
+            "chars": 284,
+            "document": "access-control-standard",
+            "score": 0.5495,
+            "section": "9. Password requirements",
+            "uri": "gs://attestor-505506-corpus/security/access-control-standard.txt"
+          },
+          {
+            "chars": 242,
+            "document": "pen-test-executive-summary",
+            "score": 0.5443,
+            "section": "2. Methodology",
+            "uri": "gs://attestor-505506-corpus/security/pen-test-executive-summary.txt"
+          }
+        ],
+        "seconds": 30.23,
+        "status": "drafted"
+      },
+      "documents_in_common": [],
+      "jaccard_documents": 0.0,
+      "local": {
+        "answer_prefix": "No supporting evidence was found in the corpus for this question.",
+        "blocked": false,
+        "citation_count": 0,
+        "confidence": "low",
+        "denied": false,
+        "error": null,
+        "max_score": null,
+        "mean_score": null,
+        "needs_human": true,
+        "passage_count": 0,
+        "passages": [],
+        "seconds": 6.24,
+        "status": "flagged_no_evidence"
+      },
+      "question_id": "8d5d2e4d5851ff56",
+      "text": "Do you support SAML or OIDC single sign-on?"
+    },
+    {
+      "department": "engineering",
+      "deployed": {
+        "answer_prefix": "Production data is never copied to lower or non-production environments. \n\nUnder our environment policy, non-production environments (`local`, `ci`, and `staging`) use only synthetic fixtures and anon",
+        "blocked": false,
+        "citation_count": 5,
+        "confidence": "medium",
+        "denied": false,
+        "engine_events": 3,
+        "engine_passages_before_dedup": 5,
+        "engine_queries_run": [
+          "Is production data ever copied to non-production environments?"
+        ],
+        "engine_said_insufficient": false,
+        "engine_text_prefix": "Production data is never copied to lower or non-production environments. \n\nUnder our environment policy, non-production environments (`local`, `ci`, and `staging`) use only synthetic fixtures and anonymised data. Fixtures for pre-production and staging environments are generated synthetically using ",
+        "engine_tool_calls": 1,
+        "error": null,
+        "max_score": 0.7169,
+        "mean_score": 0.6418,
+        "needs_human": false,
+        "passage_count": 5,
+        "passages": [
+          {
+            "chars": 566,
+            "document": "sdlc-policy",
+            "score": 0.7169,
+            "section": "2. Environments",
+            "uri": "gs://attestor-505506-corpus/engineering/sdlc-policy.txt"
+          },
+          {
+            "chars": 436,
+            "document": "backup-restore-procedure",
+            "score": 0.6423,
+            "section": "2. Encryption and location",
+            "uri": "gs://attestor-505506-corpus/engineering/backup-restore-procedure.txt"
+          },
+          {
+            "chars": 334,
+            "document": "backup-restore-procedure",
+            "score": 0.6291,
+            "section": "5. Tenant-scoped restore",
+            "uri": "gs://attestor-505506-corpus/engineering/backup-restore-procedure.txt"
+          },
+          {
+            "chars": 654,
+            "document": "backup-restore-procedure",
+            "score": 0.629,
+            "section": "1. What is backed up",
+            "uri": "gs://attestor-505506-corpus/engineering/backup-restore-procedure.txt"
+          },
+          {
+            "chars": 545,
+            "document": "backup-restore-procedure",
+            "score": 0.5919,
+            "section": "4. Test results",
+            "uri": "gs://attestor-505506-corpus/engineering/backup-restore-procedure.txt"
+          }
+        ],
+        "seconds": 13.31,
+        "status": "drafted"
+      },
+      "documents_in_common": [
+        "gs://attestor-505506-corpus/engineering/backup-restore-procedure.txt",
+        "gs://attestor-505506-corpus/engineering/sdlc-policy.txt"
+      ],
+      "jaccard_documents": 1.0,
+      "local": {
+        "answer_prefix": "No, production data is never copied to non-production environments [1]. Non-production environments (`local`, `ci`, and `staging`) use synthetic fixtures generated by `tools/gen_fixtures.py` and anony",
+        "blocked": false,
+        "citation_count": 5,
+        "confidence": "medium",
+        "denied": false,
+        "error": null,
+        "max_score": 0.7169,
+        "mean_score": 0.6418,
+        "needs_human": false,
+        "passage_count": 5,
+        "passages": [
+          {
+            "chars": 566,
+            "document": "sdlc-policy",
+            "score": 0.7169,
+            "section": "2. Environments",
+            "uri": "gs://attestor-505506-corpus/engineering/sdlc-policy.txt"
+          },
+          {
+            "chars": 436,
+            "document": "backup-restore-procedure",
+            "score": 0.6423,
+            "section": "2. Encryption and location",
+            "uri": "gs://attestor-505506-corpus/engineering/backup-restore-procedure.txt"
+          },
+          {
+            "chars": 334,
+            "document": "backup-restore-procedure",
+            "score": 0.6291,
+            "section": "5. Tenant-scoped restore",
+            "uri": "gs://attestor-505506-corpus/engineering/backup-restore-procedure.txt"
+          },
+          {
+            "chars": 654,
+            "document": "backup-restore-procedure",
+            "score": 0.629,
+            "section": "1. What is backed up",
+            "uri": "gs://attestor-505506-corpus/engineering/backup-restore-procedure.txt"
+          },
+          {
+            "chars": 545,
+            "document": "backup-restore-procedure",
+            "score": 0.5919,
+            "section": "4. Test results",
+            "uri": "gs://attestor-505506-corpus/engineering/backup-restore-procedure.txt"
+          }
+        ],
+        "seconds": 26.91,
+        "status": "drafted"
+      },
+      "question_id": "6933185061e46eea",
+      "text": "Is production data ever copied to non-production environments?"
+    }
+  ],
+  "questions": 30,
+  "questions_requested": 30,
+  "review_id": "rev-ead968ab9f94",
+  "round_id": "rev-ead968ab9f94-r1",
+  "verdict": "NO RETRIEVAL REGRESSION. The deployed path cites at or above the local path on the same questions, so the 48.3% figure from the throttled 60-question run is not a property of executing on the engines."
+}

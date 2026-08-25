@@ -38,6 +38,7 @@ import sys
 
 from attestor_platform.gmail import GmailClient
 from attestor_platform.gmail.watch import (
+    DEFAULT_LABEL,
     DEFAULT_TOPIC,
     WatchRefused,
     check_topic,
@@ -53,6 +54,11 @@ def main() -> int:
     parser.add_argument("--apply", action="store_true", help="register the watch")
     parser.add_argument("--stop", action="store_true", help="unregister it")
     parser.add_argument("--topic", default=os.environ.get("ATTESTOR_GMAIL_TOPIC", DEFAULT_TOPIC))
+    parser.add_argument(
+        "--label",
+        default=os.environ.get("ATTESTOR_GMAIL_LABEL", DEFAULT_LABEL),
+        help="Gmail label the watch is scoped to. Nothing outside it is ever notified.",
+    )
     args = parser.parse_args()
 
     project = os.environ.get("PROJECT_ID", "").strip()
@@ -67,6 +73,7 @@ def main() -> int:
     print("=" * 78)
     print(f"  mailbox     : {gmail.address}")
     print(f"  topic       : {topic_path(project, args.topic)}")
+    print(f"  label       : {args.label}  (nothing outside it is notified)")
     if current.expires_at:
         print(f"  registered  : expires {current.expires_at}")
         print(
@@ -94,7 +101,7 @@ def main() -> int:
         return 0
 
     try:
-        registered = register(project=project, topic=args.topic, gmail=gmail)
+        registered = register(project=project, topic=args.topic, label=args.label, gmail=gmail)
     except WatchRefused as refusal:
         sys.exit(f"\nerror: {refusal}")
     print(f"\n  registered. historyId {registered.history_id}")

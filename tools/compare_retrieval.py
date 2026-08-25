@@ -281,6 +281,13 @@ def main() -> int:
         "well under the load at which the deployed run met the regional quota.",
     )
     parser.add_argument(
+        "--only-status",
+        default=None,
+        help="Restrict to questions whose recorded answer has this status, e.g. "
+        "flagged_no_evidence. A balanced slice measures the round; this measures the "
+        "failures, which is what a diagnosis needs.",
+    )
+    parser.add_argument(
         "--no-guard",
         action="store_true",
         help="Skip Model Armor on both paths. Symmetric either way; on by default because "
@@ -300,7 +307,18 @@ def main() -> int:
         pass
 
     review_id = args.round.rsplit("-r", 1)[0]
-    questions = _select(QuestionRepository().for_round(args.round), args.limit)
+    pool_of_questions = QuestionRepository().for_round(args.round)
+    if args.only_status:
+        from attestor_platform.firestore import AnswerRepository
+
+        wanted = {
+            answer.question_id
+            for answer in AnswerRepository().for_round(args.round)
+            if answer.status.value == args.only_status
+        }
+        pool_of_questions = [q for q in pool_of_questions if q.question_id in wanted]
+        print(f"  filtered to {len(pool_of_questions)} questions with status {args.only_status}")
+    questions = _select(pool_of_questions, args.limit)
     if not questions:
         sys.exit(f"error: no questions found for round {args.round!r}")
 

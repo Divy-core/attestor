@@ -9,7 +9,7 @@ import type { Config } from 'tailwindcss';
  *   - `bg-red-500` and `text-gray-400` do not exist, so a component cannot reach for an
  *     off-palette colour by habit. It fails at build time instead of shipping a hue that
  *     only shows up in the recording.
- *   - `p-5`, `gap-7`, and `mt-2.5` do not exist. The spacing scale is 4, 8, 12, 16, 24, 32,
+ *   - `p-5`, `gap-7`, and `mt-2.5` do not exist.X
  *     40, 48, 64 and nothing else, so "roughly aligned" is not reachable — two elements
  *     either share a step or visibly do not.
  *   - `rounded-xl` and `rounded-full` do not exist. Two radii, 4px and 6px. The 9999px pill
@@ -94,6 +94,12 @@ const config: Config = {
       10: '40px',
       12: '48px',
       16: '64px',
+      // Page scale, and only /about reaches this far. Every key is four times its number,
+      // so these continue the ramp rather than sitting beside it -- and a console screen
+      // that reached for 128px of padding would be a mistake the reviewer can see.
+      24: '96px',
+      32: '128px',
+      40: '160px',
     },
 
     borderRadius: {
@@ -118,6 +124,7 @@ const config: Config = {
         lg: ['var(--text-lg)', { lineHeight: '1.2' }],
         xl: ['var(--text-xl)', { lineHeight: '1.1' }],
         display: ['var(--text-display)', { lineHeight: '1.08', letterSpacing: '-0.02em' }],
+        hero: ['var(--text-hero)', { lineHeight: '1.02', letterSpacing: '-0.035em' }],
       },
       fontWeight: {
         // Three weights, none above 600. Above that a UI face stops reading as chrome.
@@ -185,6 +192,10 @@ const config: Config = {
         // monitor is unreadable, and a console that fills every pixel because it can is the
         // difference between dense and cluttered.
         page: '1280px',
+        // The about page's reading measure. Narrower than the console's 1280 because
+        // it is prose for someone who has never seen this system, and wider than the
+        // chat column because some of its sections carry a figure beside the text.
+        essay: '1040px',
       },
       maxHeight: {
         list: '360px',

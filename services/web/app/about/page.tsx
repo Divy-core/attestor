@@ -9,28 +9,28 @@ import { engineId, isDepartmentEngine, partition } from '@/lib/registry';
 export const dynamic = 'force-dynamic';
 
 /**
- * What this is, and what has been measured about it.
+ * The page for someone who has never heard of this.
  *
- * Every figure on this page came from a file in `docs/proof/`, produced by a command in the
- * Makefile against the deployed project. The engine ids are read live from the Agent
- * Registry on each request, so the identities listed are the ones that exist right now
- * rather than the ones that existed when this was written.
+ * The first version was PROGRESS.md with a stylesheet: engine resource ids, `docs/proof/`
+ * paths, raw 403 bodies and recall@5 over 63 labelled pairs, in six numbered chapters of
+ * identical width and rhythm. All of it true, none of it legible to a founder or a
+ * compliance owner, who are the two people this product is for.
  *
- * Section A of Phase 9 applies here as much as anywhere: facts, not arguments. The material
- * is a permission denial, a recall delta, a verdict distribution and eight bugs, and none
- * of it needs to be sold.
+ * The engineering material is not gone -- it is in ONE section, near the end, for the reader
+ * who wants it. Everything before that is the problem, the product, the reason to trust it,
+ * and the thing it refuses to do. The engine ids in that section are still read live from
+ * the Agent Registry on each request, so the page cannot drift from what is deployed.
+ *
+ * Section A of Phase 9 applies here as much as anywhere: facts, not arguments.
  */
 
-/** Read from `docs/proof/retrieval-recall.md` — `make recall`, 63 hand-labelled pairs. */
-const RECALL = { raw: '90%', expanded: '95%', pairs: 63 };
-
-/** From `docs/proof/iam-runtime-denial.json`, verbatim. Trimmed only where marked. */
+/** From `docs/proof/iam-runtime-denial.json`, verbatim. Line breaks added to fit the column. */
 const DENIAL = `403 GET https://storage.mtls.googleapis.com/download/storage/v1/b/
 attestor-505506-corpus/o/legal%2Fdata-processing-agreement.txt?alt=media:
 Caller does not have storage.objects.get access to the Google Cloud Storage object.`;
 
 /**
- * The eight, in the order they were found.
+ * The nine, in the order they were found.
  *
  * A read that fails and a read that legitimately finds nothing are different facts, and
  * every one of these collapsed them. None announced itself: each produced a smaller number,
@@ -60,6 +60,25 @@ const FINDINGS: ReadonlyArray<{ where: string; became: string }> = [
     where: 'Deployed search returned an empty result set successfully, under load',
     became: '172 of 312 questions have no supporting evidence',
   },
+  {
+    where: "A session-store quota dropped the engine's tool response mid-stream",
+    became: '77 of 150 questions have no supporting evidence',
+  },
+];
+
+const STACK = [
+  'Vertex AI Agent Engine',
+  'Agent Development Kit',
+  'Vertex AI Search',
+  'Vertex AI Memory Bank',
+  'Model Armor',
+  'Agent Registry',
+  'Cloud Run',
+  'Pub/Sub',
+  'Firestore',
+  'Cloud Storage',
+  'Cloud Trace',
+  'Gemini',
 ];
 
 export default async function AboutPage() {
@@ -71,12 +90,8 @@ export default async function AboutPage() {
     // read leaves the engine ids out; every other section stands on its own.
     agents = [];
   }
-  // `partition` drops the deployment probe and anything in the project that is not ours,
-  // which is the same filter the registry page counts with. Two pages disagreeing about how
-  // many engines exist would be a worse problem than either number.
-  // `attestor-probe` is a deployment smoke test, not a member of the fleet -- the roster on
-  // /fleet drops it the same way. Counting it would make this page say seven where every
-  // other surface says six.
+  // The same filter /fleet counts with, minus the deployment probe. Two pages disagreeing
+  // about how many engines exist would be a worse problem than either number.
   const fleet = partition(agents).fleet.filter(
     (agent) => !(agent.display_name ?? agent.name ?? '').endsWith('probe'),
   );
@@ -99,237 +114,265 @@ export default async function AboutPage() {
         </div>
       </header>
 
-      <main className="mx-auto flex w-full max-w-column flex-col gap-24 px-6 py-20">
-        <section className="flex flex-col gap-6">
-          <h1 className="text-display text-primary">
-            A vendor security questionnaire is 312 questions. Attestor answers them from your
-            own documents, cites every claim, and refuses the ones it cannot support.
+      <main>
+        {/* The statement, and nothing else in the viewport with it. */}
+        <section className="mx-auto flex min-h-[78vh] w-full max-w-essay flex-col justify-center px-6 py-24">
+          <h1 className="max-w-[16ch] text-hero text-primary">
+            A questionnaire is in the way of the deal.
           </h1>
-          <p className="text-md leading-relaxed text-secondary">
-            An email arrives. Agents route it, retrieve against their own corpora, draft,
-            check each other, and hold back what a person has to see. Nobody opens a console
-            for any of it.
+          <p className="mt-8 max-w-prose text-md leading-relaxed text-secondary">
+            Every enterprise customer sends one before they will sign. Hundreds of questions
+            about how you handle their data, and the answers are already written down &mdash;
+            scattered across policies, architecture notes and last year&rsquo;s audit. Someone
+            senior spends two weeks finding them again.
           </p>
         </section>
 
-        <section className="grid grid-cols-2 gap-x-8 gap-y-8 border-y border-subtle py-10 sm:grid-cols-4">
-          <Figure value="312" label="questions in one round" />
-          <Figure value={String(fleet.length || 6)} label="deployed engines, one identity each" />
-          <Figure value={RECALL.expanded} label={`recall@5 over ${RECALL.pairs} labelled pairs`} />
-          <Figure value="8" label="failures that impersonated an empty result" />
+        {/* One line, alone, at a size nothing else reaches. The turn from problem to product. */}
+        <section className="border-y border-subtle">
+          <div className="mx-auto w-full max-w-essay px-6 py-32">
+            <p className="max-w-[22ch] text-display leading-tight text-primary">
+              Attestor answers it from your own documents, and shows its working.
+            </p>
+          </div>
         </section>
 
-        <Chapter
-          n="01"
-          title={`${fleet.length || 6} engines, ${fleet.length || 6} identities`}
-        >
-          <p>
-            Each department is a separate deployed engine with its own service identity, not a
-            sub-agent behind a shared one. One engine, one corpus.
-          </p>
-          <FleetDiagram departments={departments} />
-          {fleet.length > 0 ? (
-            <dl className="flex flex-col gap-2 pt-2">
-              {fleet.map((agent) => (
-                <div key={agent.agent_id} className="flex items-baseline justify-between gap-4">
-                  <dt className="truncate text-sm text-secondary">
-                    {agent.display_name ?? agent.name}
-                  </dt>
-                  <dd className="shrink-0">
-                    <Mono dim>{engineId(agent)}</Mono>
-                  </dd>
-                </div>
-              ))}
-            </dl>
-          ) : null}
-          <p className="text-sm text-muted">
-            Read from <Mono dim>agentregistry.googleapis.com/v1</Mono> on this request.
-          </p>
-        </Chapter>
+        {/* Three things, wide, no boxes. Type and space do the separating. */}
+        <section className="mx-auto grid w-full max-w-essay gap-x-12 gap-y-16 px-6 py-32 sm:grid-cols-3">
+          <Step
+            title="It reads what you already have"
+            body="Policies, architecture notes, audit reports, contracts. Nothing is rewritten for it and nothing is filled in by hand."
+          />
+          <Step
+            title="Every claim cites its document"
+            body="Each answer names the document and the section it came from, so whoever signs it can check it in seconds rather than trust it."
+          />
+          <Step
+            title="It sends the file back"
+            body="Answers land in the customer's own spreadsheet, in their rows, beside their columns. Not a report somebody has to reconcile."
+          />
+        </section>
 
-        <Chapter n="02" title="The boundary is a credential, not an instruction">
-          <p>
-            SecurityAgent reads <Mono>corpus/security</Mono>. Asked for{' '}
-            <Mono>corpus/legal</Mono>, it does not decline — it is refused, by a conditioned
-            IAM binding, before any model is involved.
-          </p>
-          <pre className="overflow-x-auto rounded bg-code px-4 py-3 font-mono text-xs leading-relaxed text-secondary">
-            {DENIAL}
-          </pre>
-          <p className="text-sm text-muted">
-            <Mono dim>docs/proof/iam-runtime-denial.json</Mono> · the same probe reads its own
-            prefix at 4,298 bytes in the same run.
-          </p>
-        </Chapter>
-
-        <Chapter n="03" title="Two observability planes">
-          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
-            <Plane
-              title="Compliance"
-              store="Firestore audit_events"
-              lines={[
-                'Append-only and attributed.',
-                'Which identity did what, to which object, when.',
-                '1,162 events for one review.',
-              ]}
-            />
-            <Plane
-              title="Engineering"
-              store="Cloud Trace, via OpenTelemetry"
-              lines={[
-                'Latency, token cost, tool spans.',
-                'Organised by span parentage.',
-                'Inherited from Agent Runtime; this codebase emits no custom spans.',
-              ]}
+        {/* The figures. Two, both meaningful to someone who has never seen this. */}
+        <section className="border-y border-subtle bg-raised">
+          <div className="mx-auto grid w-full max-w-essay gap-12 px-6 py-24 sm:grid-cols-2">
+            <Figure value="Two weeks" label="what answering one of these takes today" />
+            <Figure
+              value="Thirteen minutes"
+              label="a 150-question round, upload to finished draft, measured"
             />
           </div>
-          <p>
-            The runtime 403 above is in the first plane. A permission denial is a compliance
-            event: it has to be queryable years later, and a span would record that a read took
-            240 milliseconds.
-          </p>
-        </Chapter>
+        </section>
 
-        <Chapter n="04" title="What was promised in round one binds round two">
-          <p>
-            Commitments are written to Vertex AI Memory Bank when a round closes and loaded at
-            the start of every later round. A reply twenty-four days later is checked against
-            them before it is drafted.
-          </p>
-          <blockquote className="border-l-2 border-line pl-4 text-sm leading-relaxed text-secondary">
-            Kestrel Data does not offer on-premises or self-hosted deployment. Kestrel Insight
-            is multi-tenant SaaS only, with no single-tenant, private-cloud, air-gapped, or
-            customer-VPC option, and none on the roadmap.
-          </blockquote>
-          <p className="text-sm text-muted">
-            <Mono dim>docs/proof/memory-bank-recall.json</Mono> · five commitments recalled
-            across sessions, with the question each was made against.
-          </p>
-        </Chapter>
+        {/* Two columns: the trust claim, and the picture of it. */}
+        <section className="mx-auto grid w-full max-w-essay items-start gap-x-16 gap-y-12 px-6 py-32 lg:grid-cols-[1fr_1.1fr]">
+          <div className="flex flex-col gap-6">
+            <h2 className="text-lg text-primary">Why you can check it</h2>
+            <p className="text-md leading-relaxed text-secondary">
+              Your security policies and your commercial contracts are answered by different
+              agents, and each one can only open its own documents. Not by instruction &mdash;
+              the credential itself does not carry the permission, so the refusal happens
+              before any model is involved.
+            </p>
+            <p className="text-md leading-relaxed text-secondary">
+              Then a separate agent, on separate credentials, reads each drafted answer
+              against the passages it cites and says whether they hold it up. It is refused a
+              verdict on its own work.
+            </p>
+          </div>
+          <FleetDiagram departments={departments} />
+        </section>
 
-        <Chapter n="05" title="Eight failures that looked like empty results">
-          <p>
-            A read that fails and a read that legitimately finds nothing are different facts.
-            Every one of these collapsed them, and none announced itself: each produced a
-            smaller number, a green run, and a confident false statement.
-          </p>
-          <ol className="flex flex-col gap-4 pt-2">
-            {FINDINGS.map((finding, index) => (
-              <li key={finding.where} className="flex gap-4">
-                <Mono dim>{String(index + 1).padStart(2, '0')}</Mono>
-                <div className="flex min-w-0 flex-col gap-1">
-                  <span className="text-sm text-primary">{finding.where}</span>
-                  <span className="text-sm text-muted">became &ldquo;{finding.became}&rdquo;</span>
-                </div>
-              </li>
-            ))}
-          </ol>
-          <p className="text-sm text-muted">
-            The eighth was the largest: a completed run reported 172 of 312 questions
-            unsupported. Queried directly, the same corpus returned passages for five of six of
-            them at 0.950 top relevance.
-          </p>
-        </Chapter>
+        {/* The best property, given the most air on the page. */}
+        <section className="border-t border-subtle">
+          <div className="mx-auto flex w-full max-w-essay flex-col gap-8 px-6 py-32">
+            <h2 className="max-w-[20ch] text-display leading-tight text-primary">
+              It will not answer what your documents do not say.
+            </h2>
+            <p className="max-w-prose text-md leading-relaxed text-secondary">
+              When the evidence is not there, the answer is not written. The question comes
+              back marked, with the gap named, for a person to decide. The same happens to
+              anything it drafted but would not stand behind.
+            </p>
+            <p className="max-w-prose text-md leading-relaxed text-secondary">
+              It never reaches the web to answer a question about you. An agent that looks up
+              &ldquo;do you encrypt at rest&rdquo; on the open internet is guessing about its
+              own employer, fluently, with a citation that makes the guess look sound.
+            </p>
+          </div>
+        </section>
 
-        <Chapter n="06" title="Built on">
-          <ul className="grid grid-cols-2 gap-x-8 gap-y-2 sm:grid-cols-3">
-            {STACK.map((item) => (
-              <li key={item} className="text-sm text-secondary">
-                {item}
-              </li>
-            ))}
-          </ul>
-        </Chapter>
+        {/* Everything an engineer or a judge would want, in one place rather than throughout. */}
+        <section className="border-t border-subtle bg-raised">
+          <div className="mx-auto flex w-full max-w-essay flex-col gap-16 px-6 py-24">
+            <div className="flex flex-col gap-3">
+              <Mono dim>For the reader who wants the architecture</Mono>
+              <h2 className="text-lg text-primary">How it is actually built</h2>
+            </div>
 
-        <footer className="flex flex-wrap items-center gap-6 border-t border-subtle pt-10">
-          <Link href="/" className="text-sm">
-            Open the product
+            <div className="grid gap-x-16 gap-y-12 lg:grid-cols-2">
+              <Technical title={`${fleet.length || 6} engines, ${fleet.length || 6} identities`}>
+                <p>
+                  Each department is a separately deployed reasoning engine with its own
+                  service identity, not a sub-agent behind a shared one.
+                </p>
+                {fleet.length > 0 ? (
+                  <dl className="flex flex-col gap-2 pt-1">
+                    {fleet.map((agent) => (
+                      <div
+                        key={agent.agent_id}
+                        className="flex items-baseline justify-between gap-4"
+                      >
+                        <dt className="truncate text-sm text-secondary">
+                          {agent.display_name ?? agent.name}
+                        </dt>
+                        <dd className="shrink-0">
+                          <Mono dim>{engineId(agent)}</Mono>
+                        </dd>
+                      </div>
+                    ))}
+                  </dl>
+                ) : null}
+                <p className="text-sm text-muted">
+                  Read from <Mono dim>agentregistry.googleapis.com/v1</Mono> on this request.
+                </p>
+              </Technical>
+
+              <Technical title="The boundary is a credential">
+                <p>
+                  SecurityAgent reads <Mono>corpus/security</Mono>. Asked for{' '}
+                  <Mono>corpus/legal</Mono>, it is refused by a conditioned IAM binding:
+                </p>
+                <pre className="overflow-x-auto rounded bg-code px-4 py-3 font-mono text-xs leading-relaxed text-secondary">
+                  {DENIAL}
+                </pre>
+                <p className="text-sm text-muted">
+                  <Mono dim>docs/proof/iam-runtime-denial.json</Mono> &middot; the same probe
+                  reads its own prefix at 4,298 bytes in the same run.
+                </p>
+              </Technical>
+
+              <Technical title="Two observability planes">
+                <p>
+                  Firestore <Mono>audit_events</Mono> is append-only and attributed: which
+                  identity did what, to which object, when. Cloud Trace carries latency, token
+                  cost and tool spans, inherited from Agent Runtime.
+                </p>
+                <p>
+                  The 403 above is written to the first. A permission denial has to be
+                  queryable years later, and a span would record that a read took 240
+                  milliseconds.
+                </p>
+              </Technical>
+
+              <Technical title="Round two knows what round one promised">
+                <p>
+                  Commitments are written to Vertex AI Memory Bank when a round closes and
+                  loaded before any later round is drafted. Twenty-four days later, a reply is
+                  checked against them first:
+                </p>
+                <blockquote className="border-l-2 border-line pl-4 text-sm leading-relaxed text-secondary">
+                  Kestrel Data does not offer on-premises or self-hosted deployment. Kestrel
+                  Insight is multi-tenant SaaS only, with no single-tenant, private-cloud,
+                  air-gapped, or customer-VPC option, and none on the roadmap.
+                </blockquote>
+              </Technical>
+            </div>
+
+            <div className="flex flex-col gap-6 border-t border-subtle pt-12">
+              <h3 className="text-md text-primary">
+                Nine failures that arrived disguised as an empty result
+              </h3>
+              <p className="max-w-prose text-base leading-relaxed text-secondary">
+                A read that fails and a read that legitimately finds nothing are different
+                facts. Every one of these collapsed them, and none announced itself: each
+                produced a smaller number, a green run, and a confident false statement.
+              </p>
+              <ol className="grid gap-x-12 gap-y-4 pt-2 lg:grid-cols-2">
+                {FINDINGS.map((finding, index) => (
+                  <li key={finding.where} className="flex gap-4">
+                    <Mono dim>{String(index + 1).padStart(2, '0')}</Mono>
+                    <div className="flex min-w-0 flex-col gap-1">
+                      <span className="text-sm text-primary">{finding.where}</span>
+                      <span className="text-sm text-muted">
+                        became &ldquo;{finding.became}&rdquo;
+                      </span>
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            </div>
+
+            <div className="flex flex-col gap-4 border-t border-subtle pt-12">
+              <h3 className="text-md text-primary">Built on</h3>
+              <ul className="grid grid-cols-2 gap-x-8 gap-y-2 sm:grid-cols-4">
+                {STACK.map((item) => (
+                  <li key={item} className="text-sm text-secondary">
+                    {item}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </section>
+
+        {/* One action. */}
+        <section className="mx-auto flex w-full max-w-essay flex-col items-start gap-8 px-6 py-32">
+          <p className="max-w-[18ch] text-display leading-tight text-primary">
+            Send it a questionnaire.
+          </p>
+          <Link href="/" className="text-md">
+            Open Attestor
           </Link>
-          <Link href="/fleet" className="text-sm">
-            The fleet, live
-          </Link>
-          <Link href="/registry" className="text-sm">
-            The registry
-          </Link>
-          <a
-            href="https://github.com/Divy-core/attestor"
-            className="text-sm"
-            rel="noreferrer noopener"
-          >
-            Source
-          </a>
+        </section>
+
+        <footer className="border-t border-subtle">
+          <div className="mx-auto flex w-full max-w-essay flex-wrap items-center gap-6 px-6 py-10">
+            <Link href="/fleet" className="text-sm">
+              The fleet, live
+            </Link>
+            <Link href="/registry" className="text-sm">
+              The registry
+            </Link>
+            <a
+              href="https://github.com/Divy-core/attestor"
+              className="text-sm"
+              rel="noreferrer noopener"
+            >
+              Source
+            </a>
+          </div>
         </footer>
       </main>
     </div>
   );
 }
 
-const STACK = [
-  'Vertex AI Agent Engine',
-  'Agent Development Kit',
-  'Vertex AI Search',
-  'Vertex AI Memory Bank',
-  'Model Armor',
-  'Agent Registry',
-  'Cloud Run',
-  'Pub/Sub',
-  'Firestore',
-  'Cloud Storage',
-  'Cloud Trace',
-  'Gemini',
-];
+function Step({ title, body }: { title: string; body: string }) {
+  return (
+    <div className="flex flex-col gap-3">
+      <h2 className="text-md text-primary">{title}</h2>
+      <p className="text-base leading-relaxed text-secondary">{body}</p>
+    </div>
+  );
+}
 
 function Figure({ value, label }: { value: string; label: string }) {
   return (
-    <div className="flex flex-col gap-2">
-      <span className="text-xl tabular-nums text-primary">{value}</span>
-      <span className="text-sm leading-snug text-muted">{label}</span>
+    <div className="flex flex-col gap-3">
+      <span className="text-display leading-none text-primary">{value}</span>
+      <span className="text-md leading-snug text-muted">{label}</span>
     </div>
   );
 }
 
-function Chapter({
-  n,
-  title,
-  children,
-}: {
-  n: string;
-  title: string;
-  children: React.ReactNode;
-}) {
+function Technical({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <section className="flex flex-col gap-5">
-      <div className="flex items-baseline gap-4">
-        <Mono dim>{n}</Mono>
-        <h2 className="text-lg text-primary">{title}</h2>
-      </div>
-      <div className="flex flex-col gap-5 text-base leading-relaxed text-secondary">
+    <section className="flex flex-col gap-4">
+      <h3 className="text-md text-primary">{title}</h3>
+      <div className="flex flex-col gap-4 text-base leading-relaxed text-secondary">
         {children}
       </div>
     </section>
-  );
-}
-
-function Plane({
-  title,
-  store,
-  lines,
-}: {
-  title: string;
-  store: string;
-  lines: string[];
-}) {
-  return (
-    <div className="flex flex-col gap-2 rounded border border-subtle px-4 py-3">
-      <h3 className="text-sm font-medium text-primary">{title}</h3>
-      <Mono dim>{store}</Mono>
-      <ul className="flex flex-col gap-1 pt-1">
-        {lines.map((line) => (
-          <li key={line} className="text-sm text-secondary">
-            {line}
-          </li>
-        ))}
-      </ul>
-    </div>
   );
 }

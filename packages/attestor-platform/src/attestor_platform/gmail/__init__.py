@@ -25,6 +25,7 @@ from attestor_platform.gmail.staging import (
     stage_body_questions,
 )
 from attestor_platform.gmail.watch import (
+    DEFAULT_LABEL,
     DEFAULT_TOPIC,
     SCOPE_NOTES,
     TopicCheck,
@@ -37,6 +38,7 @@ from attestor_platform.gmail.watch import status as watch_status
 from attestor_platform.gmail.watch import stop as stop_watch
 
 __all__ = [
+    "DEFAULT_LABEL",
     "DEFAULT_TOPIC",
     "OAUTH_SECRET",
     "SCOPES",

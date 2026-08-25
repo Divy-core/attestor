@@ -67,10 +67,17 @@ class Mailbox:
     def __init__(self, address: str = "attestor.trust@example.com") -> None:
         self.address = address
         self.watched: list[str] = []
+        self.scoped_to: list[tuple[str, ...]] = []
+        self.labels_ensured: list[str] = []
         self.stopped = 0
 
-    def watch(self, topic: str) -> Registration:
+    def ensure_label(self, name: str) -> str:
+        self.labels_ensured.append(name)
+        return f"Label_{name}"
+
+    def watch(self, topic: str, label_ids: tuple[str, ...] = ("INBOX",)) -> Registration:
         self.watched.append(topic)
+        self.scoped_to.append(label_ids)
         return Registration(topic)
 
     def stop_watch(self) -> None:
@@ -153,6 +160,44 @@ class TestRegisteringRefusesRatherThanLying:
         monkeypatch.delenv("PROJECT_ID", raising=False)
         with pytest.raises(WatchRefused, match="No Google Cloud project"):
             register(project="", gmail=Mailbox(), state=FakeState())
+
+
+class TestTheWatchSeesOneLabelAndNotAMailbox:
+    """The privacy claim this integration makes, held by a test rather than by a comment.
+
+    Attestor watches a mailbox a person also uses for their own mail. A watch on INBOX
+    publishes a notification for every message that mailbox receives, and every one of them
+    would be fetched, parsed and judged by this deployment before being discarded. Scoped to
+    a label, the mailbox owner decides with a Gmail filter what this system is ever told
+    about -- in their own client, revocable without touching the deployment.
+
+    The failure this guards against is a default. `GmailClient.watch` defaults to
+    `("INBOX",)`, so a `register()` that stopped passing a label would keep working, keep
+    delivering mail, and quietly widen the scope to everything. Nothing else would break.
+    """
+
+    def test_the_watch_is_scoped_to_the_label_and_never_to_the_inbox(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        consent(monkeypatch, granted=True)
+        topic(monkeypatch, DELIVERABLE)
+        mailbox = Mailbox()
+
+        register(project="p", topic="t", label="Attestor", gmail=mailbox, state=FakeState())
+
+        assert mailbox.scoped_to == [("Label_Attestor",)]
+        assert "INBOX" not in mailbox.scoped_to[0]
+
+    def test_the_label_is_created_so_the_owner_only_has_to_write_the_filter(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        consent(monkeypatch, granted=True)
+        topic(monkeypatch, DELIVERABLE)
+        mailbox = Mailbox()
+
+        register(project="p", topic="t", label="Attestor", gmail=mailbox, state=FakeState())
+
+        assert mailbox.labels_ensured == ["Attestor"]
 
 
 class TestARegistrationIsRecordedWhereTheProductReadsIt:
@@ -305,7 +350,7 @@ class TestAnUnreadablePolicyIsNotABrokenTopic:
         topic(monkeypatch, DELIVERABLE)
 
         class Refusing(Mailbox):
-            def watch(self, topic: str) -> Registration:
+            def watch(self, topic: str, label_ids: tuple[str, ...] = ("INBOX",)) -> Registration:
                 raise ContextUnavailable(
                     "gmail POST /watch -> 403: User not authorized to perform this action.",
                     status_code=403,

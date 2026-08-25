@@ -116,7 +116,7 @@ ENGINE_ENV = {
 #: third of the concurrent load on Agent Runtime -- which is the number that matters,
 #: because the quota that bites is per region, not per engine. See
 #: `RemoteDraftingPipeline.draft_many` and `_query_with_retry`.
-REMOTE_DRAFT_CONCURRENCY = int(os.environ.get("ATTESTOR_REMOTE_CONCURRENCY", "8"))
+REMOTE_DRAFT_CONCURRENCY = int(os.environ.get("ATTESTOR_REMOTE_CONCURRENCY", "5"))
 
 #: Retrying a rate-limited engine call. Same shape as the Model Armor and search clients:
 #: transient refusals are retried with exponential backoff before anything gives up.
@@ -185,7 +185,24 @@ _is_transient = is_transient
 #: Retrying an empty result is cheap — the questions that are genuinely unsupported pay three
 #: extra calls each, and being wrong about them is what the system is built not to be.
 EMPTY_RETRIEVAL_ATTEMPTS = int(os.environ.get("ATTESTOR_EMPTY_RETRIEVAL_ATTEMPTS", "3"))
-EMPTY_RETRIEVAL_BACKOFF_SECONDS = 3.0
+
+#: The backoff has to outlast the thing it is backing off from, and Phase 10 finally named
+#: that thing. The engines' own logs for the verified 150-question run carry 188
+#: `Quota exceeded for quota metric 'Session Event Append Requests' and limit 'Session Event
+#: Append Requests per minute per region'` and 36 `Failed to create session`, minute for
+#: minute against the dispatcher's own "retrieved nothing" lines (144/109, 81/52, 58/39).
+#: ADK appends an event to a managed session for every model turn and every tool call; when
+#: that ceiling is hit the append fails without failing the call, the tool-response part
+#: carrying the passages is lost, and `stream_query` returns a stream that looks exactly
+#: like a corpus with nothing in it. `docs/proof/the-24-percent.md` has the measurement.
+#:
+#: **That ceiling resets on a minute boundary.** At 3 seconds the three attempts spanned
+#: nine, all inside the same exhausted minute, and a "confirmed empty" meant only that the
+#: quota was still exhausted nine seconds later -- which is why 79 were confirmed and only
+#: 33 recovered. At 25 the attempts span about 75 seconds, so one of them lands in a minute
+#: the quota has reset in. Only questions that retrieved nothing wait, and they wait
+#: concurrently with the rest of their partition.
+EMPTY_RETRIEVAL_BACKOFF_SECONDS = 25.0
 
 
 class EngineUnavailable(AttestorError):

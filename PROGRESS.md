@@ -3493,3 +3493,221 @@ not the tool.
   Drive filing and the in-thread reply. All three are built and none is exercised.
 - **Timers.** Cut for the third phase running, as the brief said to.
 - **The screenshot half of the footage.** Six sessions now.
+
+---
+
+## Phase 10 — The 24%, Diagnosed (Day 12, 25 Aug 2026)
+
+### The number that should have been alarming
+
+The verified 150-question run drafted 36 answers and flagged 77 for want of evidence. Every
+prior measurement of this system is three to four times that. Phase 9 reported it without
+alarm, alongside a paragraph explaining the denominator — and that paragraph was correct
+about the arithmetic and blind to the fact that the arithmetic itself was the finding.
+
+**The demo numbers come from that run.** A run that correctly refuses three quarters of its
+questions is honest and unwatchable.
+
+`docs/proof/the-24-percent.md` is the diagnosis. Three measurements, in order, each of which
+could have ended it.
+
+### It was not the questionnaire
+
+The customer name changed to "Meridian Health Systems" and the obvious hypothesis was that
+the 150 questions had been regenerated for a healthcare company against a corpus written for
+a data platform. They had not. `slice_questionnaire.py` copies the clean workbook and deletes
+rows, and question ids are a content hash — so this is checkable rather than remembered. All
+150 answer ids map exactly onto rows 2–151 of `acme-vendor-review-r1.xlsx`.
+
+The failures were not shaped like a fixture mismatch either. Roughly half of every
+department, and the flagged list includes *"What encryption algorithm and key length is used
+for data at rest?"* — which the corpus answers in a titled section.
+
+### It was not a retrieval regression
+
+`tools/compare_retrieval.py` gained `--only-status`, so it measures the *failures* rather
+than a department-balanced slice of the round. A balanced slice measures the round; a
+diagnosis needs the questions that broke. Thirty of the 77, both paths, same guard, same
+audit sink, same triaged departments read from Firestore:
+
+| | local, in-process | deployed engines |
+|---|---|---|
+| cited | 23 of 30 | **25 of 30** |
+| questions retrieving 0 passages | 4 | **0** |
+| mean passages retrieved | 4.33 | **6.83** |
+| mean top relevance | 0.684 | 0.690 |
+| engine ran no search at all | — | **0 of 30** |
+
+The deployed path cites *above* the local one. Twenty-five of the thirty questions the run
+filed as "no supporting evidence in the corpus" are answered by the corpus, with citations,
+through the same engines. `docs/proof/retrieval-on-the-77-flagged.json`.
+
+### It was a session-store quota, arriving as an empty result
+
+17,892 lines of engine log for the nine minutes of the run:
+
+```
+Quota exceeded ... 'Session Event Append Requests per minute per region'   188
+Quota exceeded ... 'Vertex Session Write Requests per minute per region'    36
+RuntimeError: Failed to create session.                                     36
+```
+
+**Not** the quota Phase 6.5 hit. That one was *Query Reasoning Engine requests* and it
+arrives as a 429 the caller can see. This is ADK's managed session service: every model turn
+and every tool call inside an engine invocation appends an event to a session. The appends
+that fail mid-stream do not fail the call — they lose the tool-response part carrying the
+passages, and `stream_query` returns a stream that looks exactly like a corpus with nothing
+in it.
+
+Minute by minute, the two series are the same series:
+
+| minute | engine quota errors | dispatcher "retrieved nothing" |
+|---|---|---|
+| 16:33 | 7 | 9 |
+| **16:34** | **144** | **109** |
+| 16:35 | 81 | 52 |
+| 16:36 | 58 | 39 |
+
+**The ninth failure that impersonates an empty result**, and the first one whose mechanism is
+named rather than inferred. Phase 6.5 found the behaviour — "the engine's own search returns
+an empty result set under sustained load, and returns it successfully" — and built
+`EMPTY_RETRIEVAL_ATTEMPTS` against it without knowing why. This is why.
+
+### Why the defence only recovered a third
+
+`empty_retrievals_confirmed: 79`, `empty_retrievals_recovered: 33`.
+
+The retry waited 3s, then 6s, and gave up nine seconds after the first attempt. **The quota
+it was retrying against resets on a minute boundary.** All three attempts landed inside the
+same exhausted minute, so a "confirmed empty" meant only that the quota was still exhausted
+nine seconds later. The 33 that recovered are the ones whose first attempt happened to fall
+near the end of a minute.
+
+A backoff has to outlast the thing it is backing off from, and for three phases nobody knew
+what that thing was.
+
+### What the run had that no run had before
+
+Verification. A verification is a second engine invocation per drafted answer — a second
+session, a second stream of appends, on the same per-minute regional ceiling. The 150-question
+run made roughly 186 invocations in nine minutes where the Phase 6.5 runs made one per
+question. The feature that made the run worth doing is what broke it.
+
+### The fix
+
+- `EMPTY_RETRIEVAL_BACKOFF_SECONDS` 3.0 → **25.0**. Three attempts span ~75 seconds, so one
+  of them lands in a minute the quota has reset in. Only questions that retrieved nothing
+  wait, and they wait concurrently with the rest of their partition.
+- `REMOTE_DRAFT_CONCURRENCY` 8 → **5**. Three simultaneous partitions is 15 concurrent engine
+  invocations rather than 24.
+
+Neither is a quota increase. That is the real remedy and its turnaround is measured in days.
+
+### The run that proves it
+
+Same 150 questions, same corpus, same engines, same customer name, one changed constant.
+`docs/proof/demo-run.json` — `rev-b6c7fd460d9a`, 13m 26s, started by an upload through the
+chat composer.
+
+| | before | after |
+|---|---|---|
+| answers carrying a citation | 72 (48%) | **136 (91%)** |
+| flagged for want of evidence | 77 | **13** |
+| checked by a separate identity | 36 | **79** |
+| empty retrievals confirmed / recovered | 79 / 33 | **14 / 120** |
+
+The verdict distribution: **29 supported · 21 partially supported · 25 unknown · 4
+unsupported**, `separation_held: true`, verifier `reasoningEngines/1255723093024833536`
+against SecurityAgent 30, EngineeringAgent 27, LegalAgent 22.
+
+**The four unsupported are the most interesting number on the page.** The verifier read four
+drafted claims against the passages they cite and said the passages do not hold them up. The
+previous run recorded none, because it had a third as many drafts to check — a verifier with
+nothing to check is not a verifier that found nothing wrong.
+
+Three of the nine planted gaps fall inside the first 150 questions. Two were flagged with no
+evidence. The third — *"do you publish a modern slavery or supply chain labour statement?"* —
+came back `needs_human`, at low confidence, reading *"the department engine retrieved
+supporting passages and returned no drafted answer"* with the passages cited. No claim was
+made. None of the three was answered.
+
+**One cost, recorded rather than hidden.** The 25-second backoff pushed the two longest
+partitions past the 600-second ack deadline, so Pub/Sub redelivered them. The 900-second
+lease refused each duplicate with `409 HELD` while the original kept working — the ordering
+from `ack-deadline-margin.md`, earning its place a second time. Five drafting stages appear
+for three departments; no question was drafted twice and no duplicate answers were written.
+
+### The about page, rebuilt
+
+The Phase 9 page was PROGRESS.md with a stylesheet. Engine resource ids,
+`agentregistry.googleapis.com/v1`, `docs/proof/` paths and raw 403 bodies, in six numbered
+chapters of identical width and identical rhythm — and a headline claiming *"a vendor
+security questionnaire is 312 questions"*, which is not true of anything except one fixture.
+
+What changed:
+
+- **One statement holds the viewport.** `--text-hero`, a `clamp(38px, 6.2vw, 76px)` two steps
+  above the console's scale, used by exactly one element on one page.
+- **The vertical rhythm is real.** Section heights at 1920×1080 now run 842 / 423 / 381 / 272
+  / 567 / 587 / 1624 / 365 rather than eight of the same. The spacing scale had to be extended
+  to reach it: it topped out at 64px, so every `py-20` and `gap-24` on the old page silently
+  resolved to nothing, which is most of why it read as one column of boxes. Three page-scale
+  steps added — 96, 128, 160 — each four times its key, the same ratio the rest of the ramp
+  uses.
+- **Two figures, not four.** "Two weeks" and "Nine minutes", both meaningful to someone who
+  has never seen this. Gone: recall@5 over 63 labelled pairs, and the count of empty-result
+  bugs, which are engineering diary entries.
+- **The engineering material is in one section**, near the end, under a line that says who it
+  is for. The engine ids are still read live from the registry on each request.
+- **The order is the reader's**: the questionnaire is in the way of the deal → it answers from
+  your own documents → three things it does → why you can check it → what it will not do → one
+  action.
+
+The refusal got the most air on the page, at display size and alone. It is the product's best
+property and the old page had it as chapter five of six.
+
+Zero AA failures in both themes at 1920×1080, no horizontal overflow at either width, hero
+resolving to 38px at the mobile floor.
+
+### The shot list
+
+`computer{action:"screenshot"}` has timed out in every session since Phase 5 — the Browser
+pane does not composite frames in this environment. Six sessions of retrying it is enough.
+
+`docs/proof/SHOTLIST.md` is nine shots a person follows without me: the URL, what to have on
+screen before recording, what to click, what should appear, and the artefact behind each. It
+is about twenty minutes of capture. Everything measurable through the DOM is already
+measured; this half always needed a human.
+
+### Gmail, deferred a third time
+
+At Divy's direction. The label scoping was built anyway, because it is the part that needed
+design rather than consent: `register()` now takes a label, creates it through `ensure_label`
+so the mailbox owner only has to write the filter, and `tools/gmail_watch.py --label` surfaces
+it. `TestTheWatchSeesOneLabelAndNotAMailbox` pins it, because `GmailClient.watch` defaults to
+`("INBOX",)` — a `register()` that stopped passing a label would keep working, keep delivering
+mail, and quietly widen the scope to the whole mailbox with nothing else breaking.
+
+Everything else Gmail needs is already standing: the topic, the `gmail-api-push` publisher
+binding, and the push subscription to `/gmail/push`. What is missing is one OAuth client,
+which has no API and must be created in the Console.
+
+### Phase 10 exit criteria
+
+| # | Criterion | State | How verified |
+|---|---|---|---|
+| 1 | The 24% diagnosed, with evidence, and fixed | **DONE** | `the-24-percent.md`. Fixture ruled out by content-hash mapping; retrieval ruled out by `retrieval-on-the-77-flagged.json`; cause found in the engine logs and correlated minute by minute |
+| 2 | Gmail connected, five loop steps exercised | **DEFERRED** | Third session running, at Divy's direction. Label scoping and its test were built anyway; the one missing piece is a Console-only OAuth client |
+| 3 | One demo run, verification on, distribution reported | **DONE** | `demo-run.json`. 136 of 150 cited, 79 checked, 29 / 21 / 25 / 4, separation held |
+| 4 | The run started by an email | **NOT DONE** | Depends on #2. Started by an upload through the composer instead |
+| 5 | Footage: a shot list a person can follow without me | **DONE** | `SHOTLIST.md`, nine shots, about twenty minutes. The capture itself still needs a human |
+| 6 | `/about` rebuilt for an outsider | **DONE** | One statement at 76px holding 78vh, section heights 842-1624, two figures, engineering in one section. Zero AA failures in both themes, no overflow at 1920 or at the mobile floor |
+| 7 | `make check` green, deployed, pushed | **DONE** | mypy --strict, tsc, tokens, copy, layering and drift all clean |
+
+### What Phase 10 did not do
+
+- **Gmail**, and with it the inbound run, the Drive filing, the in-thread reply and the
+  follow-up round waking by email. Five loop steps, built and deployed, still never run.
+- **The video, the README spin-up, the architecture diagram and the write-up.** All four are
+  hard submission requirements and none exists. They are the whole of what is left.
+- **The screenshot half of the footage.** Seven sessions. It is a shot list now instead.

@@ -285,10 +285,25 @@ class WatchRefused(Exception):
     """
 
 
+#: Which label the watch is scoped to, and why the default is not INBOX.
+#:
+#: Attestor watches a mailbox a person also uses. `users.watch` on INBOX would publish a
+#: notification for every message that mailbox receives -- and every one of those would be
+#: fetched, parsed and judged by this system before being discarded. Scoping the watch to a
+#: label the owner controls means the owner decides what this deployment is ever told about,
+#: with a Gmail filter, in their own client, revocable without touching the deployment.
+#:
+#: The address side of that pairing is Gmail's plus-addressing: mail to
+#: `someone+attestor@gmail.com` is delivered to `someone@gmail.com`, and a filter on the
+#: `to:` field applies the label.
+DEFAULT_LABEL = "Attestor"
+
+
 def register(
     *,
     project: str = "",
     topic: str = "",
+    label: str = "",
     gmail: GmailClient | None = None,
     state: InboxStateRepository | None = None,
 ) -> WatchStatus:
@@ -315,7 +330,12 @@ def register(
     client = gmail or GmailClient()
     repository = state or InboxStateRepository()
     try:
-        registration = client.watch(topic_path(project, topic))
+        # `ensure_label` creates it when it is not there, so the mailbox owner never has to
+        # make the label -- only the filter that applies it.
+        label_name = label or os.environ.get("ATTESTOR_GMAIL_LABEL", DEFAULT_LABEL)
+        registration = client.watch(
+            topic_path(project, topic), label_ids=(client.ensure_label(label_name),)
+        )
     except ContextUnavailable as exc:
         # Gmail's own words. It returns a 403 naming the topic when its publisher identity
         # is not bound, which is the authoritative answer to the one question the pre-flight

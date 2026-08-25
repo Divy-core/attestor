@@ -1,5 +1,11 @@
 # Footage checklist
 
+> **For the capture session, use [`SHOTLIST.md`](SHOTLIST.md).** It is nine shots with the
+> URL, what to have on screen, what to click, what should appear and which artefact backs
+> each one — followable without me, in about twenty minutes. This file is the longer
+> reference: every capture the project can offer, and the notes on what to say over each.
+
+
 Every item the demo video needs, what to point the camera at, and the measured artefact
 that backs it. The artefacts are the evidence; the footage is how a judge sees it in four
 minutes.

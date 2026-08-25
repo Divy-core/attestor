@@ -266,6 +266,10 @@
    * to hold a whole viewport on its own needs a size the console never wants, and putting
    * it in the ramp rather than as an arbitrary value keeps it checkable. */
   --text-display: 44px;
+  /* Two steps above, and one element on one page uses it: the opening statement of /about.
+   * Fluid, because a fixed 76px is a broken layout on a phone and a clamp is the whole of
+   * the responsive behaviour a single line of type needs. */
+  --text-hero: clamp(38px, 6.2vw, 76px);
 
   --font-ui: var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system, 'Segoe UI',
     sans-serif;
