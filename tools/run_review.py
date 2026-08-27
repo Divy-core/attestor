@@ -21,7 +21,7 @@ from pathlib import Path
 
 from attestor_core.domain import AnswerStatus
 from attestor_fleet.agents.intake import parse_xlsx
-from attestor_fleet.callbacks.audit import NullAuditSink
+from attestor_fleet.callbacks.audit import FirestoreAuditSink, NullAuditSink
 from attestor_fleet.callbacks.budget import BudgetLedger
 from attestor_fleet.callbacks.guard import ArmorGuard
 from attestor_fleet.orchestrator import ArtifactBrief, Orchestrator
@@ -135,6 +135,12 @@ def main() -> int:
         action="store_true",
         help="drive the run through the Orchestrator (plan, retry judgement, finalise)",
     )
+    parser.add_argument(
+        "--audit",
+        action="store_true",
+        help="write this run's events to the real audit trail. Off by default because this "
+        "harness is a benchmark; on for a run that is meant to be on the record.",
+    )
     parser.add_argument("--write-proof", action="store_true")
     args = parser.parse_args()
 
@@ -153,7 +159,12 @@ def main() -> int:
     print(f"commitments  : {len(commitments)} from prior rounds")
 
     guard = None if args.no_armor else ArmorGuard()
-    audit = NullAuditSink()
+    # Null by default. This harness is a benchmark and is run repeatedly; writing every
+    # pass into the plane a compliance reader trusts would fill it with rehearsals. `--audit`
+    # is for the run that is meant to be on the record -- in particular the orchestrator's
+    # three judgement calls, which are made only on this path and which the Review Thread
+    # cannot show if they were never written.
+    audit = FirestoreAuditSink() if args.audit else NullAuditSink()
     ledger = BudgetLedger(review_id=args.review_id)
     run_id = f"run-{int(time.time())}"
 
@@ -259,7 +270,11 @@ def main() -> int:
         print("MODEL ARMOR BLOCKS")
         print("=" * 62)
         for outcome in report.blocked:
-            events = [e for e in audit.events if e["question_id"] == outcome.question.question_id]
+            events = [
+                e
+                for e in getattr(audit, "events", ())
+                if e["question_id"] == outcome.question.question_id
+            ]
             armor = [e for e in events if e["kind"] == "armor_blocked"]
             for event in armor:
                 detail = event["detail"]
@@ -297,7 +312,11 @@ def main() -> int:
             ),
             **e["detail"],
         }
-        for e in audit.events
+        # `NullAuditSink` keeps every event in memory, which is what this report reads.
+        # `FirestoreAuditSink` writes them out and keeps nothing, so under `--audit` the
+        # blocked-input detail comes back empty rather than crashing the summary of a run
+        # that has already finished and already written its trail.
+        for e in getattr(audit, "events", ())
         if e["kind"] == "armor_blocked"
     ]
     numbers["errors"] = [
@@ -305,7 +324,7 @@ def main() -> int:
         for o in report.outcomes
         if o.error
     ]
-    numbers["audit_events"] = len(audit.events)
+    numbers["audit_events"] = len(getattr(audit, "events", ()))
 
     if args.write_proof:
         PROOF_DIR.mkdir(parents=True, exist_ok=True)
@@ -315,8 +334,16 @@ def main() -> int:
 
         chain_out = PROOF_DIR / f"audit-chain-{args.questionnaire}.json"
         sample = next((o for o in report.cited), None)
-        if sample is not None:
-            chain = audit.for_question(sample.question.question_id)
+        # The chain artefact is read back out of the in-memory sink. Under `--audit` the
+        # events went to Firestore and this process kept none of them, so the file is
+        # skipped and said to be skipped -- writing an empty chain under the name of a
+        # verified one is exactly the failure this project keeps finding.
+        chain_source = getattr(audit, "for_question", None)
+        if sample is None or chain_source is None:
+            if sample is not None:
+                print(f"skipped {chain_out} -- events went to the audit trail, not to memory")
+        else:
+            chain = chain_source(sample.question.question_id)
             chain_out.write_text(
                 json.dumps(
                     {"question": sample.question.text, "events": chain}, indent=2, sort_keys=True
