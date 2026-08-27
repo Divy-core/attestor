@@ -1,4 +1,4 @@
-# Shot list — nine captures, about twenty minutes
+# Shot list — ten captures, about twenty-five minutes
 
 Everything measurable through the DOM is already measured. This is the half that needs a
 browser and a person, and it has needed one since Phase 5.
@@ -20,6 +20,31 @@ every one of these is already true.
 **One thing to say out loud, on shot 1.** The file never touches either service. The browser
 asks for a signed URL and PUTs straight to Cloud Storage. It is visible in the network tab if
 anyone asks, and it is the difference between a demo and an architecture.
+
+---
+
+## 0 · A customer emails, and a review starts with nobody involved
+
+| | |
+|---|---|
+| **Go to** | Gmail, then `/` in a second window |
+| **On screen first** | The Attestor console at `/`, with the conversation rail visible. Nothing selected. |
+| **Do** | From a **different** email account, send a questionnaire to `divy.ds.x+attestor@gmail.com`. Then switch to the console and do not touch it. |
+| **Should appear** | A conversation appears in the rail on its own, and the fleet starts reporting into the thread. Nobody clicked anything in the browser. |
+| **Backed by** | `inbound-loop.json` |
+
+This is the strongest thirty seconds in the video. Say two things over it:
+
+- The watch is scoped to **one Gmail label**. Nothing else in that mailbox ever produces a
+  notification, and the mailbox owner controls what the label catches with an ordinary Gmail
+  filter — revocable without touching the deployment.
+- Attestor **refuses mail it sent itself**. That is not a detail; it is why replying in-thread
+  cannot open a round per reply, forever.
+
+If a message arrives that is not a security review, that is worth showing too. The classifier
+writes its reasoning to the trail — for a one-word test message it recorded *"a brief
+connectivity test asking 'Working?' with no vendor security review content"*, and declined to
+start a review.
 
 ---
 

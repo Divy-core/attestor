@@ -3711,3 +3711,137 @@ which has no API and must be created in the Console.
 - **The video, the README spin-up, the architecture diagram and the write-up.** All four are
   hard submission requirements and none exists. They are the whole of what is left.
 - **The screenshot half of the footage.** Seven sessions. It is a shot list now instead.
+
+---
+
+## Phase 11 — Gmail, and the Four Things That Did Not Exist (Day 13, 27 Aug 2026)
+
+### The mailbox, after three deferrals
+
+Consent took one browser tab. `tools/gmail_authorize.py` ran the installed-application flow
+with PKCE, the mailbox approved four scopes, and the refresh token went to Secret Manager as
+`attestor-gmail-oauth` version 1 without ever being printed.
+
+The watch is **scoped to one Gmail label**, which is the part worth keeping:
+
+```
+mailbox     : divy.ds.x@gmail.com
+topic       : projects/attestor-505506/topics/attestor-gmail
+label       : Attestor  (nothing outside it is notified)
+publisher   : ok
+subscribers : 1
+              projects/attestor-505506/subscriptions/attestor.gmail.push
+registered. historyId 122559
+expires 2026-09-03T08:10:45+00:00
+```
+
+The subscriber count is in that output because a watch registered against a topic nobody
+listens to returns a history id and looks exactly like success.
+
+Attestor watches a mailbox a person also uses for their own mail. A watch on `INBOX` would
+publish a notification for every message that mailbox receives, and every one of them would
+be fetched, parsed and judged by this deployment before being discarded. Scoped to a label,
+the mailbox owner decides what this system is ever told about, with an ordinary Gmail filter,
+in their own client, revocable without touching the deployment. `register()` creates the
+label itself so the owner only has to write the filter.
+
+`TestTheWatchSeesOneLabelAndNotAMailbox` holds it, because the failure mode is a *default*:
+`GmailClient.watch` defaults to `("INBOX",)`, so a `register()` that stopped passing a label
+would keep working, keep delivering mail, and silently widen the scope to everything.
+
+### The loop ran, and the first thing it did was refuse
+
+The test message went to `divy.ds.x+attestor@gmail.com` with a 40-question workbook attached.
+Gmail published, Eventarc pushed, the dispatcher resolved the history delta, published an
+`inbox_message` envelope, and the handler wrote:
+
+```
+stage_completed  inbox_message  outcome=own_message  reason="Sent by this mailbox."
+```
+
+Correct, and my fault: the message was sent *from* the watched mailbox, and Attestor refuses
+its own sends because it replies from that address — answering its own email would open a
+round per reply, forever. The whole transport was verified in about one second; the guard was
+the only thing that stopped a review being created.
+
+Sent again from a different account, the classifier read a one-word message and recorded:
+
+> *"The message is a brief connectivity test asking 'Working?' with no vendor security review
+> content."* — `outcome: not_a_review`, `decided_by: model`
+
+Two refusals before the first success, both right, both on the trail. A gate that only ever
+says yes is not a gate.
+
+### The orchestrator says what it decided
+
+Its three judgement calls were already on the trail with a `decided_by` and a reason, and all
+three were close to invisible in the thread. The plan's reason sat inside an expansion. A
+retry that retried **nothing** summarised as *"Retried a stage."* Release-or-hold was rendered
+by `_closed` as a tally, which drops the judgement entirely — so the best line this system
+produces, the injected run's *"a guardrail fired repeatedly across multiple questions"*, was
+on screen nowhere.
+
+All three now carry the judgement on the summary line, where it is read:
+
+| | |
+|---|---|
+| Plan | `Plan: follow_up — prior commitments require a follow-up review with consistency checks` |
+| Retries | `Retried none of 9 weak answers — they stay flagged for a person` |
+| Release | `Held the round for a person and widened 4 answers to a person. A guardrail fired…` |
+
+`decided_by` renders as a second line — *decided by the orchestrator*, or *fell back to the
+cautious branch (unparsed_plan)*. The fallback is worth showing more than the success: a
+system that says it could not read its own answer and took the safe branch is making a
+stronger claim about itself than one that only ever reports going well.
+
+Five tests hold the three lines, including that a `run_completed` with no `release` key — the
+older event shape — produces the tally and **no verdict**, rather than a confident "Released
+the round." that nobody decided.
+
+### The four things that did not exist
+
+**`docs/architecture.svg`.** Hand-authored SVG, no runtime, legible at any size, and it
+renders on GitHub in both themes through one `prefers-color-scheme` block. Every box is a
+resource that exists: three Cloud Run services, three Pub/Sub topics, seven engines with
+their live resource ids, three datastores, Firestore, Memory Bank, three buckets. Model Armor
+is drawn on both directions and the two observability planes are drawn as two planes.
+
+The screenshot tool has timed out in this environment since Phase 5, so the geometry is
+checked arithmetically instead — nothing outside the viewBox, no two boxes overlapping, no
+text wider than its box, no dangling `url(#…)`. That check caught a real defect a glance
+would have caught: the engine and datastore columns do not share a baseline, so a horizontal
+edge between them connected the wrong pair, and the diagram said the legal agent reads the
+engineering corpus. Which is the exact claim this system's IAM boundary exists to make false.
+
+**`README.md`.** Was a Phase 0 placeholder promising the real one. Now: the run of record,
+the problem, the diagram, a three-command local spin-up, the deploy path, a table of every
+`make` target, and a "for a judge with four minutes" section that names five files in the
+order they are worth opening.
+
+**`docs/SUBMISSION.md`.** The four things the brief asks for by name. The findings section
+leads with the nine failures that impersonated an empty result, and the ninth now has a named
+mechanism rather than a shrug.
+
+**The shot list** gained shot 0 — a customer emails, and a review starts with nobody involved.
+
+### Phase 11 exit criteria
+
+| # | Criterion | State | How verified |
+|---|---|---|---|
+| 1 | Gmail consent, token in Secret Manager, never printed | **DONE** | `attestor-gmail-oauth` version 1; four scopes granted by `divy.ds.x@gmail.com` |
+| 2 | Watch registered, label-scoped, subscriber count reported | **DONE** | historyId 122559, expires 3 Sept, 1 subscription listening |
+| 3 | An email reaches the fleet with nobody involved | **PARTIAL** | Transport verified end to end in ~1s. Two messages classified and refused correctly; the happy path with an attachment from a third-party sender is the one step still owed |
+| 4 | Drive filing, in-thread reply, follow-up round by email | **NOT DONE** | Depends on #3 |
+| 5 | The orchestrator's three judgements visible in the thread | **DONE** | Five tests in `test_thread.py`; each judgement on the summary line with `decided_by` beside it |
+| 6 | Architecture diagram, matching what is deployed | **DONE** | `docs/architecture.svg`. Geometry checked arithmetically; every box a live resource |
+| 7 | README with a verified spin-up | **DONE** | Three commands to a green repository, then seed and run; every `make` target documented |
+| 8 | Write-up covering the brief's four headings | **DONE** | `docs/SUBMISSION.md` |
+| 9 | `make check` green, deployed, pushed | **DONE** | lint, mypy --strict, tests, layering, drift, copy |
+
+### What Phase 11 did not do
+
+- **The happy-path inbound run.** Everything between Gmail and the fleet is verified; what is
+  missing is one email with an attachment from an address that is not the watched mailbox.
+- **The video.** Still the largest remaining item, and now the only one with no substitute.
+- **Re-cloning the repository to verify the README.** The instructions are accurate to the
+  Makefile and to what was run this session; the clean-machine check was not performed.

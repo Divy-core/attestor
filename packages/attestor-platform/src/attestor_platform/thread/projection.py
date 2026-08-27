@@ -470,40 +470,121 @@ def _inbound_post(
 # -- 2. the orchestrator's own judgement ---------------------------------------------
 
 
+def _judged_by(decided_by: str) -> str:
+    """How `decided_by` reads to someone who is not holding the orchestrator's source.
+
+    The value is `"model"` when the judgement call parsed and `"fallback:<why>"` when it did
+    not. Both are worth showing and the second is worth showing *more*: a system that says
+    it could not read its own answer and took the cautious branch is making a stronger claim
+    about itself than one that only ever reports success.
+    """
+    if not decided_by:
+        return ""
+    if decided_by == "model":
+        return "decided by the orchestrator"
+    return f"fell back to the cautious branch ({decided_by.removeprefix('fallback:')})"
+
+
 def _judgement(grouped: dict[str, list[dict[str, Any]]]) -> list[Post]:
-    """Which pipeline was chosen, and every retry decision. Audit-only kinds.
+    """The orchestrator's three judgement calls: the plan, the retries, release-or-hold.
 
     These are the events that make autonomy legible rather than asserted: a system that
-    picked a plan and can say why picked it, as opposed to one that ran whatever was
-    hard-coded.
+    picked a plan and can say why it picked it, as opposed to one that ran whatever was
+    hard-coded. Each was already on the trail and each was almost invisible in the thread --
+    the plan's reason sat in an expansion, a retry that retried *nothing* summarised as
+    "Retried a stage.", and release-or-hold rendered as a tally with the judgement and its
+    reason dropped. A reader who cannot see these sees a pipeline rather than a fleet.
+
+    Every post here is absent when its event is absent. A run whose orchestrator never spoke
+    shows nothing, rather than a row saying it did nothing.
     """
     posts: list[Post] = []
+
+    # -- judgement 1: the plan ---------------------------------------------------------
     for event in grouped.get("plan_selected", []):
         detail = _detail(event)
         plan = str(detail.get("plan") or detail.get("selected") or detail.get("pipeline") or "")
+        reason = _truncate(str(detail.get("reason") or ""), 120)
+        # The reason goes on the summary line rather than into the expansion. It is the half
+        # that carries the judgement; the plan name on its own is a label.
+        summary = f"Plan: {plan}." if plan else "Selected a plan for this round."
+        if reason and reason != "(no reason given)":
+            summary = f"{summary[:-1]} — {reason}"
         posts.append(
             Post(
                 post_id=f"plan-{_at(event)}",
                 actor=_actor(event, "Orchestrator"),
                 kind="plan",
                 at=_at(event),
-                summary=f"Plan: {plan}." if plan else "Selected a plan for this round.",
-                lines=(
-                    (_truncate(str(detail.get("reason") or "")),) if detail.get("reason") else ()
+                summary=_truncate(summary),
+                lines=tuple(
+                    line for line in (_judged_by(str(detail.get("decided_by") or "")),) if line
                 ),
                 details=(Detail("The plan, and why", _pairs(detail)),),
             )
         )
+
+    # -- judgement 2: the retries ------------------------------------------------------
     for event in grouped.get("retry_decided", []):
         detail = _detail(event)
+        candidates = int(detail.get("candidates") or 0)
+        retrying = int(detail.get("retrying") or 0)
+        # Retrying nothing is a decision, and it is the one the old summary hid. It is also
+        # the safe branch: an un-retried question is already flagged for a person, where a
+        # blind retry is how a transient blip becomes a loop.
+        if retrying:
+            summary = f"Retrying {retrying} of {candidates} weak {_plural(candidates, 'answer')}."
+        elif candidates:
+            summary = (
+                f"Retried none of {candidates} weak {_plural(candidates, 'answer')} — "
+                "they stay flagged for a person."
+            )
+        else:
+            summary = "Nothing needed retrying."
         posts.append(
             Post(
                 post_id=f"retry-{_at(event)}-{_question_id(event)}",
                 actor=_actor(event, "Orchestrator"),
                 kind="plan",
                 at=_at(event),
-                summary=_truncate(str(detail.get("reason") or "Retried a stage.")),
+                summary=_truncate(str(detail.get("reason") or summary)),
+                lines=tuple(
+                    line for line in (_judged_by(str(detail.get("decided_by") or "")),) if line
+                ),
                 details=(Detail("The decision", _pairs(detail)),),
+            )
+        )
+
+    # -- judgement 3: release or hold --------------------------------------------------
+    #
+    # `run_completed` carries both the tallies and the judgement. `_closed` renders the
+    # tallies; this renders the judgement, which is the half a reader is actually asking
+    # about. The injected run's "a guardrail fired repeatedly across multiple questions" is
+    # the single best line this system produces and it was not on screen anywhere.
+    for event in grouped.get("run_completed", []):
+        detail = _detail(event)
+        if "release" not in detail:
+            continue
+        widened = int(detail.get("widened") or 0)
+        reason = _truncate(str(detail.get("reason") or ""), 140)
+        verdict = (
+            "Released the round." if bool(detail.get("release")) else "Held the round for a person."
+        )
+        if widened:
+            verdict = (
+                f"{verdict[:-1]} and widened {widened} {_plural(widened, 'answer')} to a person."
+            )
+        posts.append(
+            Post(
+                post_id=f"released-{_at(event)}",
+                actor=_actor(event, "Orchestrator"),
+                kind="plan",
+                at=_at(event),
+                summary=_truncate(f"{verdict} {reason}".strip()),
+                lines=tuple(
+                    line for line in (_judged_by(str(detail.get("decided_by") or "")),) if line
+                ),
+                details=(Detail("Release or hold", _pairs(detail)),),
             )
         )
     return posts

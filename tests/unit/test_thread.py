@@ -471,6 +471,116 @@ class TestAskingTheThread:
         assert all("heading" in block and "rows" in block for block in stored["details"])
 
 
+class TestTheOrchestratorSaysWhatItDecidedAndWhy:
+    """The three judgement calls, on screen, in the words the trail recorded.
+
+    The orchestrator makes exactly three decisions -- which pipeline to run, which weak
+    answers to retry, and whether to release the round -- and every one of them was already
+    written to `audit_events` with a `decided_by` and a reason. None of them was legible in
+    the thread. The plan's reason sat inside an expansion nobody opens; a retry that retried
+    *nothing* summarised as "Retried a stage."; and release-or-hold was rendered by `_closed`
+    as a tally, which drops the judgement entirely.
+
+    That is the difference between a fleet and a pipeline, and it is the 40% judging
+    criterion. These tests hold the three lines on the summary, where they are read.
+    """
+
+    def test_the_plan_states_its_reason_rather_than_filing_it(self) -> None:
+        thread = thread_for(
+            [
+                event(
+                    "plan_selected",
+                    10,
+                    actor="Orchestrator",
+                    detail={
+                        "pipeline": "follow_up",
+                        "reason": "prior commitments require a follow-up review with "
+                        "consistency checks",
+                        "decided_by": "model",
+                        "check_consistency": True,
+                    },
+                )
+            ]
+        )
+        post = next(p for p in thread.posts if p.post_id.startswith("plan-"))
+        assert "follow_up" in post.summary
+        assert "prior commitments require a follow-up review" in post.summary
+        assert post.lines == ("decided by the orchestrator",)
+
+    def test_a_fallback_says_so_on_the_line(self) -> None:
+        """The cautious branch is a stronger claim about the system than success is."""
+        thread = thread_for(
+            [
+                event(
+                    "plan_selected",
+                    10,
+                    actor="Orchestrator",
+                    detail={"pipeline": "standard", "decided_by": "fallback:unparsed_plan"},
+                )
+            ]
+        )
+        post = next(p for p in thread.posts if p.post_id.startswith("plan-"))
+        assert post.lines == ("fell back to the cautious branch (unparsed_plan)",)
+
+    def test_retrying_nothing_says_what_happened_to_the_questions(self) -> None:
+        """The decision the old summary hid, and the one a reader most needs.
+
+        Retrying none of nine weak answers is not the orchestrator doing nothing. It is the
+        orchestrator declining to retry blind and leaving them flagged for a person, which
+        is the safe branch -- and a reader who sees "Retried a stage." learns none of that.
+        """
+        thread = thread_for(
+            [
+                event(
+                    "retry_decided",
+                    20,
+                    actor="Orchestrator",
+                    detail={"candidates": 9, "retrying": 0, "decided_by": "fallback:no_verdicts"},
+                )
+            ]
+        )
+        post = next(p for p in thread.posts if p.post_id.startswith("retry-"))
+        assert "none of 9" in post.summary
+        assert "flagged for a person" in post.summary
+
+    def test_holding_the_round_reports_the_reason_it_was_held(self) -> None:
+        """The best single line this system produces, and it was on screen nowhere."""
+        thread = thread_for(
+            [
+                event(
+                    "run_completed",
+                    30,
+                    actor="Orchestrator",
+                    detail={
+                        "release": False,
+                        "widen": True,
+                        "widened": 4,
+                        "reason": "a guardrail fired repeatedly across multiple questions",
+                        "decided_by": "model",
+                        "answered": 40,
+                    },
+                )
+            ]
+        )
+        post = next(p for p in thread.posts if p.post_id.startswith("released-"))
+        assert post.summary.startswith("Held the round for a person")
+        assert "widened 4 answers to a person" in post.summary
+        assert "a guardrail fired repeatedly across multiple questions" in post.summary
+
+    def test_a_silent_orchestrator_renders_nothing(self) -> None:
+        """Absent when the trail is silent -- the rule every other post on this page keeps.
+
+        `run_completed` without a `release` key is the older shape, written by runs that
+        predate the judgement. It must produce the tally and no verdict, rather than a
+        confident "Released the round." nobody decided.
+        """
+        thread = thread_for(
+            [event("run_completed", 30, actor="Orchestrator", detail={"answered": 3})]
+        )
+        assert not [p for p in thread.posts if p.post_id.startswith("released-")]
+        assert [p for p in thread.posts if p.post_id.startswith("completed-")]
+
+
 class TestAResourceNameIsNotAByline:
     """The remote verifier writes its engine resource name as the actor, which is right for
     the trail and unreadable as a byline. Measured on the 150-question run: the post read
