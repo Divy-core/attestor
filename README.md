@@ -54,8 +54,12 @@ Every box in that diagram is a resource deployed in `attestor-505506` / `us-cent
 
 ### Run it locally — three commands
 
-Requires **Python 3.12+**, [**uv**](https://docs.astral.sh/uv/), and a Google Cloud project
-with billing enabled. `gcloud auth application-default login` first.
+Requires **Python 3.12+**, [**uv**](https://docs.astral.sh/uv/), **Node 20+** with
+[**pnpm**](https://pnpm.io/) (the console is type-checked as part of the gate), and a Google
+Cloud project with billing enabled. `gcloud auth application-default login` first.
+
+Verified by cloning this repository into an empty directory and running exactly what is
+below.
 
 ```bash
 make setup                                        # sync the uv workspace, install the pre-commit hook

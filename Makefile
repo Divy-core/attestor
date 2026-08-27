@@ -12,6 +12,13 @@ help: ## Show available targets
 
 setup: ## Sync the uv workspace and install the pre-commit hook
 	uv sync --all-packages
+	@# The web workspace too. `make check` type-checks the console with tsc, so a clone that
+	@# only synced Python fails on `types` with "Command \"tsc\" not found" -- which reads as
+	@# a broken toolchain rather than a missing install step. Found by re-cloning the
+	@# repository and following the README, which is the only way this class of gap shows up.
+	@if [ -f services/web/package.json ]; then \
+		cd services/web && pnpm install --frozen-lockfile; \
+	fi
 	@if [ -d .git ]; then \
 		printf '#!/bin/sh\nexec make check\n' > .git/hooks/pre-commit; \
 		chmod +x .git/hooks/pre-commit; \

@@ -3834,7 +3834,7 @@ mechanism rather than a shrug.
 | 4 | Drive filing, in-thread reply, follow-up round by email | **NOT DONE** | Depends on #3 |
 | 5 | The orchestrator's three judgements visible in the thread | **DONE** | Five tests in `test_thread.py`; each judgement on the summary line with `decided_by` beside it |
 | 6 | Architecture diagram, matching what is deployed | **DONE** | `docs/architecture.svg`. Geometry checked arithmetically; every box a live resource |
-| 7 | README with a verified spin-up | **DONE** | Three commands to a green repository, then seed and run; every `make` target documented |
+| 7 | README with a verified spin-up | **DONE** | Verified by re-cloning into an empty directory and following it. That found a real gap: `make setup` synced Python only, so `make check` failed on `types` with `Command "tsc" not found` — a missing install step that reads as a broken toolchain. `setup` now installs the web workspace too, and the clean clone goes green: 730 passed |
 | 8 | Write-up covering the brief's four headings | **DONE** | `docs/SUBMISSION.md` |
 | 9 | `make check` green, deployed, pushed | **DONE** | lint, mypy --strict, tests, layering, drift, copy |
 
@@ -3843,5 +3843,4 @@ mechanism rather than a shrug.
 - **The happy-path inbound run.** Everything between Gmail and the fleet is verified; what is
   missing is one email with an attachment from an address that is not the watched mailbox.
 - **The video.** Still the largest remaining item, and now the only one with no substitute.
-- **Re-cloning the repository to verify the README.** The instructions are accurate to the
-  Makefile and to what was run this session; the clean-machine check was not performed.
+- **The happy-path inbound run**, still. Everything up to the classifier is exercised.
