@@ -628,3 +628,63 @@ class TestAResourceNameIsNotAByline:
             answers=[answer(qs[0])],
         )
         assert by_actor(thread, "VerifierAgent (in-process)") != []
+
+
+class TestABatchOfApprovalsIsOnePost:
+    """Bulk approval publishes one envelope per answer, and the thread must not multiply.
+
+    Approving sixty-three answers at once produces sixty-three `resume_after_human` stages,
+    each carrying a `still_pending` one lower than the last. Rendered one per event that is
+    sixty-three rows counting down to zero, which is the exact noise this surface exists to
+    remove. The events stay on the trail -- they are the record of sixty-three decisions
+    being applied -- and the thread folds them into the one thing they collectively say.
+    """
+
+    def test_seven_resumes_by_one_person_render_as_one_post(self) -> None:
+        events = [
+            event(
+                "stage_completed",
+                100 + index,
+                actor="Dispatcher",
+                detail={
+                    "stage": "resume_after_human",
+                    "resolved_by": "Dana Whitfield",
+                    "still_pending": 6 - index,
+                },
+            )
+            for index in range(7)
+        ]
+        posts = [p for p in thread_for(events).posts if p.kind == "resumed"]
+        assert len(posts) == 1
+        assert "Dana Whitfield's 7 approvals" in posts[0].summary
+        # The last event knows how it ended. Every earlier count is a countdown.
+        assert "Nothing further is held" in posts[0].summary
+        assert posts[0].events == 7
+
+    def test_two_people_are_two_posts(self) -> None:
+        """Folding is per person. Two reviewers clearing a queue are two contributions."""
+        events = [
+            event(
+                "stage_completed",
+                100,
+                actor="Dispatcher",
+                detail={
+                    "stage": "resume_after_human",
+                    "resolved_by": "Dana Whitfield",
+                    "still_pending": 1,
+                },
+            ),
+            event(
+                "stage_completed",
+                200,
+                actor="Dispatcher",
+                detail={
+                    "stage": "resume_after_human",
+                    "resolved_by": "Marcus Feld",
+                    "still_pending": 0,
+                },
+            ),
+        ]
+        posts = [p for p in thread_for(events).posts if p.kind == "resumed"]
+        assert len(posts) == 2
+        assert {p.actor for p in posts} == {"Orchestrator"}

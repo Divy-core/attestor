@@ -624,13 +624,13 @@ def _triage(
             through=_at(events[-1]),
             events=len(events),
             summary=(
-                f"Routed {routed} {_plural(routed, 'question')} to {departments} "
-                f"{_plural(departments, 'department')} — {spread}."
+                f"I've split {routed} {_plural(routed, 'question')} across "
+                f"{departments} {_plural(departments, 'team')} — {spread}."
             ),
             lines=(
                 (
-                    f"{unassigned} could not be placed and read the shared corpus, where a "
-                    "citation still has to be found or the answer is flagged.",
+                    f"{unassigned} didn't clearly belong to any of them, so they go to "
+                    "the shared corpus. They still need a citation or they get flagged.",
                 )
                 if unassigned
                 else ()
@@ -835,9 +835,9 @@ def _drafting(
                 through=last_event.get(department),
                 events=event_count.get(department, len(produced)),
                 summary=(
-                    f"{len(produced)} of {total} answered"
+                    f"Working through mine — {len(produced)} of {total} done"
                     if working
-                    else f"{len(produced)} {_plural(len(produced), 'answer')} drafted"
+                    else f"Done with my {len(produced)}."
                 ),
                 lines=tuple(lines),
                 details=tuple(details),
@@ -884,14 +884,11 @@ def _armor(grouped: dict[str, list[dict[str, Any]]], labels: dict[str, str]) -> 
             through=_at(events[-1]),
             events=len(events),
             summary=(
-                f"Refused {len(events)} {_plural(len(events), 'input')} before a model read "
-                f"{_plural(len(events), 'it', 'them')}"
+                f"I stopped {len(events)} {_plural(len(events), 'input')} before any of "
+                f"us read {_plural(len(events), 'it', 'them')}"
                 f"{f' — {matched}' if matched else ''}."
             ),
-            lines=(
-                "The run continued on every other question. One poisoned cell must not "
-                "fail a whole review.",
-            ),
+            lines=("Everything else carried on. One bad cell doesn't stop the review.",),
             details=(
                 Detail(
                     "Where it fired",
@@ -1042,8 +1039,8 @@ def _verification(grouped: dict[str, list[dict[str, Any]]], labels: dict[str, st
             through=_at(events[-1]),
             events=len(events),
             summary=(
-                f"Checked {len(events)} {_plural(len(events), 'answer')} against the "
-                f"passages they cite — {' · '.join(parts)}."
+                f"I went through {len(events)} of the drafts against the passages they "
+                f"cite — {' · '.join(parts)}."
             ),
             lines=tuple(lines[:2]),
             details=tuple(details),
@@ -1170,8 +1167,8 @@ def _assembly(
             through=None,
             events=len(events),
             summary=(
-                f"{len(pending)} {_plural(len(pending), 'answer')} need you before this can "
-                f"go back to {customer}."
+                f"{len(pending)} {_plural(len(pending), 'answer')} need your eyes before "
+                f"this goes back to {customer}."
                 if pending
                 else (
                     f"Round assembled. All {len(events)} answers that needed a person have had one."
@@ -1179,8 +1176,8 @@ def _assembly(
             ),
             lines=(
                 (
-                    "Everything else is drafted and cited. Approve all and I will close the "
-                    "round, build the pack and reply on the customer's own thread.",
+                    "The rest are drafted and cited. Approve them and I'll close the round, "
+                    "build the pack and reply on their own thread.",
                 )
                 if pending
                 else ()
@@ -1443,18 +1440,37 @@ def _resumed(grouped: dict[str, list[dict[str, Any]]]) -> list[Post]:
     this post the thread shows the decision and then the outcome, with the mechanism
     between them missing.
     """
+    events = _stages(grouped, "resume_after_human")
+    if not events:
+        return []
+
+    by_person: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for event in events:
+        by_person[str(_detail(event).get("resolved_by") or "that decision")].append(event)
+
     posts: list[Post] = []
-    for event in _stages(grouped, "resume_after_human"):
-        detail = _detail(event)
+    for person, batch in by_person.items():
+        last = batch[-1]
+        detail = _detail(last)
+        # The last event in the batch is the one that knows how the round ended: every
+        # earlier `still_pending` is a countdown, and a countdown is not news.
         still = detail.get("still_pending")
+        applied = len(batch)
+        opening = (
+            f"Picked it back up on {person}'s {applied} approvals."
+            if applied > 1
+            else f"Picked it back up on {person}'s decision."
+        )
         posts.append(
             Post(
-                post_id=f"resumed-{_at(event)}",
+                post_id=f"resumed-{_at(batch[0])}-{person}",
                 actor="Orchestrator",
                 kind="resumed",
-                at=_at(event),
+                at=_at(last),
+                through=_at(last) if applied > 1 else None,
+                events=applied,
                 summary=(
-                    f"Resumed on {detail.get('resolved_by') or 'that decision'}."
+                    opening
                     + (
                         f" {still} {_plural(int(still), 'answer')} still held."
                         if still
