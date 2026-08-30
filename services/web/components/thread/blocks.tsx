@@ -69,13 +69,13 @@ export function AgentMark({ actor, working }: { actor: string; working: boolean 
   );
 }
 
-type Segment = { label: string; count: number; className: string };
+export type Segment = { label: string; count: number; className: string };
 
 /**
  * A stacked proportion bar. Segments with a zero count are dropped rather than drawn at
  * zero width, because a legend entry with no bar beside it reads as a rendering fault.
  */
-function Bar({ segments, total }: { segments: Segment[]; total: number }) {
+export function Bar({ segments, total }: { segments: Segment[]; total: number }) {
   const shown = segments.filter((segment) => segment.count > 0);
   if (total <= 0 || shown.length === 0) return null;
   return (
