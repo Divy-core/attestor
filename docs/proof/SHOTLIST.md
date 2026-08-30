@@ -30,8 +30,23 @@ anyone asks, and it is the difference between a demo and an architecture.
 | **Go to** | Gmail, then `/` in a second window |
 | **On screen first** | The Attestor console at `/`, with the conversation rail visible. Nothing selected. |
 | **Do** | From a **different** email account, send a questionnaire to `divy.ds.x+attestor@gmail.com`. Then switch to the console and do not touch it. |
-| **Should appear** | A conversation appears in the rail on its own, and the fleet starts reporting into the thread. Nobody clicked anything in the browser. |
+| **Should appear** | Within about fifteen seconds the workspace **opens itself** on the new review, and the fleet starts reporting into the thread. Nobody clicked anything in the browser. |
 | **Backed by** | `inbound-loop.json` |
+
+**Send the questionnaire from a real mail client, not a script.** Two sends today were
+rejected for reasons that were both correct and both avoidable: mail from the watched
+mailbox itself is refused as its own echo, and an attachment re-encoded by a third-party
+tool arrived corrupt and dead-lettered after five attempts with
+`Error -3 while decompressing data`. A forward from an ordinary Gmail account has worked
+every time.
+
+**Do not rely on Gmail's push being quick.** Measured on the same mailbox within one hour:
+13 seconds once, 4 minutes 18 seconds another time — and the slow one was *not* a cold
+watch, Gmail had pushed twice in the nineteen seconds before that mail was sent. Warming
+the watch does not fix it. What fixes it is that the dispatcher also drains the mailbox
+every fifteen seconds on its own timer, so the ceiling is fifteen seconds regardless of
+what Gmail decides. That is worth saying out loud on camera: the system does not depend on
+a webhook arriving promptly.
 
 This is the strongest thirty seconds in the video. Say two things over it:
 

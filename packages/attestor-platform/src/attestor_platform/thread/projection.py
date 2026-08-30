@@ -1167,8 +1167,9 @@ def _assembly(
             through=None,
             events=len(events),
             summary=(
-                f"{len(pending)} {_plural(len(pending), 'answer')} need your eyes before "
-                f"this goes back to {customer}."
+                f"{len(pending)} {_plural(len(pending), 'answer')} "
+                f"{'needs' if len(pending) == 1 else 'need'} your eyes before this goes "
+                f"back to {customer}."
                 if pending
                 else (
                     f"Round assembled. All {len(events)} answers that needed a person have had one."
@@ -1254,6 +1255,7 @@ def _decisions(grouped: dict[str, list[dict[str, Any]]], labels: dict[str, str])
 
     for event in grouped.get("approval_requested", []):
         detail = _detail(event)
+        pending_count = int(detail.get("pending") or 0)
         posts.append(
             Post(
                 post_id=f"approval-requested-{_at(event)}",
@@ -1262,7 +1264,7 @@ def _decisions(grouped: dict[str, list[dict[str, Any]]], labels: dict[str, str])
                 at=_at(event),
                 summary=(
                     f"Asked {detail.get('to') or 'the compliance owner'} to look at the "
-                    f"{detail.get('pending') or ''} answers being held."
+                    f"{pending_count} {_plural(pending_count, 'answer')} being held."
                 ),
                 details=(Detail("The request", _pairs(detail)),),
             )
