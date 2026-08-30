@@ -35,6 +35,7 @@ export type ThreadDetail = {
 };
 
 export type ThreadActionKind =
+  | 'approve_all'
   | 'approve'
   | 'questions'
   | 'artifacts'

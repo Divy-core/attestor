@@ -134,6 +134,18 @@ class ApprovalRequest(BaseModel):
     edited_text: str | None = None
 
 
+class BulkApprovalRequest(BaseModel):
+    """Approve, or reject, every answer this round is holding for a person.
+
+    No `edited_text`: editing is a per-answer act and a bulk edit would mean writing the
+    same sentence into sixty-three different questions. If a person wants to change an
+    answer they open it.
+    """
+
+    approved: bool
+    resolved_by: Actor
+
+
 # ---------------------------------------------------------------------------------
 # Dependencies, built once per instance.
 # ---------------------------------------------------------------------------------
@@ -386,6 +398,76 @@ def approve(
         }
     )
     return {"accepted": True, "dedup_key": envelope.dedup_key, "run_id": run_id}
+
+
+@router.post("/rounds/{round_id}/approvals")
+def approve_all(round_id: str, body: BulkApprovalRequest, request: Request) -> dict[str, Any]:
+    """Resolve every held answer in one request, one decision at a time on the record.
+
+    The human gate is not weakened by this. A person still decides, still signs it with
+    their name, and nothing reaches a customer until they do. What is removed is the
+    sixty-three-click chore, which is the part that makes people stop reading.
+
+    Every answer gets its own audit event and its own envelope, so the trail is
+    indistinguishable from sixty-three separate approvals. The round closes by itself when
+    the dispatcher applies the last one and finds nothing pending.
+
+    Idempotent by construction: the envelope ids are derived from the run and the question,
+    so a retried request republishes the same keys and the claim ledger refuses the
+    duplicates rather than approving anything twice.
+    """
+    require_write_token(request)
+    review_id = round_id.rsplit("-r", 1)[0]
+    if reviews().get(review_id) is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"no review {review_id!r}")
+
+    held = [a for a in answers().for_round(round_id) if a.status.value == "needs_human"]
+    if not held:
+        # Not an error. A round with nothing held is the state this endpoint is trying to
+        # reach, and saying so is more useful than a 409 about a request that was fine.
+        return {"accepted": True, "resolved": 0, "run_id": None, "note": "nothing was held"}
+
+    run_id = f"resume-{int(time.time())}-{uuid.uuid4().hex[:6]}"
+    for answer in held:
+        envelope = WorkEnvelope.for_work(
+            message_id=f"{run_id}-{answer.question_id}",
+            review_id=review_id,
+            run_id=run_id,
+            round_id=round_id,
+            question_id=answer.question_id,
+            kind=WorkKind.RESUME_AFTER_HUMAN,
+            payload={
+                "approved": body.approved,
+                "resolved_by": body.resolved_by,
+                "edited_text": None,
+            },
+        )
+        publisher().publish(envelope)
+        audit().append_safe(
+            {
+                "kind": "human_decision",
+                "review_id": review_id,
+                "run_id": run_id,
+                "question_id": answer.question_id,
+                "actor": body.resolved_by,
+                "detail": {
+                    "approved": body.approved,
+                    "edited": False,
+                    "round_id": round_id,
+                    # So a reader can see this was one action without the trail pretending
+                    # it was one decision.
+                    "batch": len(held),
+                },
+            }
+        )
+
+    return {
+        "accepted": True,
+        "resolved": len(held),
+        "approved": body.approved,
+        "resolved_by": body.resolved_by,
+        "run_id": run_id,
+    }
 
 
 # ---------------------------------------------------------------------------------
@@ -1304,14 +1386,26 @@ def _dispatch_command(
     payload: dict[str, Any] = {}
 
     if command.action is CommandAction.SEND_PACK:
+        # The held answers first. A round parked on a person is the common reason this
+        # command cannot run, and it is the one with something a person can do about it --
+        # so it is reported before anything else, with the count and the way through.
+        held = [a for a in answers().for_round(target.round_id) if a.status.value == "needs_human"]
+        if held:
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                f"{len(held)} answers are held for you. The pack cannot go back to "
+                f"{review.customer} until they are approved. Approve all and send?",
+            )
+
         thread = inbox_state().thread_for_review(review.review_id)
         if not thread or not thread.get("thread_id"):
             # Refused here rather than in the handler, so a person reading the thread gets
             # a sentence instead of a dead letter they have to go looking for.
             raise HTTPException(
                 status.HTTP_409_CONFLICT,
-                f"review {review.review_id!r} did not arrive by email, so there is no "
-                "thread to reply on.",
+                f"This review came in through the console rather than by email, so there is "
+                f"no thread to reply on. Export the pack and send it to {review.customer} "
+                "yourself, or start the next round from their email.",
             )
         payload = {"approved_by": body.actor, "note": body.note}
 

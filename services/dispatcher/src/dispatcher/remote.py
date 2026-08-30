@@ -202,7 +202,17 @@ EMPTY_RETRIEVAL_ATTEMPTS = int(os.environ.get("ATTESTOR_EMPTY_RETRIEVAL_ATTEMPTS
 #: 33 recovered. At 25 the attempts span about 75 seconds, so one of them lands in a minute
 #: the quota has reset in. Only questions that retrieved nothing wait, and they wait
 #: concurrently with the rest of their partition.
-EMPTY_RETRIEVAL_BACKOFF_SECONDS = 25.0
+#: Tunable, because 25 is right for a 150-question run under quota pressure and wrong for
+#: everything else. Three attempts at 25s spend 75 seconds *inside the request handler*, and
+#: the dispatcher runs at `--concurrency 1`: enough retrying questions in one partition and
+#: the push exceeds its ack deadline, returns 5xx, and Pub/Sub redelivers with a backoff that
+#: reaches 600s. A defence against a two-minute quota window then costs twelve minutes of
+#: wall clock on a run that was never near the quota. Measured on 30 August: three
+#: `/pubsub/push` 500s at 80-98s latency, and the demo's answers twelve minutes behind its
+#: review.
+EMPTY_RETRIEVAL_BACKOFF_SECONDS = float(
+    os.environ.get("ATTESTOR_EMPTY_RETRIEVAL_BACKOFF_SECONDS", "25")
+)
 
 
 class EngineUnavailable(AttestorError):

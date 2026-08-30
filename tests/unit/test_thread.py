@@ -206,9 +206,13 @@ class TestCountsComeFromAnswersNotEvents:
             answer(qs[2], status=AnswerStatus.APPROVED),
         ]
         post = by_actor(thread_for(events, qs=qs, answers=answers), "AssemblerAgent")[0]
-        assert "2 answers I will not release without you" in post.summary
-        assert post.actions[0].kind == "approve"
-        assert post.actions[0].count == 2
+        # The count, not the phrasing. Three `human_required` events are on the trail and
+        # one has been approved, so the post must say two.
+        assert post.summary.startswith("2 answers need you")
+        # Two ways forward, the cheap one first, both counting the answers rather than the
+        # events.
+        assert [a.kind for a in post.actions] == ["approve_all", "approve"]
+        assert {a.count for a in post.actions} == {2}
 
     def test_drafting_counters_come_from_the_answers_collection(self) -> None:
         qs = questions(4)

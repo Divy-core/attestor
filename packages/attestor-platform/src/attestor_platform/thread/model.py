@@ -80,7 +80,14 @@ class Detail:
 
 #: What an inline control in a post does. Approvals happen in the thread, so the thread
 #: has to be able to carry a control rather than a link to a page that carries one.
-ActionKind = Literal["approve", "questions", "artifacts", "export", "connect_gmail"]
+ActionKind = Literal[
+    "approve_all",
+    "approve",
+    "questions",
+    "artifacts",
+    "export",
+    "connect_gmail",
+]
 
 
 @dataclass(frozen=True)

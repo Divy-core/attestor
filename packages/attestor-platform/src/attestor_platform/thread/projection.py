@@ -271,7 +271,7 @@ def build_thread(
     posts.extend(_denials(grouped))
     posts.extend(_verification(grouped, labels))
     posts.extend(_consistency(grouped, labels))
-    posts.extend(_assembly(grouped, answers, labels))
+    posts.extend(_assembly(grouped, answers, labels, review.customer))
     posts.extend(_decisions(grouped, labels))
     posts.extend(_conversation(grouped))
     posts.extend(_resumed(grouped))
@@ -1115,6 +1115,7 @@ def _assembly(
     grouped: dict[str, list[dict[str, Any]]],
     answers: Sequence[Answer],
     labels: dict[str, str],
+    customer: str = "the customer",
 ) -> list[Post]:
     events = grouped.get("human_required", [])
     if not events:
@@ -1169,15 +1170,34 @@ def _assembly(
             through=None,
             events=len(events),
             summary=(
-                f"Round assembled. {len(pending)} {_plural(len(pending), 'answer')} I will "
-                "not release without you."
+                f"{len(pending)} {_plural(len(pending), 'answer')} need you before this can "
+                f"go back to {customer}."
                 if pending
                 else (
                     f"Round assembled. All {len(events)} answers that needed a person have had one."
                 )
             ),
+            lines=(
+                (
+                    "Everything else is drafted and cited. Approve all and I will close the "
+                    "round, build the pack and reply on the customer's own thread.",
+                )
+                if pending
+                else ()
+            ),
             details=tuple(details),
-            actions=((Action("approve", "Review", len(pending)),) if pending else ()),
+            # Two ways forward, the cheap one first. Sixty-three individual approvals is not
+            # a gate, it is a chore, and a chore is what people click through without
+            # reading -- which is a weaker control than one deliberate decision signed with
+            # a name. Every answer is still recorded individually on the trail.
+            actions=(
+                (
+                    Action("approve_all", "Approve all and send", len(pending)),
+                    Action("approve", "Review them first", len(pending)),
+                )
+                if pending
+                else ()
+            ),
         )
     ]
 

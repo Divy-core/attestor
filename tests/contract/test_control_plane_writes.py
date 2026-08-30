@@ -375,3 +375,99 @@ class TestReadsAreNotGuarded:
     @pytest.mark.parametrize("path", ["/reviews", "/reviews?limit=5"])
     def test_a_read_needs_no_token(self, wired: Any, path: str) -> None:
         assert wired.client.get(path).status_code == 200
+
+
+class TestApproveEverythingHeld:
+    """One action for a person, sixty-three decisions on the record.
+
+    The claim this endpoint makes is that bulk approval does not weaken the gate, and the
+    only thing that makes that true is the trail: if approving sixty-three answers at once
+    wrote one event, "who approved Q47" would have no answer and the control would be
+    theatre. So the tests below are about the record, not about the convenience.
+    """
+
+    def _held(self, wired: Any, count: int) -> None:
+        wired.reviews.put(_review(ReviewState.AWAITING_HUMAN, "rev-hold"))
+        for index in range(count):
+            wired.answers.put(
+                Answer(
+                    question_id=f"{index:016x}",
+                    round_id="rev-hold-r1",
+                    text=f"Held answer {index}.",
+                    citations=[
+                        Citation(
+                            document_uri="gs://corpus/policy.md",
+                            document_title="Policy",
+                            snippet="A control exists.",
+                            retrieval_score=0.5,
+                        )
+                    ],
+                    confidence=Confidence.LOW,
+                    status=AnswerStatus.NEEDS_HUMAN,
+                    authored_by="SecurityAgent",
+                )
+            )
+
+    def test_every_answer_gets_its_own_decision_and_its_own_envelope(self, wired: Any) -> None:
+        self._held(wired, 5)
+        response = wired.client.post(
+            "/rounds/rev-hold-r1/approvals",
+            json={"approved": True, "resolved_by": "divy@kestreldata.example"},
+            headers=HEADERS,
+        )
+        assert response.status_code == 200, response.text
+        assert response.json()["resolved"] == 5
+
+        decisions = [e for e in wired.audit.events if e["kind"] == "human_decision"]
+        assert len(decisions) == 5
+        assert {e["actor"] for e in decisions} == {"divy@kestreldata.example"}
+        # Five distinct questions, not one event five times.
+        assert len({e["question_id"] for e in decisions}) == 5
+        assert len(wired.publisher.published) == 5
+
+    def test_nothing_is_applied_here(self, wired: Any) -> None:
+        """The dispatcher applies decisions, so a redelivery is idempotent rather than
+        usually-fine. Same property the single-answer endpoint has, and it would be easy to
+        lose by writing the status directly in a loop."""
+        self._held(wired, 3)
+        wired.client.post(
+            "/rounds/rev-hold-r1/approvals",
+            json={"approved": True, "resolved_by": "divy@kestreldata.example"},
+            headers=HEADERS,
+        )
+        for index in range(3):
+            assert (
+                wired.answers.get("rev-hold-r1", f"{index:016x}").status is AnswerStatus.NEEDS_HUMAN
+            )
+
+    def test_a_round_holding_nothing_is_not_an_error(self, wired: Any) -> None:
+        wired.reviews.put(_review(ReviewState.AWAITING_HUMAN, "rev-hold"))
+        response = wired.client.post(
+            "/rounds/rev-hold-r1/approvals",
+            json={"approved": True, "resolved_by": "divy@kestreldata.example"},
+            headers=HEADERS,
+        )
+        assert response.status_code == 200
+        assert response.json()["resolved"] == 0
+        assert wired.publisher.published == []
+
+    def test_an_unnamed_approver_is_refused(self, wired: Any) -> None:
+        """`Actor` rejects blank and whitespace-only names. Sixty-three answers approved by
+        three spaces is worse than sixty-three unapproved ones."""
+        self._held(wired, 2)
+        response = wired.client.post(
+            "/rounds/rev-hold-r1/approvals",
+            json={"approved": True, "resolved_by": "   "},
+            headers=HEADERS,
+        )
+        assert response.status_code == 422
+        assert wired.publisher.published == []
+
+    def test_no_token_is_refused_and_nothing_is_published(self, wired: Any) -> None:
+        self._held(wired, 2)
+        response = wired.client.post(
+            "/rounds/rev-hold-r1/approvals",
+            json={"approved": True, "resolved_by": "divy@kestreldata.example"},
+        )
+        assert response.status_code == 401
+        assert wired.publisher.published == []

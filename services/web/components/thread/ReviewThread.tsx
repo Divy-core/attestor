@@ -7,6 +7,7 @@ import { StreamIndicator } from '@/components/review/StreamIndicator';
 import { ThreadPost } from '@/components/thread/ThreadPost';
 import { Button, Empty, Failure, Mono } from '@/components/ui/primitives';
 import type { AnswerRow, QuestionRow } from '@/lib/api/client';
+import { useOperator } from '@/lib/operator';
 import { createPoller } from '@/lib/poll';
 import { openRunStream, type RunEventFrame, type StreamHealth } from '@/lib/sse';
 import type { ThreadAction, ThreadPayload, ThreadPost as Post } from '@/lib/types/thread';
@@ -96,6 +97,10 @@ export function ReviewThread({
 
   /** Which post has its inline approval open. One at a time; it is a full working panel. */
   const [approving, setApproving] = useState<string | null>(null);
+  const [confirmAll, setConfirmAll] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
+  const [operator, setOperator] = useOperator();
 
   const refetch = useCallback(async (): Promise<boolean> => {
     setReads((count) => count + 1);
@@ -230,8 +235,34 @@ export function ReviewThread({
     setQuestions(initialQuestions);
   }, [initialQuestions]);
 
+  const approveAll = useCallback(async () => {
+    setSending(true);
+    setSendError(null);
+    try {
+      const response = await fetch(`/api/attestor/rounds/${roundId}/approvals`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ approved: true, resolved_by: operator }),
+      });
+      if (!response.ok) {
+        setSendError(`${response.status} ${(await response.text()).slice(0, 200)}`);
+        return;
+      }
+      setConfirmAll(false);
+      poller.now();
+    } catch (error) {
+      setSendError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setSending(false);
+    }
+  }, [roundId, operator, poller]);
+
   const onAction = useCallback(
     (post: Post, action: ThreadAction) => {
+      if (action.kind === 'approve_all') {
+        setConfirmAll(true);
+        return;
+      }
       if (action.kind === 'approve') {
         setApproving((current) => (current === post.post_id ? null : post.post_id));
         return;
@@ -286,6 +317,40 @@ export function ReviewThread({
                     onQuestion={(questionId) => onOpenQuestions?.(questionId)}
                     defaultOpen={post.kind === 'answered'}
                   />
+                  {confirmAll && post.post_id === 'assembly' ? (
+                    <div className="mb-6 ml-8 rounded border border-line bg-surface p-4">
+                      <p className="text-sm text-primary">
+                        Approving all {pending.length} answers closes the round, writes the
+                        commitments, builds the pack and replies on the customer&rsquo;s own
+                        thread. It cannot be recalled.
+                      </p>
+                      <p className="mt-2 text-xs text-secondary">
+                        Each answer is recorded separately against your name.
+                      </p>
+                      <div className="mt-3 flex flex-wrap items-center gap-2">
+                        <input
+                          value={operator}
+                          onChange={(event) => setOperator(event.target.value)}
+                          placeholder="Your name"
+                          aria-label="Your name, for the audit trail"
+                          className="h-row-dense w-48 rounded-sm border border-subtle bg-base px-2 text-xs text-primary"
+                        />
+                        <Button
+                          small
+                          onClick={() => void approveAll()}
+                          disabled={sending || operator.trim().length === 0}
+                        >
+                          {sending ? 'Approving…' : `Approve all ${pending.length} and send`}
+                        </Button>
+                        <Button tone="ghost" small onClick={() => setConfirmAll(false)}>
+                          Cancel
+                        </Button>
+                      </div>
+                      {sendError !== null ? (
+                        <p className="mt-2 text-xs text-danger">{sendError}</p>
+                      ) : null}
+                    </div>
+                  ) : null}
                   {approving === post.post_id ? (
                     <div className="mb-6 ml-8 rounded border border-line bg-surface">
                       <div className="flex items-center justify-between gap-4 border-b border-subtle px-4 py-3">

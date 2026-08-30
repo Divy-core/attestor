@@ -1,3 +1,4 @@
+import { AutoOpen } from '@/components/chat/AutoOpen';
 import { ChatEmpty } from '@/components/chat/ChatEmpty';
 import { ChatShell } from '@/components/chat/ChatShell';
 import { Failure } from '@/components/ui/primitives';
@@ -36,6 +37,7 @@ export default async function ChatPage() {
 
   return (
     <ChatShell reviews={reviews} activeId={null}>
+      <AutoOpen seen={reviews.map((review) => ({ review_id: review.review_id, opened_at: review.opened_at }))} />
       {error !== null ? (
         <div className="p-6">
           <Failure what="The control plane could not be reached." detail={error} />
