@@ -36,6 +36,7 @@ repository returned `DUPLICATE`.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 from typing import Any
@@ -347,6 +348,25 @@ async def gmail_push(request: Request, response: Response) -> dict[str, Any]:
         response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
         return {"result": "retry", "reason": str(exc)}
 
+    published = _publish_inbox_page(page, notification.history_id, start)
+    response.status_code = status.HTTP_200_OK
+    return {
+        "result": "ok",
+        "messages": len(published),
+        "dedup_keys": published,
+        "history_from": start,
+        "history_to": page.history_id,
+        "gap": page.restarted,
+    }
+
+
+def _publish_inbox_page(page: Any, notification_history_id: str, start: str = "") -> list[str]:
+    """Turn a history delta into envelopes, then advance the cursor. Never before.
+
+    Shared by the push handler and the poll timer. A crash between the publish and the
+    advance redelivers the same delta, and the dedup key makes that a no-op; advancing
+    first would silently lose an email.
+    """
     if page.restarted:
         # The window expired. Real emails may have been missed, and saying "0 new messages"
         # would be a false statement about a mailbox rather than a true one about a gap.
@@ -366,28 +386,56 @@ async def gmail_push(request: Request, response: Response) -> dict[str, Any]:
 
     published: list[str] = []
     for gmail_message_id, thread_id in page.messages:
-        envelope = envelope_for(gmail_message_id, thread_id, notification.history_id)
+        envelope = envelope_for(gmail_message_id, thread_id, notification_history_id)
         work_publisher().publish(envelope)
         published.append(envelope.dedup_key)
 
-    # After the publish, never before: a crash here redelivers the same delta, and the
-    # dedup key makes that a no-op. Advancing first would silently lose the email.
     inbox_state().advance(page.history_id)
+    if published:
+        logger.info("inbox: %d message(s) published", len(published))
+    return published
 
-    logger.info(
-        "gmail notification: %d message(s) published",
-        len(published),
-        extra={"history_from": start, "history_to": page.history_id},
-    )
-    response.status_code = status.HTTP_200_OK
-    return {
-        "result": "ok",
-        "messages": len(published),
-        "dedup_keys": published,
-        "history_from": start,
-        "history_to": page.history_id,
-        "gap": page.restarted,
-    }
+
+#: How often the mailbox is drained regardless of whether Gmail said anything. Zero is off.
+#:
+#: Fifteen seconds bounds arrival at fifteen seconds. Gmail's own push has been measured at
+#: both 13 seconds and 4 minutes 10 seconds on the same mailbox within the same hour, and
+#: the API makes no guarantee -- so the push stays as the fast path and this is the ceiling.
+GMAIL_POLL_SECONDS = float(os.environ.get("ATTESTOR_GMAIL_POLL_SECONDS", "0"))
+
+
+async def _poll_inbox_forever() -> None:
+    """Drain the mailbox on a timer, forever, without ever raising into the event loop."""
+    while True:
+        await asyncio.sleep(GMAIL_POLL_SECONDS)
+        try:
+            cursor = inbox_state().cursor()
+            start = str(cursor.get("history_id") or "")
+            if not start:
+                # No cursor means no watch has been registered. Polling cannot invent a
+                # starting point, and saying so once per interval would be noise.
+                continue
+            page = gmail().history_since(start, limit=MAX_MESSAGES_PER_NOTIFICATION)
+            _publish_inbox_page(page, page.history_id, start)
+        except Exception as exc:
+            # A failed poll is not an outage. The next one is fifteen seconds away and the
+            # push path is still live.
+            logger.warning("inbox poll failed: %s", exc)
+
+
+#: The running poll task. Held at module scope on purpose: asyncio keeps only a weak
+#: reference to a task, so one that nothing else refers to can be garbage-collected
+#: mid-await -- and the failure is a poll loop that silently stops, which is exactly the
+#: shape of bug this whole project keeps finding.
+_poll_task: asyncio.Task[None] | None = None
+
+
+@app.on_event("startup")
+async def _start_inbox_poll() -> None:
+    global _poll_task
+    if GMAIL_POLL_SECONDS > 0:
+        _poll_task = asyncio.create_task(_poll_inbox_forever())
+        logger.info("inbox poll every %.0fs", GMAIL_POLL_SECONDS)
 
 
 def _dispatch(message: PushMessage, response: Response) -> dict[str, Any]:
