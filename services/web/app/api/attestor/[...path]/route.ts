@@ -54,6 +54,9 @@ const ALLOWED: ReadonlyArray<{ method: Method; pattern: RegExp }> = [
   { method: 'GET', pattern: /^inbox$/ },
   { method: 'GET', pattern: /^connections$/ },
   { method: 'POST', pattern: /^rounds\/[^/]+\/answers\/[^/]+\/approval$/ },
+  // Bulk approval. Same gate, one action: every held answer is still resolved
+  // individually on the trail, under the name the operator typed.
+  { method: 'POST', pattern: /^rounds\/[^/]+\/approvals$/ },
   // The entrance. In the order the New review flow calls them.
   { method: 'POST', pattern: /^uploads$/ },
   { method: 'POST', pattern: /^reviews$/ },

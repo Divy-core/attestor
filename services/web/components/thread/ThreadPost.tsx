@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 
+import { AgentMark, CoverageBar, HeldCallout, VerdictBar } from '@/components/thread/blocks';
 import { Mono, cx } from '@/components/ui/primitives';
 import { absolute } from '@/lib/format';
 import type { ThreadDetail, ThreadPost as Post, ThreadAction } from '@/lib/types/thread';
@@ -77,12 +78,7 @@ export function ThreadPost({
           stack of cards — and it costs one pixel of width rather than a border per post. */}
       <div className="relative flex justify-center" aria-hidden>
         <span className="absolute inset-y-0 w-px bg-subtle" />
-        <span
-          className={cx(
-            'relative mt-2 h-2 w-2 rounded-sm',
-            post.working ? 'animate-pulse bg-accent' : 'bg-strong',
-          )}
-        />
+        <AgentMark actor={post.actor} working={post.working} />
       </div>
 
       <div className="min-w-0 pb-6">
@@ -96,6 +92,7 @@ export function ThreadPost({
           </span>
         </header>
 
+        <HeldCallout count={post.kind === 'assembly' ? held(post) : 0}>
         <button
           type="button"
           onClick={() => expandable && setOpen((value) => !value)}
@@ -125,8 +122,11 @@ export function ThreadPost({
             ))}
           </span>
         </button>
+        </HeldCallout>
 
         {post.progress.length > 0 ? <Counters post={post} /> : null}
+        {post.kind === 'drafting' ? <CoverageBar post={post} /> : null}
+        {post.kind === 'verification' ? <VerdictBar summary={post.summary} /> : null}
 
         {open ? (
           <div className="mt-3 flex flex-col gap-4 border-l border-subtle pl-4">
@@ -262,6 +262,12 @@ function Block({
       ) : null}
     </section>
   );
+}
+
+/** How many answers this post says are waiting, or zero. Drives the callout, nothing else. */
+function held(post: Post): number {
+  const action = post.actions.find((candidate) => candidate.kind === 'approve_all');
+  return action === undefined ? 0 : action.count;
 }
 
 /**
