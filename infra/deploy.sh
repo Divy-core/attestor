@@ -306,6 +306,15 @@ section "Cloud Run: dispatcher"
 # receiving pushes, and had no engine names. `--set-env-vars` REPLACES the variable set
 # rather than merging into it, so every redeploy re-opened that window. Session three hit
 # it twice.
+# How often the dispatcher drains the mailbox on its own timer, in seconds. Zero is off.
+#
+# Set here rather than by hand, for the reason the comment above gives about the engine
+# names: `--set-env-vars` REPLACES the variable set, so anything applied afterwards with a
+# `services update` is dropped by the next deploy. This one was set by hand once and lost
+# immediately, which would have left the demo depending on Gmail's push latency -- measured
+# at 13 seconds once and 4 minutes 18 seconds another time, same mailbox, same hour.
+GMAIL_POLL_SECONDS="${ATTESTOR_GMAIL_POLL_SECONDS:-15}"
+
 ENGINE_VARS=""
 if [[ -f docs/proof/fleet-deployment.json ]]; then
     ENGINE_VARS="$(uv run python - <<'PY'
@@ -364,7 +373,7 @@ gcloud run deploy attestor-dispatcher \
     --memory 2Gi \
     --timeout 3600 \
     --no-allow-unauthenticated \
-    --set-env-vars "PROJECT_ID=${PROJECT_ID},VERTEX_LOCATION=${REGION},ATTESTOR_FLEET_RUNNER=agent_runtime${ENGINE_VARS:+,${ENGINE_VARS}}" \
+    --set-env-vars "PROJECT_ID=${PROJECT_ID},VERTEX_LOCATION=${REGION},ATTESTOR_FLEET_RUNNER=agent_runtime,ATTESTOR_GMAIL_POLL_SECONDS=${GMAIL_POLL_SECONDS}${ENGINE_VARS:+,${ENGINE_VARS}}" \
     --quiet
 fi
 
