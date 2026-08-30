@@ -3844,3 +3844,186 @@ mechanism rather than a shrug.
   missing is one email with an attachment from an address that is not the watched mailbox.
 - **The video.** Still the largest remaining item, and now the only one with no substitute.
 - **The happy-path inbound run**, still. Everything up to the classifier is exercised.
+
+---
+
+## Phase 12 — The Twelve Minutes, One Approval, and the Workspace (Day 16, 30 Aug 2026)
+
+### The twelve minutes were mine
+
+An email took twelve minutes to produce answers. The hypothesis on the table was a cold
+start blowing the push deadline. Measured first, and it was not that:
+
+```
+12:10:22  POST /pubsub/push  500  97.7s
+12:10:22  POST /pubsub/push  500  80.3s
+12:12:21  engine security retrieved nothing (attempt 1/3); retrying in 25.2s
+12:12:51  engine security retrieved nothing (attempt 2/3); retrying in 50.5s
+```
+
+The Phase 10 empty-retrieval backoff sleeps 75+ seconds **inside the request handler**, on a
+dispatcher running `--concurrency 1`. Enough retrying questions in one partition and the push
+exceeds its deadline, returns 5xx, and Pub/Sub redelivers with a backoff that reaches 600s.
+The email was never slow — that review existed 31 seconds after the mail landed. The answers
+were twelve minutes behind it.
+
+Four fixes: `min-instances=1` and `--cpu-boost` on the dispatcher and the control plane; the
+`attestor.gmail.push` ack deadline raised from **60s to 600s**, which is what makes a
+75-second handler legal; and the backoff made tunable.
+
+**Then I nearly traded the citation rate for the latency graph.** I set the backoff to 4s,
+measured the latency, and reported the win — without re-measuring the thing the backoff
+exists to protect. At 4s the three attempts span 12-28 seconds, back inside the 60-second
+quota window that produced 48% cited in Phase 10. Caught, restored to 25s, and measured
+properly:
+
+| | |
+|---|---|
+| Questions | 60, deployed, end to end |
+| Cited | **51 of 60 (85.0%)** |
+| Checked by a separate identity | 45 |
+| Empty retrievals | 7 confirmed, **26 recovered** |
+| Partitions | 255s / 278s / 291s — inside the 600s deadline, zero 5xx |
+
+The recovery rate is better than the run the backoff was built for: 26 of 33 against 33 of
+79. 25s ships on that measurement, not on the latency number.
+
+### Gmail's push latency is not ours
+
+Measured twice on the same mailbox within one hour, same sender:
+
+```
+13:17:21 sent -> 13:17:34 classified          13 seconds
+14:51:44 sent -> 14:56:02 review created      4 minutes 18 seconds
+```
+
+The slow one was **not** a cold watch. Gmail had pushed twice in the nineteen seconds before
+that mail was sent and then sat on it for four minutes and ten seconds. Warming the watch is
+not a fix, and my advice to do so was wrong.
+
+So the dispatcher stopped letting Gmail be the only way work arrives: a timer drains the same
+history delta every fifteen seconds, sharing one implementation with the push handler. Both
+routes publish envelopes keyed by Gmail's message id and the claim ledger refuses a key it
+has seen, so a poll racing a push is a no-op — which is what makes running both safe rather
+than having to choose.
+
+Two defects caught while writing it, both real: the gap audit lost `start` when the body
+moved into a helper, and `asyncio.create_task` was called without keeping the reference, so
+the poll loop could have been garbage-collected mid-await and stopped **silently**. The ninth
+instance of this project's signature failure, caught before it shipped.
+
+Then the interval was set by hand with `gcloud run services update` and dropped by the very
+next deploy, because `--set-env-vars` replaces rather than merges. The script already carried
+a comment saying exactly that, written after session three lost the engine names twice the
+same way. It is now folded into the deploy.
+
+### One approval, sixty-three records
+
+`POST /rounds/{round_id}/approvals`. The gate does not move — a person still decides, still
+signs it, and nothing reaches a customer until they do. What is removed is the
+sixty-three-click chore, which is the part that makes people stop reading.
+
+**Bulk in the UI, individual in the record.** Each answer gets its own `human_decision` event
+with the actor and its own envelope, so the trail cannot tell the difference and "who
+approved Q47" still has a name. Verified against the deployed stack:
+
+```
+POST /rounds/rev-e25dda2db01c-r1/approvals  ->  200 {"resolved": 7}
+audit trail   7 x human_decision, 7 distinct question_ids, batch 7
+review        awaiting_human -> assembling, 0 still held
+```
+
+The round closed itself: `resume_after_human` found nothing pending on the last decision and
+published `CLOSE_ROUND`. No orchestration in the browser.
+
+The 404 that stopped the first attempt was the web proxy's allowlist refusing a route nobody
+had added — the allowlist working, found by clicking the button rather than by reading code.
+
+### Auto-send, and the line it does not cross
+
+Asked for after the concern was raised once, so built as asked. It ships with the two
+properties that keep it honest.
+
+**The trail never says a person decided.** Auto-approved answers carry the actor
+`auto-send`; whoever flipped the switch is in `enabled_by`, where it is true. "Who approved
+Q47" answers *"nobody; auto-send was on, and X turned it on at Y"* — correct and useful,
+where a name would be a plausible-looking lie.
+
+**Per review, off by default**, and flipping it is itself audited.
+
+### The workspace
+
+- The front door **opens itself** on a review that did not exist when the page loaded.
+- **One mark per agent** — ◇ orchestrator, ⋔ triage, ✓ verifier, ⊘ guard. Ten agents in one
+  column read as one voice with a changing byline; a glyph is recognised before it is read.
+- **Two figures**: the verifier's four verdicts and a partition's cited-against-flagged, as
+  stacked bars. Four numbers that only mean something against each other are read from a
+  shape, not from a sentence.
+- **The report** gained a `Not answered` section — refusing what the corpus cannot support is
+  this product's best property and it was scattered through three departments.
+
+And the fleet writes like people on a security team:
+
+> I've split 60 questions across 3 teams — 20 security · 23 legal · 17 engineering.
+> Done with my 23. *2 carry no citation and are flagged — the corpus did not support them.*
+> I went through 45 of the drafts against the passages they cite — 18 supported · 17
+> partially · 1 unsupported · 9 could not be checked.
+> 7 answers need your eyes before this goes back to Halden Ridge Capital.
+
+Not a number moved. Only the sentence around it.
+
+### Three bugs that only existed at one
+
+`1 answer need your eyes`. `the 1 answers being held`. `All 1 answers that needed a person`.
+Fixed one, shipped, found the second, shipped, and the deployed thread showed the third.
+Three instances of one mistake is a missing sweep: six places interpolated a number straight
+into a plural noun, in a codebase that has had `_plural` since Phase 6. They read correctly
+at every count except one, and every run before this afternoon held seven, sixteen or
+sixty-three. The test now asserts the property over a whole rendered thread rather than the
+three sentences that got noticed.
+
+### The inbound loop, end to end
+
+An email from an outside account, no attachment, exercising the body-questions path that
+synthesises a workbook from prose:
+
+```
+[InboxAgent      ] Questionnaire from ...@gmail.com — BESPOKE, 3 questions
+[TriageAgent     ] I've split 3 questions across 2 teams — 2 security · 1 engineering.
+[VerifierAgent   ] I went through 3 of the drafts against the passages they cite —
+                   1 supported · 1 partially · 1 unsupported.
+[SecurityAgent   ] Done with my 2.
+[AssemblerAgent  ] 1 answer needs your eyes before this goes back to Northstar Logistics.
+                   [ Approve all and send 1 ] [ Review them first 1 ]
+```
+
+`arrived_by_email: true`, review created about 25 seconds after the send, nobody touching a
+browser.
+
+Two sends were refused before that one, both correctly. Mail from the watched mailbox is its
+own echo. And an attachment re-encoded by a third-party tool arrived corrupt: five attempts,
+then a dead letter reading `Error -3 while decompressing data` rather than a half-parsed
+questionnaire.
+
+### Phase 12 exit criteria
+
+| # | Criterion | State | How verified |
+|---|---|---|---|
+| 1 | The 12 minutes diagnosed before anything changed | **DONE** | 5xx latencies and the retry lines in the dispatcher log; the cause was the Phase 10 backoff, not cold start |
+| 2 | Fixes applied and the arrival timed | **DONE** | ack deadline 60s->600s, min-instances, cpu-boost, tunable backoff. ~25s measured end to end |
+| 3 | The backoff re-measured rather than assumed | **DONE** | 60 questions, 85.0% cited, 26 of 33 empty retrievals recovered, no partition over 291s |
+| 4 | One approval, individual records | **DONE** | 7 resolved in one request, 7 `human_decision` events with the actor, round closed itself |
+| 5 | The fleet offers it unprompted | **DONE** | "7 answers need your eyes before this goes back to ..." with both actions |
+| 6 | Refusals name the state and the way through | **DONE** | `send the pack` reports held answers before it reports email threads |
+| 7 | The workspace opens on arrival | **DONE** | `AutoOpen`, forward only, verified against a live inbound review |
+| 8 | Block renderers | **DONE** | Agent marks, verdict bar, coverage bar, held callout. Zero AA failures in both themes |
+| 9 | The report reads as a document | **DONE** | Gaps section, coverage and verdict bars, per-department coverage, no resource paths |
+| 10 | Auto-send | **DONE** | Per review, off by default, actor `auto-send`, 8 tests |
+| 11 | `make check` green, deployed, pushed | **DONE** | 747 passed, 1 skipped |
+
+### What Phase 12 did not do
+
+- **The about page**, cut first as the brief instructed, and the **Google Doc export**, cut
+  second. Neither started.
+- **A full-size run through the new UI.** The inbound proof was 3 questions; the 60-question
+  run at 85% and the 150-question run at 91% predate the renderers.
