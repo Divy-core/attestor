@@ -44,6 +44,8 @@ import type { ThreadAction, ThreadPayload, ThreadPost as Post } from '@/lib/type
 type Props = {
   reviewId: string;
   roundId: string;
+  /** Whether this review releases rounds without a person. Off unless someone said so. */
+  initialAutoSend?: boolean;
   runId: string | null;
   initialThread: ThreadPayload | null;
   /** For the inline approval. Kept fresh by the same refetch that keeps the thread fresh. */
@@ -72,6 +74,7 @@ const MIN_REFETCH_INTERVAL_MS = 1_200;
 export function ReviewThread({
   reviewId,
   roundId,
+  initialAutoSend = false,
   runId,
   initialThread,
   initialQuestions,
@@ -98,6 +101,7 @@ export function ReviewThread({
   /** Which post has its inline approval open. One at a time; it is a full working panel. */
   const [approving, setApproving] = useState<string | null>(null);
   const [confirmAll, setConfirmAll] = useState(false);
+  const [autoSend, setAutoSend] = useState(initialAutoSend);
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
   const [operator, setOperator] = useOperator();
@@ -235,6 +239,26 @@ export function ReviewThread({
     setQuestions(initialQuestions);
   }, [initialQuestions]);
 
+  const toggleAutoSend = useCallback(async () => {
+    const next = !autoSend;
+    setSendError(null);
+    try {
+      const response = await fetch(`/api/attestor/reviews/${reviewId}/auto-send`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: next, actor: operator }),
+      });
+      if (!response.ok) {
+        setSendError(`${response.status} ${(await response.text()).slice(0, 200)}`);
+        return;
+      }
+      setAutoSend(next);
+      poller.now();
+    } catch (error) {
+      setSendError(error instanceof Error ? error.message : String(error));
+    }
+  }, [autoSend, reviewId, operator, poller]);
+
   const approveAll = useCallback(async () => {
     setSending(true);
     setSendError(null);
@@ -347,8 +371,27 @@ export function ReviewThread({
                         </Button>
                       </div>
                       {sendError !== null ? (
-                        <p className="mt-2 text-xs text-danger">{sendError}</p>
+                        <p className="mt-2 text-xs text-denied">{sendError}</p>
                       ) : null}
+                      <div className="mt-3 border-t border-subtle pt-3">
+                        <label className="flex items-start gap-2 text-xs text-secondary">
+                          <input
+                            type="checkbox"
+                            checked={autoSend}
+                            onChange={() => void toggleAutoSend()}
+                            disabled={operator.trim().length === 0}
+                            className="mt-0.5"
+                          />
+                          <span>
+                            Send future rounds on this review without me.
+                            {autoSend ? (
+                              <strong className="ml-1 text-primary">
+                                On. Rounds close and go back with nobody reading them.
+                              </strong>
+                            ) : null}
+                          </span>
+                        </label>
+                      </div>
                     </div>
                   ) : null}
                   {approving === post.post_id ? (

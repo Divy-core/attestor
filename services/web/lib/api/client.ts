@@ -261,6 +261,9 @@ export type ReviewRow = {
   archived: boolean;
   /** The date the customer asked for, as they wrote it. Empty when they named none. */
   deadline?: string;
+  /** Release rounds on this review with nobody reading them. Off unless someone said so. */
+  auto_send?: boolean;
+  auto_send_enabled_by?: string;
 };
 
 /**

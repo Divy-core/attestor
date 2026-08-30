@@ -664,6 +664,38 @@ class HandlerRegistry:
         answers = self.answers.for_round(round_.round_id)
         pending = [a for a in answers if a.status.value == "needs_human"]
 
+        if pending and review.auto_send:
+            # The gate, deliberately opened for this review. Each answer is still resolved
+            # individually and recorded individually; what is skipped is the waiting, not
+            # the record. `auto-send` is the actor, never the person who flipped the switch:
+            # they authorised the automation, they did not read these answers.
+            for answer in pending:
+                self.fleet.apply_decision(
+                    round_.round_id,
+                    answer.question_id,
+                    approved=True,
+                    resolved_by="auto-send",
+                    edited_text=None,
+                )
+                self.audit.append_safe(
+                    {
+                        "kind": "human_decision",
+                        "review_id": review.review_id,
+                        "run_id": envelope.run_id,
+                        "question_id": answer.question_id,
+                        "actor": "auto-send",
+                        "detail": {
+                            "approved": True,
+                            "edited": False,
+                            "round_id": round_.round_id,
+                            "automated": True,
+                            "enabled_by": review.auto_send_enabled_by,
+                            "enabled_at": review.auto_send_enabled_at,
+                        },
+                    }
+                )
+            pending = []
+
         if pending:
             state = self._move(review, ReviewState.AWAITING_HUMAN)
             detail = {

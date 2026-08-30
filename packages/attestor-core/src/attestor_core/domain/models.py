@@ -268,3 +268,18 @@ class Review(_Mutable):
     #: a list of reviews is rendered -- means a thousand-document audit read per row.
     #: Defaulted, so every document written before this field existed still validates.
     deadline: str = ""
+    #: Release the round without a person seeing it.
+    #:
+    #: Off by default and set per review, so enabling it is a decision about one customer's
+    #: questionnaire rather than a property of the deployment. When it is on, `assemble_round`
+    #: approves what it would otherwise hold and continues to close and deliver.
+    #:
+    #: The decisions are still recorded one per answer, with the actor `auto-send` and the
+    #: name of whoever enabled it in the detail. The trail must never carry a person's name
+    #: against a decision they did not make -- "nobody approved this, auto-send was on, and
+    #: X turned it on" is a true answer to "who approved Q47" and is worth more than a
+    #: plausible-looking wrong one.
+    auto_send: bool = False
+    #: Who turned `auto_send` on, and when. Empty while it is off.
+    auto_send_enabled_by: str = ""
+    auto_send_enabled_at: str = ""

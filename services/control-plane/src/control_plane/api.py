@@ -134,6 +134,16 @@ class ApprovalRequest(BaseModel):
     edited_text: str | None = None
 
 
+class AutoSendRequest(BaseModel):
+    """Turn the human gate off, or back on, for one review."""
+
+    enabled: bool
+    #: Who made the call. Named for the same reason approvals are: this is the decision to
+    #: delegate every approval that follows, and it is the only human decision on the round
+    #: once it is on.
+    actor: Actor
+
+
 class BulkApprovalRequest(BaseModel):
     """Approve, or reject, every answer this round is holding for a person.
 
@@ -468,6 +478,45 @@ def approve_all(round_id: str, body: BulkApprovalRequest, request: Request) -> d
         "resolved_by": body.resolved_by,
         "run_id": run_id,
     }
+
+
+@router.post("/reviews/{review_id}/auto-send")
+def set_auto_send(review_id: str, body: AutoSendRequest, request: Request) -> dict[str, Any]:
+    """Release rounds on this review without a person seeing them, or stop doing that.
+
+    Per review and off by default, so switching it on is a decision about one customer's
+    questionnaire. Recorded with the name of whoever switched it, because once it is on
+    there is no other human decision on the round to attribute anything to.
+    """
+    require_write_token(request)
+    review = reviews().get(review_id)
+    if review is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"no review {review_id!r}")
+
+    now = datetime.now(UTC).isoformat()
+    reviews().put(
+        review.model_copy(
+            update={
+                "auto_send": body.enabled,
+                "auto_send_enabled_by": body.actor if body.enabled else "",
+                "auto_send_enabled_at": now if body.enabled else "",
+            }
+        )
+    )
+    audit().append_safe(
+        {
+            "kind": "auto_send_changed",
+            "review_id": review_id,
+            "run_id": "-",
+            "actor": body.actor,
+            "detail": {
+                "enabled": body.enabled,
+                "customer": review.customer,
+                "at": now,
+            },
+        }
+    )
+    return {"review_id": review_id, "auto_send": body.enabled, "actor": body.actor}
 
 
 # ---------------------------------------------------------------------------------

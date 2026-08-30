@@ -88,6 +88,7 @@ export function ChatView({
         reviewId={reviewId}
         roundId={roundId}
         runId={runId}
+        initialAutoSend={review?.auto_send ?? false}
         initialThread={initialThread}
         initialQuestions={initialQuestions}
         initialAnswers={initialAnswers}
