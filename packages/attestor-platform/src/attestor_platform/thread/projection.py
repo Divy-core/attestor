@@ -351,7 +351,8 @@ def _arrival(
                 ),
                 lines=(
                     (
-                        f"{dropped} questions past the per-round ceiling were not taken "
+                        f"{dropped} {_plural(dropped, 'question')} past "
+                        "the per-round ceiling were not taken "
                         "into this round.",
                     )
                     if dropped
@@ -408,7 +409,7 @@ def _inbound_post(
 
     summary = f"Questionnaire from {sender} — {framework}"
     if questions:
-        summary += f", {len(questions)} questions"
+        summary += f", {len(questions)} {_plural(len(questions), 'question')}"
     if deadline:
         summary += f", response requested by {deadline}"
 
@@ -639,7 +640,10 @@ def _triage(
                 Detail(
                     "Where the questions went",
                     tuple(
-                        Row(dept.capitalize(), f"{by_department[dept]} questions")
+                        Row(
+                            dept.capitalize(),
+                            f"{by_department[dept]} {_plural(by_department[dept], 'question')}",
+                        )
                         for dept in _DEPARTMENT_ORDER
                         if by_department.get(dept)
                     ),
@@ -756,7 +760,11 @@ def _drafting(
         top_documents = documents.get(department, Counter()).most_common(SAMPLE_CEILING)
         document_rows, document_note = _sample(
             tuple(
-                Row(_truncate(name, 90), f"{count} questions", mono=True)
+                Row(
+                    _truncate(name, 90),
+                    f"{count} {_plural(count, 'question')}",
+                    mono=True,
+                )
                 for name, count in top_documents
             ),
             len(documents.get(department, Counter())),
@@ -1172,7 +1180,9 @@ def _assembly(
                 f"back to {customer}."
                 if pending
                 else (
-                    f"Round assembled. All {len(events)} answers that needed a person have had one."
+                    f"Round assembled. All {len(events)} "
+                    f"{_plural(len(events), 'answer')} that needed a "
+                    "person have had one."
                 )
             ),
             lines=(
@@ -1411,6 +1421,7 @@ def _delivery(
                     ),
                 )
             )
+        sendable = int(detail.get("sendable") or 0)
         posts.append(
             Post(
                 post_id=f"delivered-{_at(event)}",
@@ -1419,7 +1430,7 @@ def _delivery(
                 at=_at(event),
                 summary=(
                     "Sent the pack back to the customer on the original thread — "
-                    f"{detail.get('sendable') or 0} answers cleared."
+                    f"{sendable} {_plural(sendable, 'answer')} cleared."
                 ),
                 lines=(
                     "Authorised by a named person. The fleet does not email a customer on its own.",

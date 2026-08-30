@@ -688,3 +688,65 @@ class TestABatchOfApprovalsIsOnePost:
         posts = [p for p in thread_for(events).posts if p.kind == "resumed"]
         assert len(posts) == 2
         assert {p.actor for p in posts} == {"Orchestrator"}
+
+
+class TestNothingSaysOneAnswers:
+    """Agreement at n=1, swept rather than patched.
+
+    Three of these shipped and were found one at a time -- "1 answer need your eyes",
+    "the 1 answers being held", "All 1 answers that needed a person". Each was a number
+    interpolated straight into a plural noun, in a codebase that has had `_plural` since
+    Phase 6. They read correctly at every count except one, and until the first
+    single-answer round arrived nothing had ever rendered them wrong.
+
+    So this asserts the property over a whole thread rather than over the three sentences
+    that happened to be noticed: no rendered line may put "1" next to a plural noun.
+    """
+
+    def test_no_rendered_line_says_one_of_something_plural(self) -> None:
+        qs = questions(1)
+        events = [
+            event("question_triaged", 5, question_id=qs[0].question_id),
+            event("answer_drafted", 10, question_id=qs[0].question_id),
+            event(
+                "human_required",
+                12,
+                question_id=qs[0].question_id,
+                detail={"reason": "low confidence"},
+            ),
+            event(
+                "stage_completed",
+                14,
+                detail={"stage": "assemble_round", "answers": 1, "awaiting_human": 1},
+            ),
+            event("approval_requested", 16, detail={"to": "owner@example.com", "pending": 1}),
+        ]
+        thread = thread_for(events, qs=qs, answers=[answer(qs[0], status=AnswerStatus.NEEDS_HUMAN)])
+
+        rendered: list[str] = []
+        for post in thread.posts:
+            rendered.append(post.summary)
+            rendered.extend(post.lines)
+            for detail in post.details:
+                for row in detail.rows:
+                    rendered.append(f"{row.label} {row.value}")
+                rendered.append(detail.note)
+
+        plurals = ("answers", "questions", "inputs", "attempts", "rounds", "decisions")
+        offenders = [line for line in rendered for word in plurals if f"1 {word}" in line]
+        assert offenders == [], offenders
+
+    def test_and_the_verb_agrees_too(self) -> None:
+        """`1 answer need` is the same defect one word further along."""
+        qs = questions(1)
+        events = [
+            event(
+                "human_required",
+                12,
+                question_id=qs[0].question_id,
+                detail={"reason": "low confidence"},
+            ),
+        ]
+        thread = thread_for(events, qs=qs, answers=[answer(qs[0], status=AnswerStatus.NEEDS_HUMAN)])
+        post = by_actor(thread, "AssemblerAgent")[0]
+        assert "1 answer needs" in post.summary
