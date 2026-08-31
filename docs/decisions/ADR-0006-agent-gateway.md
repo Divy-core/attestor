@@ -1,6 +1,10 @@
 # ADR-0006 — Agent Gateway: evaluated, and not adopted
 
 **Status:** Accepted · **Date:** 17 Aug 2026 · **Phase:** 5
+
+> **Current.** Agent Gateway remains unadopted, for the reason recorded below. The
+> condition that would reverse it — a private VPC endpoint to reach — still does not
+> hold.
 **Evidence:** `docs/proof/agent-gateway-discovery.txt`
 
 ## Context

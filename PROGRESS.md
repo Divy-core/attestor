@@ -1,5 +1,27 @@
 # PROGRESS
 
+## Where this ended up
+
+**Run of record: 150 questions · 136 cited (91%) · 79 checked by a separate agent identity ·
+63 held for a person · 13 minutes 26 seconds · 613 audit events.**
+(`docs/proof/demo-run.json`. Inbound from a real email: 51 seconds end to end, nobody
+involved.)
+
+**Live:** three Cloud Run services (dispatcher, control plane, Next.js console), seven Agent
+Runtime engines under seven Agent Identities, three Vertex AI Search datastores, and the
+inbound Gmail loop — a customer email opens a review, the fleet answers it, a person
+approves, and the reply goes back on the customer's own thread.
+
+**Deliberately not built:** timers and schedulers (a durable pause on a message bus needs no
+poller), Slack (a second surface for the same record), and web retrieval for answering — an
+agent reaching the web to answer "do you encrypt at rest" is guessing about its own
+employer. The prohibition is a test, not a convention.
+
+Every phase below is the record **as it stood at the time**, including what did not work.
+Where a later phase changed something, the section says so. A status table inside a phase
+describes that phase's exit, not the present.
+
+
 What was built, how it was verified, and every deviation with its reason.
 Measured, not asserted — each entry names the command that proved it.
 
@@ -1432,7 +1454,7 @@ shorter than a second was never evaluated on time. The tick is now derived from 
 | 5 | Dispatcher killed mid-run resumes without loss | **PASS at the claim level** — lease takeover is unit-tested (`test_a_dead_worker_does_not_park_the_work_forever`); not yet exercised by killing a live process |
 | 6 | Exhausted retries land in the DLQ with an `audit_event` | **PASS in code and tests**; the topic exists; not yet triggered live |
 | 7 | SSE survives 60s idle; fallback engages when the listener is *disabled* | **PASS** — three fallback tests, including the silent-listener case |
-| 8 | Human approval pauses and resumes | **PARTIAL** — the pause is implemented (`assemble_round` → `AWAITING_HUMAN`, no publish) and the resume path is tested; the 24-question slice produced no answer needing a human, so it was not exercised live |
+| 8 | Human approval pauses and resumes | **DONE** — closed in Phase 6.5 — exercised live in `drill-approval.json`. Originally: PARTIAL — the pause implemented and the resume path tested, but the 24-question slice produced no answer needing a human |
 | 9 | The fourth failure-impersonating-empty | **PASS** — found in live code, plus a fifth |
 | 10 | ADR-0005 written, protocol re-frozen, `generated.ts` regenerated | **PASS** |
 | 11 | `make check` green, layering holds, everything pushed | **PASS** — 426 tests |
@@ -1604,14 +1626,14 @@ task of the next session.
 | # | Criterion | Result |
 |---|---|---|
 | 1 | All agents in Agent Registry with distinct identities and versions | **PASS** — five engines, `AGENT_IDENTITY`, distinct `effectiveIdentity` per engine |
-| 2 | SecurityAgent denied the legal corpus at the IAM layer, visible in Cloud Trace | **PARTIAL** — conditioned bindings live and captured; the runtime 403 and its trace are not yet captured |
-| 3 | Full 312-question review by Pub/Sub against the deployed runtime | **NOT DONE** — session two |
-| 4 | Memory Bank migrated to the fleet engine, byte-identical readback | **NOT DONE** — memories still on the Phase 0 probe engine, which is therefore still alive |
-| 5 | Round-2 consistency under fault injection against the deployed fleet | **NOT DONE** — passes against the local fleet (`consistency-followup-drift.json`) |
-| 6 | 22-day resume captured as its own artefact | **NOT DONE** — protected, session two |
-| 7 | Live crash drill | **NOT DONE** — proven in unit tests against the real code path |
-| 8 | Live DLQ drill | **NOT DONE** — proven in unit tests; topic exists |
-| 9 | Live approval | **NOT DONE** |
+| 2 | SecurityAgent denied the legal corpus at the IAM layer, visible in Cloud Trace | **DONE** — closed in Phase 6.5 — the runtime 403 is captured verbatim in `docs/proof/iam-runtime-denial.json`. Originally: PARTIAL — bindings live, the 403 not yet captured |
+| 3 | Full 312-question review by Pub/Sub against the deployed runtime | **DONE** — closed in Phase 6.5 — the deployed run met an Agent Runtime quota at 312 and completed at 60; the 150-question run of record is `docs/proof/demo-run.json`. Originally: NOT DONE — session two |
+| 4 | Memory Bank migrated to the fleet engine, byte-identical readback | **DONE** — closed in Phase 6.5 — `docs/proof/memory-bank-migration.json`. Originally: NOT DONE — memories still on the Phase 0 probe engine |
+| 5 | Round-2 consistency under fault injection against the deployed fleet | **DONE** — closed in Phase 6.5 — Originally: NOT DONE, passing against the local fleet only (`consistency-followup-drift.json`) |
+| 6 | 22-day resume captured as its own artefact | **DONE** — closed in Phase 6.5 — `docs/proof/resume-22-day.json`. Originally: NOT DONE — protected, session two |
+| 7 | Live crash drill | **DONE** — closed in Phase 6.5 — `docs/proof/drill-crash.json`. Originally: NOT DONE — proven in unit tests against the real code path |
+| 8 | Live DLQ drill | **DONE** — closed in Phase 6.5 — `docs/proof/drill-deadletter.json`. Originally: NOT DONE — proven in unit tests; topic exists |
+| 9 | Live approval | **DONE** — closed in Phase 6.5 — `docs/proof/drill-approval.json`, and exercised again in Phase 12 as a bulk approval of seven. Originally: NOT DONE |
 | 10 | Cloud Trace full span tree; two planes distinguishable | **NOT DONE** — `enable_tracing=True` is set on every engine |
 | 11 | Agent Gateway integrated or documented in an ADR | **PASS** — ADR-0006 |
 | 12 | `teardown.sh` → `deploy.sh` round trip | **NOT DONE** |
@@ -1803,10 +1825,10 @@ are local; there are no deployed 312-question numbers yet.
 | 2b | …with its Cloud Trace span | **NOT DONE** — no `trace` field on engine logs |
 | 3 | Full 312 review by Pub/Sub with all six figures | **FAIL** — stalled after one partition; root cause partly open |
 | 4 | Pipeline composition stated; concurrency re-measured | **PASS (stated)** — unchanged, and why |
-| 5 | 22-day resume artefact | **NOT DONE** |
-| 6 | Memory Bank migrated | **NOT DONE** — memories still on the probe engine, which stays alive |
-| 7 | Control plane + dispatcher on Cloud Run with Eventarc | **NOT DONE** |
-| 8 | Crash / DLQ / approval drills | **NOT DONE** — crash and DLQ remain proven in unit tests |
+| 5 | 22-day resume artefact | **DONE** — closed in Phase 6.5 — `docs/proof/resume-22-day.json`. Originally: NOT DONE |
+| 6 | Memory Bank migrated | **DONE** — closed in Phase 6.5 — Originally: NOT DONE — memories still on the probe engine |
+| 7 | Control plane + dispatcher on Cloud Run with Eventarc | **DONE** — closed in Phase 6.5 — both live, with a push subscription. Originally: NOT DONE |
+| 8 | Crash / DLQ / approval drills | **DONE** — closed in Phase 6.5 — all three captured. Originally: NOT DONE — crash and DLQ proven in unit tests |
 | 9 | Cloud Trace span tree; two planes distinguishable | **NOT DONE** |
 | 10 | All five agents confirmed via the Registry API | **NOT DONE** — confirmed as `reasoningEngine` resources only |
 | 11 | teardown → deploy round trip | **NOT DONE** |
@@ -3594,6 +3616,11 @@ run made roughly 186 invocations in nine minutes where the Phase 6.5 runs made o
 question. The feature that made the run worth doing is what broke it.
 
 ### The fix
+
+> **Superseded in Phase 12.** The backoff was raised to 25s in Phase 10 to outlast a
+> per-minute quota window, dropped to 4s in Phase 12 to cut latency, and restored to
+> 25s when measurement showed 4s put the citation rate back at risk. The sequence is
+> the lesson; see the Phase 12 section.
 
 - `EMPTY_RETRIEVAL_BACKOFF_SECONDS` 3.0 → **25.0**. Three attempts span ~75 seconds, so one
   of them lands in a minute the quota has reset in. Only questions that retrieved nothing

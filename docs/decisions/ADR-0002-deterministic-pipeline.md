@@ -2,6 +2,11 @@
 
 **Status:** Accepted · **Date:** 16 Aug 2026 · **Phase:** 3
 
+> **Narrowed in Phase 5 by ADR-0007.** The pipeline stayed deterministic and the
+> routing stayed model-only; what moved is *where drafting executes* — from this
+> process onto the deployed Agent Runtime engines. The control flow described below
+> is current; read ADR-0007 for the execution location.
+
 ## Context
 
 A questionnaire run has to get from an uploaded spreadsheet to a set of evidenced

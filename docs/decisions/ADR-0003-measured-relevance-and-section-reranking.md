@@ -2,6 +2,12 @@
 
 **Status:** Accepted · **Date:** 16 Aug 2026 · **Phase:** 3
 
+> **Still current, with one platform caveat found in Phase 6.5.** Relevance is still
+> embedding cosine similarity and never asked of a model. What this ADR could not
+> know is that the deployed search returns empty result sets *successfully* under
+> load, so a retrieval layer that is correct can still be handed nothing. See
+> `docs/proof/the-24-percent.md`.
+
 ## Context
 
 Vertex AI Search (Discovery Engine) standard edition returns, for each hit, a document

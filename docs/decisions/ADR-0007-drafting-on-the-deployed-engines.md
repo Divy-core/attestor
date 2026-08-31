@@ -1,6 +1,13 @@
 # ADR-0007 — Drafting executes on the deployed engines, not in the dispatcher
 
 **Status:** Accepted · **Date:** 17 Aug 2026 (Phase 5, session three) · Supersedes nothing;
+
+> **Current, and it narrows the datastore-scoping claim made earlier.** The corpus
+> boundary is enforced by a conditioned IAM binding on the GCS prefix, captured as a
+> runtime 403 in `docs/proof/iam-runtime-denial.json`. It is **not** enforced by
+> `agentDefaultAccess`, which turned out to carry no `discoveryengine.*` permission —
+> so any earlier text implying the datastore itself is scoped per identity is
+> superseded by this one.
 extends [ADR-0002](ADR-0002-deterministic-pipeline.md)
 
 ## Context

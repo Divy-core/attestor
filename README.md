@@ -15,8 +15,10 @@ Built for the **All Things Agentic Hackathon — Track 3: The Fortified Enterpri
 > **150 questions · 136 cited (91%) · 79 checked by a separate agent identity · 63 held for
 > a person · 13 minutes 26 seconds · 613 audit events.**
 
-Every figure traces to a file in [`docs/proof/`](docs/proof/). Nothing in this repository is
-asserted that was not measured.
+From [`docs/proof/demo-run.json`](docs/proof/demo-run.json). Every figure in this repository
+traces to a file in [`docs/proof/`](docs/proof/); nothing here is asserted that was not
+measured. Older figures elsewhere name the run they came from — the 312-question fixture and
+the 43%, 48% and 84% citation rates are earlier runs, not this one.
 
 ---
 
@@ -64,7 +66,7 @@ below.
 ```bash
 make setup                                        # sync the uv workspace, install the pre-commit hook
 cp .env.example .env                              # edit PROJECT_ID if yours differs
-make check                                        # lint + mypy --strict + the test suite + layering + copy
+make check                                        # lint + mypy --strict + 750 tests + layering + copy
 ```
 
 That gets you a green repository with no cloud resources. To answer actual questions you
