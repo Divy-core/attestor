@@ -31,7 +31,10 @@ import type { AnswerRow, Department, QuestionRow } from '@/lib/api/client';
  * that only shows up while someone is filming.
  */
 
-const ROW_HEIGHT = 32;
+// 44, not 32. At 32 a 312-row grid is a wall of type with no line to rest on -- readable
+// as a database and unreadable as a list of questions, which is what it is. The
+// virtualisation makes the extra height free: the same number of rows are in the DOM.
+const ROW_HEIGHT = 44;
 const OVERSCAN = 8;
 
 type Row = {

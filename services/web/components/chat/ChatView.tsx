@@ -6,6 +6,7 @@ import { useCallback, useState } from 'react';
 import { Composer } from '@/components/chat/Composer';
 import { Report } from '@/components/chat/Report';
 import { SidePanel, type PanelKind } from '@/components/chat/SidePanel';
+import { ChatShell } from '@/components/chat/ChatShell';
 import { ArtifactsPanel } from '@/components/review/ArtifactsPanel';
 import { AuditPanel } from '@/components/review/AuditPanel';
 import { EvidencePanel } from '@/components/review/EvidencePanel';
@@ -13,8 +14,7 @@ import { ExportPanel } from '@/components/review/ExportPanel';
 import { NewReviewDialog } from '@/components/review/NewReview';
 import { ReviewWorkspace } from '@/components/review/ReviewWorkspace';
 import { ReviewThread } from '@/components/thread/ReviewThread';
-import { Button, cx } from '@/components/ui/primitives';
-import type { AnswerRow, QuestionRow, ReviewDetailRow } from '@/lib/api/client';
+import type { AnswerRow, QuestionRow, ReviewCard, ReviewDetailRow } from '@/lib/api/client';
 import type { ThreadPayload } from '@/lib/types/thread';
 
 /**
@@ -36,6 +36,7 @@ import type { ThreadPayload } from '@/lib/types/thread';
  */
 
 export function ChatView({
+  reviews,
   reviewId,
   roundId,
   runId,
@@ -48,6 +49,8 @@ export function ChatView({
   loadError,
   arrivedByEmail,
 }: {
+  /** For the rail and the palette. The shell is rendered here, not around here. */
+  reviews: ReviewCard[];
   reviewId: string;
   roundId: string;
   runId: string | null;
@@ -80,10 +83,45 @@ export function ChatView({
     );
   }, []);
 
-  const pendingCount = initialAnswers.filter((a) => a.status === 'needs_human').length;
+
+  const panelNode =
+    panel !== null ? (
+      <SidePanel open={panel} onOpen={(kind) => open(kind)} onClose={() => open(null)} title={panel}>
+        {panel === 'report' ? (
+          <Report review={review} questions={initialQuestions} answers={initialAnswers} />
+        ) : panel === 'questions' ? (
+          <ReviewWorkspace
+            roundId={roundId}
+            runId={runId}
+            initialQuestions={initialQuestions}
+            initialAnswers={initialAnswers}
+            loadError={loadError}
+            focusQuestion={focus}
+          />
+        ) : panel === 'evidence' ? (
+          <EvidencePanel
+            questions={initialQuestions}
+            answers={initialAnswers}
+            onOpenQuestion={(questionId) => open('questions', questionId)}
+          />
+        ) : panel === 'artifacts' ? (
+          // The two downloads first. They are what a person opens this panel for, and they
+          // were below a paragraph of provenance -- so the panel opened mid-sentence with
+          // its first line clipped and the buttons off-screen.
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <ExportPanel reviewId={reviewId} roundId={roundId} />
+            <div className="border-t border-subtle">
+              <ArtifactsPanel reviewId={reviewId} canDeliver={arrivedByEmail} />
+            </div>
+          </div>
+        ) : (
+          <AuditPanel reviewId={reviewId} questions={initialQuestions} focus={focus} />
+        )}
+      </SidePanel>
+    ) : undefined;
 
   return (
-    <>
+    <ChatShell reviews={reviews} activeId={reviewId} panel={panelNode}>
       <ReviewThread
         reviewId={reviewId}
         roundId={roundId}
@@ -97,69 +135,14 @@ export function ChatView({
         onOpenQuestions={(questionId) => open('questions', questionId)}
         onOpenArtifacts={() => open('artifacts')}
         footer={
-          <>
-            <Composer
+          <Composer
               reviewId={reviewId}
               onAttach={setPending}
               onSettled={() => setRefreshToken((n) => n + 1)}
-              onPanel={(kind) => open(kind as PanelKind)}
-            />
-            <nav aria-label="Panels" className="flex flex-wrap items-center gap-1">
-              {(['report', 'questions', 'evidence', 'artifacts', 'audit'] as const).map((kind) => (
-                <Button
-                  key={kind}
-                  tone="ghost"
-                  small
-                  onClick={() => open(panel === kind ? null : kind)}
-                  className={cx('capitalize', panel === kind && 'bg-active text-primary')}
-                >
-                  {kind}
-                  {kind === 'questions' && pendingCount > 0 ? (
-                    <span className="font-mono tabular-nums text-muted">{pendingCount}</span>
-                  ) : null}
-                </Button>
-              ))}
-            </nav>
-          </>
+            onPanel={(kind) => open(kind as PanelKind)}
+          />
         }
       />
-
-      {panel !== null ? (
-        <SidePanel
-          open={panel}
-          onOpen={(kind) => open(kind)}
-          onClose={() => open(null)}
-          title={panel}
-        >
-          {panel === 'report' ? (
-            <Report review={review} questions={initialQuestions} answers={initialAnswers} />
-          ) : panel === 'questions' ? (
-            <ReviewWorkspace
-              roundId={roundId}
-              runId={runId}
-              initialQuestions={initialQuestions}
-              initialAnswers={initialAnswers}
-              loadError={loadError}
-              focusQuestion={focus}
-            />
-          ) : panel === 'evidence' ? (
-            <EvidencePanel
-              questions={initialQuestions}
-              answers={initialAnswers}
-              onOpenQuestion={(questionId) => open('questions', questionId)}
-            />
-          ) : panel === 'artifacts' ? (
-            <div className="min-h-0 flex-1 overflow-y-auto">
-              <ArtifactsPanel reviewId={reviewId} canDeliver={arrivedByEmail} />
-              <div className="border-t border-subtle">
-                <ExportPanel reviewId={reviewId} roundId={roundId} />
-              </div>
-            </div>
-          ) : (
-            <AuditPanel reviewId={reviewId} questions={initialQuestions} focus={focus} />
-          )}
-        </SidePanel>
-      ) : null}
 
       {pending !== null ? (
         <NewReviewDialog
@@ -171,6 +154,6 @@ export function ChatView({
           }}
         />
       ) : null}
-    </>
+    </ChatShell>
   );
 }

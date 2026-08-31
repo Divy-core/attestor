@@ -1,4 +1,4 @@
-import { Mono, cx } from '@/components/ui/primitives';
+import { cx } from '@/components/ui/primitives';
 import type { StreamHealth } from '@/lib/sse';
 
 /**
@@ -44,8 +44,22 @@ export function StreamIndicator({
   const label = polling && health !== 'live' ? 'polling' : health;
   const solid = health === 'live';
 
+  // Everything except the dot and the word is in the tooltip. The sequence number, the
+  // backfills and the events-to-reads ratio are all worth keeping -- `seq` is what makes
+  // gap detection checkable rather than asserted, and the ratio is the coalescing that
+  // stopped a 429 on a 949-event run -- but a person watching their questionnaire being
+  // answered is not the audience for any of them.
+  const instrumentation = [
+    detail,
+    `seq ${lastSeq}`,
+    gaps > 0 ? `${gaps} gap${gaps === 1 ? '' : 's'} backfilled` : '',
+    observed > 0 ? `${observed} events coalesced into ${reads} reads` : '',
+  ]
+    .filter(Boolean)
+    .join(' · ');
+
   return (
-    <div className="flex items-center gap-2" title={detail}>
+    <div className="flex items-center gap-2" title={instrumentation}>
       <span
         aria-hidden
         className={cx(
@@ -54,31 +68,6 @@ export function StreamIndicator({
         )}
       />
       <span className={cx('text-xs', solid ? 'text-primary' : 'text-muted')}>{label}</span>
-      {/* The last sequence number, because it is the mechanism. `seq` is monotonic per run and
-          is what makes gap detection and resume-after-reconnect possible at all; showing it
-          turns "trust me, it reconnected correctly" into something checkable on screen. */}
-      <Mono dim title="Highest event sequence applied. Monotonic per run.">
-        seq {lastSeq}
-      </Mono>
-      {gaps > 0 ? (
-        <Mono
-          dim
-          title="Sequence gaps detected and backfilled from the read endpoint"
-        >
-          {gaps} backfilled
-        </Mono>
-      ) : null}
-      {observed > 0 ? (
-        // The coalescing, visible rather than asserted. A 949-event run refetching per event is
-        // ~1,900 reads against a control plane capped at four instances, which is what produced
-        // the 429 in the screen recording. This ratio is the fix, on screen.
-        <Mono
-          dim
-          title="Events observed on the stream, and the reads they caused"
-        >
-          {observed} events → {reads} reads
-        </Mono>
-      ) : null}
     </div>
   );
 }

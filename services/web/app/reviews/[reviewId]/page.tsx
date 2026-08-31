@@ -116,9 +116,9 @@ export default async function ReviewPage({
   }
 
   return (
-    <ChatShell reviews={reviews} activeId={reviewId}>
-      <ChatView
-        reviewId={reviewId}
+    <ChatView
+      reviews={reviews}
+      reviewId={reviewId}
         roundId={latestRound.round_id}
         runId={thread?.run_id ?? null}
         review={review}
@@ -128,9 +128,8 @@ export default async function ReviewPage({
         initialPanel={initialPanel}
         threadError={threadError}
         loadError={loadError}
-        arrivedByEmail={thread?.arrived_by_email ?? false}
-      />
-    </ChatShell>
+      arrivedByEmail={thread?.arrived_by_email ?? false}
+    />
   );
 }
 

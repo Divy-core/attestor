@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 
-import { Button, Mono } from '@/components/ui/primitives';
+import { Mono } from '@/components/ui/primitives';
 
 /**
  * The deliverable, and the one control on this page that hands something back.
@@ -152,9 +152,6 @@ export function ExportPanel({ reviewId, roundId }: Props) {
         >
           Download the evidence pack
         </a>
-        <Button tone="ghost" onClick={() => void load()}>
-          Refresh counts
-        </Button>
       </div>
 
       <Mono dim>
