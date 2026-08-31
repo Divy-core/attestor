@@ -68,8 +68,15 @@ type Props = {
   footer?: React.ReactNode;
 };
 
-/** No more than one read per this many milliseconds, however many events arrive. */
-const MIN_REFETCH_INTERVAL_MS = 1_200;
+/** No more than one read per this many milliseconds, however many events arrive.
+ *
+ * 600, not 1200. The ceiling exists so a 949-event run does not produce 949 reads against a
+ * control plane capped at four instances; halving it doubles the worst case to under two
+ * reads a second, which that cap absorbs, and it halves the gap between an agent finishing
+ * and its post appearing. On a surface whose whole claim is that you are watching a fleet
+ * work, that gap is the product.
+ */
+const MIN_REFETCH_INTERVAL_MS = 600;
 
 export function ReviewThread({
   reviewId,
@@ -143,7 +150,9 @@ export function ReviewThread({
   }, [reviewId, roundId]);
 
   const previous = useRef('');
-  const poller = useMemo(() => createPoller(refetch), [refetch]);
+  // The poller is the fallback for when the stream is not connected; the stream itself
+  // drives the common case. 1s rather than 2.5s so a disconnected client still looks live.
+  const poller = useMemo(() => createPoller(refetch, { activeMs: 1_000 }), [refetch]);
 
   // Coalescing. Refs throughout: this runs inside the stream's handler, which is created
   // once, and anything read through state there would be the value from first render.
