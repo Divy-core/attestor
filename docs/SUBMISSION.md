@@ -251,13 +251,3 @@ is untouched. Twenty-nine sentences were removed. **If a sentence would be at ho
 ADR, it does not belong on the screen.**
 
 ---
-
-## What is not finished
-
-- **The follow-up round waking by email** is built and tested and has not been exercised
-  end to end against a live mailbox.
-- **A quota increase** is the real remedy for finding 2. The code changes are mitigations;
-  the ceiling is a project quota with a turnaround measured in days.
-- **Persisting answers as they complete.** A partition is all-or-nothing today, so a
-  partition that fails at question 120 redrafts all 120. It is a known cost, recorded rather
-  than discovered.
