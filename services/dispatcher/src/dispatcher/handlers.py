@@ -672,7 +672,13 @@ class HandlerRegistry:
         answers = self.answers.for_round(round_.round_id)
         pending = [a for a in answers if a.status.value == "needs_human"]
 
-        if pending and review.auto_send:
+        # Read again. This handler's copy of the review is minutes old by the time it
+        # assembles -- three drafting partitions ran in between -- and the question being
+        # asked is whether this round may go back without a person, which has to be answered
+        # against the document as it is now.
+        current = self.reviews.get(review.review_id) or review
+        if pending and current.auto_send:
+            review = current
             # The gate, deliberately opened for this review. Each answer is still resolved
             # individually and recorded individually; what is skipped is the waiting, not
             # the record. `auto-send` is the actor, never the person who flipped the switch:

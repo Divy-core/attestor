@@ -216,3 +216,49 @@ def test_the_decision_count_always_matches_what_was_held(held: int) -> None:
     registry, audit, _fleet = _registry(auto_send=True, held=held)
     registry.assemble_round(_envelope())
     assert len([e for e in audit.events if e["kind"] == "human_decision"]) == held
+
+
+class TestTheSwitchIsReadWhenItMatters:
+    """The flag is set while the run is in flight, so a stale copy is the normal case.
+
+    Measured on 31 August: the trail said auto-send was enabled at 05:39:15 and the review
+    document said `False`. In between, at 05:42:19, a state transition wrote the whole
+    document from a `Review` read before the toggle. The flag was not ignored -- it was
+    overwritten by a write that knew nothing about it.
+
+    So `assemble_round` asks the repository again rather than trusting the copy it has been
+    carrying since the handler started.
+    """
+
+    def test_a_switch_flipped_mid_run_is_still_honoured(self) -> None:
+        registry, audit, fleet = _registry(auto_send=False, held=3)
+        # The console turns it on while the partitions are drafting. The handler's own
+        # `review` still says False.
+        stored = registry.reviews.get(REVIEW_ID)
+        registry.reviews.put(  # type: ignore[union-attr]
+            stored.model_copy(  # type: ignore[union-attr]
+                update={"auto_send": True, "auto_send_enabled_by": "Dana Whitfield"}
+            )
+        )
+
+        result = registry.assemble_round(_envelope())
+
+        assert len(fleet.decisions) == 3
+        assert result.state is ReviewState.ASSEMBLING
+        decisions = [e for e in audit.events if e["kind"] == "human_decision"]
+        assert {e["actor"] for e in decisions} == {"auto-send"}
+        assert {e["detail"]["enabled_by"] for e in decisions} == {"Dana Whitfield"}
+
+    def test_a_switch_turned_off_mid_run_holds_the_round(self) -> None:
+        """The same freshness, in the direction that matters more."""
+        registry, audit, fleet = _registry(auto_send=True, held=2)
+        stored = registry.reviews.get(REVIEW_ID)
+        registry.reviews.put(  # type: ignore[union-attr]
+            stored.model_copy(update={"auto_send": False})  # type: ignore[union-attr]
+        )
+
+        result = registry.assemble_round(_envelope())
+
+        assert result.state is ReviewState.AWAITING_HUMAN
+        assert fleet.decisions == []
+        assert [e for e in audit.events if e["kind"] == "human_decision"] == []

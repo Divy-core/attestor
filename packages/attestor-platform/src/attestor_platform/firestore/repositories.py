@@ -86,6 +86,23 @@ class ReviewRepository(_Repository):
         snap = self._db.collection(REVIEWS).document(review_id).get(timeout=self._timeout)
         return Review.model_validate(snap.to_dict()) if snap.exists else None
 
+    def set_auto_send(self, review_id: str, *, enabled: bool, actor: str, at: str) -> None:
+        """Set the auto-send flag without rewriting the rest of the document.
+
+        `put` writes a whole `Review`, so a caller holding a copy read minutes ago silently
+        reverts every field changed since. This flag is set from the console while the
+        dispatcher is moving the same review through its states, which is exactly that race
+        -- and it was measured losing: enabled at 05:39:15, gone by 05:42:19.
+        """
+        self._db.collection(REVIEWS).document(review_id).update(
+            {
+                "auto_send": enabled,
+                "auto_send_enabled_by": actor if enabled else "",
+                "auto_send_enabled_at": at if enabled else "",
+            },
+            timeout=self._timeout,
+        )
+
     def put(self, review: Review) -> None:
         self._db.collection(REVIEWS).document(review.review_id).set(
             review.model_dump(mode="json"), timeout=self._timeout

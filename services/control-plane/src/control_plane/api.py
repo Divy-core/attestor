@@ -494,15 +494,10 @@ def set_auto_send(review_id: str, body: AutoSendRequest, request: Request) -> di
         raise HTTPException(status.HTTP_404_NOT_FOUND, f"no review {review_id!r}")
 
     now = datetime.now(UTC).isoformat()
-    reviews().put(
-        review.model_copy(
-            update={
-                "auto_send": body.enabled,
-                "auto_send_enabled_by": body.actor if body.enabled else "",
-                "auto_send_enabled_at": now if body.enabled else "",
-            }
-        )
-    )
+    # Three fields, not a whole document. A `put` here reverts whatever the dispatcher wrote
+    # to this review since it was read, and the dispatcher is usually mid-run when somebody
+    # reaches for this switch.
+    reviews().set_auto_send(review_id, enabled=body.enabled, actor=body.actor, at=now)
     audit().append_safe(
         {
             "kind": "auto_send_changed",
