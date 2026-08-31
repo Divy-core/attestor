@@ -1,0 +1,236 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1480 1000" width="1480" height="1000" role="img" aria-label="Attestor architecture: a customer email or an uploaded questionnaire becomes a Pub/Sub work envelope, a Cloud Run dispatcher fans it out to seven Agent Runtime engines under separate identities, each department engine bound to its own Vertex AI Search datastore, with Firestore and Memory Bank for state, Model Armor on both directions, and two observability planes.">
+  <title>Attestor — deployed architecture</title>
+  <style>
+    :root{
+      --ink:#1f2328; --mid:#57606a; --line:#8c959f; --soft:#d8dee4;
+      --accent:#0969da; --refuse:#cf222e; --band:#f6f8fa;
+    }
+    @media (prefers-color-scheme: dark){
+      :root{
+        --ink:#e6edf3; --mid:#9198a1; --line:#6e7681; --soft:#30363d;
+        --accent:#4493f8; --refuse:#ff7b72; --band:#161b22;
+      }
+    }
+    text{font-family:ui-sans-serif,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;fill:var(--ink)}
+    .t   {font-size:13px}
+    .s   {font-size:11px;fill:var(--mid)}
+    .xs  {font-size:10px;fill:var(--mid)}
+    .hd  {font-size:11px;font-weight:600;fill:var(--mid);letter-spacing:.08em}
+    .ttl {font-size:22px;font-weight:600}
+    .sub {font-size:13px;fill:var(--mid)}
+    .mono{font-family:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;font-size:10.5px;fill:var(--mid)}
+    .box {fill:none;stroke:var(--line);stroke-width:1}
+    .band{fill:var(--band);stroke:var(--soft);stroke-width:1}
+    .e   {stroke:var(--line);stroke-width:1.25;fill:none}
+    .ea  {stroke:var(--accent);stroke-width:1.75;fill:none}
+    .er  {stroke:var(--refuse);stroke-width:1.25;fill:none;stroke-dasharray:4 4}
+    .lab {font-size:10px;fill:var(--mid)}
+    .laba{font-size:10px;fill:var(--accent);font-weight:600}
+  </style>
+  <defs>
+    <marker id="a" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L8 4 L0 8 z" fill="var(--line)"/>
+    </marker>
+    <marker id="aa" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L8 4 L0 8 z" fill="var(--accent)"/>
+    </marker>
+    <marker id="ar" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L8 4 L0 8 z" fill="var(--refuse)"/>
+    </marker>
+  </defs>
+
+  <text class="ttl" x="30" y="38">Attestor — an enterprise agent fleet that answers vendor security questionnaires</text>
+  <text class="sub" x="30" y="60">Every box below is a resource deployed in Google Cloud project <tspan class="mono" style="font-size:12px">attestor-505506</tspan>, region <tspan class="mono" style="font-size:12px">us-central1</tspan>.</text>
+
+  <!-- ================= column headings ================= -->
+  <text class="hd" x="30"   y="100">HOW WORK ARRIVES</text>
+  <text class="hd" x="272"  y="100">TRANSPORT</text>
+  <text class="hd" x="470"  y="100">CLOUD RUN</text>
+  <text class="hd" x="736"  y="100">AGENT RUNTIME — 7 ENGINES, 7 IDENTITIES</text>
+  <text class="hd" x="1140" y="100">STATE AND CORPUS</text>
+
+  <!-- ================= A. ingress ================= -->
+  <rect class="box" x="30" y="118" width="196" height="72" rx="4"/>
+  <text class="t"  x="44" y="141">Gmail mailbox</text>
+  <text class="mono" x="44" y="158">divy.ds.x+attestor@gmail.com</text>
+  <text class="xs" x="44" y="176">users.watch scoped to one label</text>
+
+  <rect class="box" x="30" y="250" width="196" height="72" rx="4"/>
+  <text class="t"  x="44" y="273">Browser — web console</text>
+  <text class="xs" x="44" y="290">drag a questionnaire in, or</text>
+  <text class="xs" x="44" y="304">type a command in the thread</text>
+
+  <!-- ================= B. transport ================= -->
+  <rect class="box" x="272" y="118" width="160" height="52" rx="4"/>
+  <text class="t"    x="284" y="139">Pub/Sub topic</text>
+  <text class="mono" x="284" y="156">attestor-gmail</text>
+
+  <rect class="box" x="272" y="250" width="160" height="52" rx="4"/>
+  <text class="t"    x="284" y="271">Pub/Sub topic</text>
+  <text class="mono" x="284" y="288">attestor.work</text>
+
+  <rect class="box" x="272" y="330" width="160" height="52" rx="4"/>
+  <text class="t"    x="284" y="351">Dead letter</text>
+  <text class="mono" x="284" y="368">attestor.deadletter</text>
+
+  <!-- ================= C. cloud run ================= -->
+  <rect class="box" x="470" y="118" width="212" height="106" rx="4"/>
+  <text class="t"    x="484" y="140">attestor-dispatcher</text>
+  <text class="xs"   x="484" y="158">Eventarc push subscription</text>
+  <text class="xs"   x="484" y="174">one WorkKind per message,</text>
+  <text class="xs"   x="484" y="188">claimed under a 900s lease</text>
+  <text class="mono" x="484" y="210">--concurrency 1</text>
+
+  <rect class="box" x="470" y="250" width="212" height="72" rx="4"/>
+  <text class="t"  x="484" y="272">attestor-control-plane</text>
+  <text class="xs" x="484" y="290">REST + SSE. Publishes envelopes,</text>
+  <text class="xs" x="484" y="304">mints v4 signed upload URLs</text>
+
+  <rect class="box" x="470" y="348" width="212" height="58" rx="4"/>
+  <text class="t"  x="484" y="370">attestor-web</text>
+  <text class="xs" x="484" y="388">Next.js console and Review Thread</text>
+
+  <!-- ================= D. the fleet ================= -->
+  <rect class="box" x="736" y="112" width="356" height="46" rx="4"/>
+  <text class="t"    x="750" y="132">attestor-orchestrator</text>
+  <text class="xs"   x="750" y="148">plans the round · decides retries · releases or holds</text>
+  <text class="mono" x="1076" y="140" text-anchor="end">511608…</text>
+
+  <rect class="box" x="736" y="168" width="356" height="46" rx="4"/>
+  <text class="t"    x="750" y="188">attestor-security</text>
+  <text class="xs"   x="750" y="204">drafts security answers, cites what it retrieved</text>
+  <text class="mono" x="1076" y="196" text-anchor="end">633363…</text>
+
+  <rect class="box" x="736" y="224" width="356" height="46" rx="4"/>
+  <text class="t"    x="750" y="244">attestor-legal</text>
+  <text class="xs"   x="750" y="260">drafts legal and privacy answers</text>
+  <text class="mono" x="1076" y="252" text-anchor="end">817335…</text>
+
+  <rect class="box" x="736" y="280" width="356" height="46" rx="4"/>
+  <text class="t"    x="750" y="300">attestor-engineering</text>
+  <text class="xs"   x="750" y="316">drafts platform and reliability answers</text>
+  <text class="mono" x="1076" y="308" text-anchor="end">434079…</text>
+
+  <rect class="box" x="736" y="336" width="356" height="46" rx="4"/>
+  <text class="t"    x="750" y="356">attestor-evidence</text>
+  <text class="xs"   x="750" y="372">retrieves passages, never opinions</text>
+  <text class="mono" x="1076" y="364" text-anchor="end">902453…</text>
+
+  <rect class="box" x="736" y="392" width="356" height="46" rx="4" stroke-width="1.75"/>
+  <text class="t"    x="750" y="412">attestor-verifier</text>
+  <text class="xs"   x="750" y="428">checks a draft against the passages it cites — no corpus tool</text>
+  <text class="mono" x="1076" y="420" text-anchor="end">125572…</text>
+
+  <rect class="box" x="736" y="448" width="356" height="46" rx="4"/>
+  <text class="t"    x="750" y="468">attestor-probe</text>
+  <text class="xs"   x="750" y="484">reads across the IAM boundary so the refusal is measured</text>
+  <text class="mono" x="1076" y="476" text-anchor="end">859875…</text>
+
+  <text class="xs" x="736" y="512">Each engine runs under its own Agent Identity and is published to the Agent Registry.</text>
+  <text class="xs" x="736" y="527">Separation of duties: a verdict is refused when the verifying identity equals the drafting one.</text>
+
+  <!-- ================= E. data ================= -->
+  <rect class="box" x="1140" y="112" width="310" height="46" rx="4"/>
+  <text class="t"    x="1154" y="132">Vertex AI Search</text>
+  <text class="mono" x="1154" y="149">attestor-corpus-security</text>
+
+  <rect class="box" x="1140" y="168" width="310" height="46" rx="4"/>
+  <text class="t"    x="1154" y="188">Vertex AI Search</text>
+  <text class="mono" x="1154" y="205">attestor-corpus-legal</text>
+
+  <rect class="box" x="1140" y="224" width="310" height="46" rx="4"/>
+  <text class="t"    x="1154" y="244">Vertex AI Search</text>
+  <text class="mono" x="1154" y="261">attestor-corpus-engineering</text>
+
+  <rect class="box" x="1140" y="300" width="310" height="62" rx="4"/>
+  <text class="t"  x="1154" y="322">Firestore</text>
+  <text class="xs" x="1154" y="339">reviews · rounds · questions · answers</text>
+  <text class="xs" x="1154" y="353">work_claims · audit_events (append-only)</text>
+
+  <rect class="box" x="1140" y="376" width="310" height="52" rx="4"/>
+  <text class="t"  x="1154" y="398">Memory Bank</text>
+  <text class="xs" x="1154" y="415">what was promised to this customer before</text>
+
+  <rect class="box" x="1140" y="442" width="310" height="62" rx="4"/>
+  <text class="t"    x="1154" y="464">Cloud Storage</text>
+  <text class="mono" x="1154" y="481">…-uploads · …-corpus · …-exports</text>
+  <text class="xs"   x="1154" y="496">IAM conditioned on the corpus/&lt;dept&gt;/ prefix</text>
+
+  <!-- ================= edges ================= -->
+  <!-- gmail -> topic -> dispatcher  (the accent path: started by an email) -->
+  <path class="ea" d="M226 154 L266 154" marker-end="url(#aa)"/>
+  <path class="ea" d="M432 144 L452 144 L452 160 L464 160" marker-end="url(#aa)"/>
+  <text class="laba" x="228" y="146">notifies</text>
+
+  <!-- browser -> control plane -->
+  <path class="e" d="M226 286 L464 286" marker-end="url(#a)"/>
+  <text class="lab" x="300" y="280">REST · SSE</text>
+
+  <!-- browser -> GCS direct (signed URL), the long way round -->
+  <path class="e" d="M128 322 L128 560 L1295 560 L1295 508" marker-end="url(#a)"/>
+  <text class="lab" x="150" y="554">the questionnaire goes straight to Cloud Storage on a v4 signed URL — it never transits either service</text>
+
+  <!-- control plane -> attestor.work -->
+  <path class="e" d="M464 268 L444 268 L444 276 L436 276" marker-end="url(#a)"/>
+  <text class="lab" x="392" y="248">publishes</text>
+
+  <!-- attestor.work -> dispatcher -->
+  <path class="e" d="M432 262 L452 262 L452 200 L464 200" marker-end="url(#a)"/>
+  <text class="lab" x="456" y="238">push</text>
+
+  <!-- dispatcher -> deadletter -->
+  <path class="e" d="M470 216 L448 216 L448 350 L436 350" marker-end="url(#a)"/>
+  <text class="lab" x="360" y="396">after 5 attempts</text>
+
+  <!-- dispatcher -> engines -->
+  <path class="e" d="M682 170 L710 170 L710 135 L732 135" marker-end="url(#a)"/>
+  <path class="e" d="M682 180 L710 180 L710 415 L732 415" marker-end="url(#a)"/>
+  <text class="lab" x="688" y="286">invokes</text>
+
+  <!-- engines -> datastores -->
+  <path class="e" d="M1092 180 L1104 180 L1104 141 L1136 141" marker-end="url(#a)"/>
+  <path class="e" d="M1092 256 L1114 256 L1114 197 L1136 197" marker-end="url(#a)"/>
+  <path class="e" d="M1092 312 L1124 312 L1124 253 L1136 253" marker-end="url(#a)"/>
+
+  <!-- refused edge: the security engine cannot read the legal corpus -->
+  <path class="er" d="M1092 202 L1136 202" marker-end="url(#ar)"/>
+
+  <!-- dispatcher <-> firestore / memory bank -->
+  <path class="e" d="M682 300 L706 300 L706 600 L1295 600 L1295 366" marker-end="url(#a)"/>
+  <text class="lab" x="720" y="594">every stage writes an audit event before it acts, and reads prior commitments before it drafts</text>
+
+  <!-- ================= guardrails band ================= -->
+  <rect class="band" x="30" y="640" width="1420" height="96" rx="4"/>
+  <text class="hd" x="46" y="664">MODEL ARMOR — BOTH DIRECTIONS</text>
+  <text class="t"  x="46" y="690">Ingress: every question is screened before an agent reads it.</text>
+  <text class="xs" x="46" y="708">A questionnaire cell is untrusted input. Prompt injection and jailbreak filters run on the way in, and a</text>
+  <text class="xs" x="46" y="722">blocked question is quarantined with the matched filter recorded rather than answered.</text>
+  <text class="t"  x="760" y="690">Egress: every drafted answer is screened before it leaves.</text>
+  <text class="xs" x="760" y="708">PII and sensitive-data filters run on the way out. The dispatcher fails CLOSED — when Model Armor cannot</text>
+  <text class="xs" x="760" y="722">be reached the work is refused, because a guardrail that fails open is not a guardrail.</text>
+
+  <!-- ================= observability band ================= -->
+  <rect class="band" x="30" y="752" width="700" height="116" rx="4"/>
+  <text class="hd" x="46" y="776">PLANE 1 — CLOUD TRACE</text>
+  <text class="t"  x="46" y="800">Operational. What was slow, what retried, what timed out.</text>
+  <text class="xs" x="46" y="820">Spans are emitted by the Google client libraries themselves; this codebase adds no custom spans.</text>
+  <text class="xs" x="46" y="836">Sampled, best-effort, and it may drop a span without anything being wrong.</text>
+  <text class="xs" x="46" y="856">Answers the question an operator asks at 3am.</text>
+
+  <rect class="band" x="750" y="752" width="700" height="116" rx="4"/>
+  <text class="hd" x="766" y="776">PLANE 2 — audit_events IN FIRESTORE</text>
+  <text class="t"  x="766" y="800">Compliance. Who decided what, on which evidence, under which identity.</text>
+  <text class="xs" x="766" y="820">Append-only, hash-chained, never sampled. Written before the action it describes, so a crash</text>
+  <text class="xs" x="766" y="836">leaves a record of the attempt rather than a silence.</text>
+  <text class="xs" x="766" y="856">This is the plane the product renders. The Review Thread is a projection over it, and writes nothing.</text>
+
+  <text class="xs" x="30" y="908">The two planes are separate on purpose. A sampled trace store cannot answer a compliance question, and an append-only compliance log is the wrong tool for finding a slow call.</text>
+
+  <!-- ================= legend ================= -->
+  <line class="ea" x1="30" y1="948" x2="66" y2="948" marker-end="url(#aa)"/>
+  <text class="s" x="76" y="952">the inbound path — a customer email starts a review with nobody involved</text>
+  <line class="er" x1="560" y1="948" x2="596" y2="948" marker-end="url(#ar)"/>
+  <text class="s" x="606" y="952">the security engine reaching for the legal corpus — 403, refused by IAM, and measured</text>
+  <text class="s" x="1040" y="952">Gemini 3.7 Flash on Vertex AI reasons in every engine above.</text>
+  <text class="xs" x="30" y="978">Diagram matches the deployment as of 27 August 2026. Engine ids are the live resource names, truncated. See docs/proof/ for the measured artefacts behind each claim.</text>
+</svg>

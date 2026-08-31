@@ -128,6 +128,89 @@ export default async function AboutPage() {
           </p>
         </section>
 
+        {/* The argument, step for step. Nothing on this page is worth more than this. */}
+        <section className="border-y border-subtle bg-sunken">
+          <div className="mx-auto w-full max-w-essay px-6 py-32">
+            <h2 className="max-w-[18ch] text-display leading-tight text-primary">
+              The same work, twice.
+            </h2>
+            <div className="mt-16 grid gap-x-16 gap-y-10 md:grid-cols-2">
+              <div>
+                <p className="text-sm uppercase tracking-wider text-muted">A person, three weeks</p>
+                <ol className="mt-6 flex flex-col gap-4 text-base leading-relaxed text-secondary">
+                  <li>Opens the spreadsheet. Two hundred rows.</li>
+                  <li>Searches the policy drive for each one.</li>
+                  <li>Asks engineering about the ones nobody wrote down.</li>
+                  <li>Checks what was said to this customer last quarter.</li>
+                  <li>Writes an answer. Cannot remember which document it came from.</li>
+                  <li>Sends it, and hopes nothing contradicts anything.</li>
+                </ol>
+              </div>
+              <div>
+                <p className="text-sm uppercase tracking-wider text-primary">
+                  The fleet, thirteen minutes
+                </p>
+                <ol className="mt-6 flex flex-col gap-4 text-base leading-relaxed text-secondary">
+                  <li>Reads the email nobody opened.</li>
+                  <li>Routes every question to the team that owns it.</li>
+                  <li>Answers from your documents, citing the section.</li>
+                  <li>Recalls what this customer was told before.</li>
+                  <li>Has a second agent check every claim against its passages.</li>
+                  <li>Refuses what it cannot support, and hands you those.</li>
+                </ol>
+              </div>
+            </div>
+            <p className="mt-16 max-w-prose text-md leading-relaxed text-secondary">
+              Nobody finds the same document twice.
+            </p>
+          </div>
+        </section>
+
+        {/* Both ends of the loop, which is the part that makes it a fleet. */}
+        <section className="mx-auto w-full max-w-essay px-6 py-32">
+          <h2 className="max-w-[22ch] text-display leading-tight text-primary">
+            It closes the loop, not just the middle.
+          </h2>
+          <ol className="mt-16 flex flex-col gap-10">
+            {[
+              ['A customer emails a questionnaire.', 'Nobody forwards it. Nobody clicks anything.'],
+              ['The fleet answers it.', 'Ten agents, seven identities, each bound to one corpus.'],
+              ['A second identity checks the work.', 'It is handed the passages and asked whether they carry the claim.'],
+              ['You approve what it held.', 'One action. Every answer still recorded separately, under your name.'],
+              ['The reply goes back on their thread.', 'Their workbook, their rows, with the evidence pack attached.'],
+            ].map(([title, body], index) => (
+              <li key={title} className="flex gap-6">
+                <span className="w-8 shrink-0 font-mono text-md text-muted">
+                  {String(index + 1).padStart(2, '0')}
+                </span>
+                <div>
+                  <h3 className="text-md text-primary">{title}</h3>
+                  <p className="mt-2 max-w-prose text-base leading-relaxed text-secondary">{body}</p>
+                </div>
+              </li>
+            ))}
+          </ol>
+        </section>
+
+        {/* The boxes are real, and here they are. */}
+        <section className="border-y border-subtle bg-sunken">
+          <div className="mx-auto w-full max-w-[1400px] px-6 py-32">
+            <h2 className="max-w-[24ch] text-display leading-tight text-primary">
+              Every box below is running.
+            </h2>
+            <p className="mt-6 max-w-prose text-md leading-relaxed text-secondary">
+              Seven agent identities, three department corpora, two observability planes, and a
+              guardrail on both directions.
+            </p>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="/architecture.svg"
+              alt="A customer email becomes a Pub/Sub work envelope; a Cloud Run dispatcher fans it out to seven Agent Runtime engines under separate identities, each department engine bound to its own Vertex AI Search datastore, with Firestore and Memory Bank for state, Model Armor on both directions, and two observability planes."
+              className="mt-16 w-full"
+            />
+          </div>
+        </section>
+
         {/* One line, alone, at a size nothing else reaches. The turn from problem to product. */}
         <section className="border-y border-subtle">
           <div className="mx-auto w-full max-w-essay px-6 py-32">
