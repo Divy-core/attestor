@@ -143,6 +143,16 @@ class _FakeAudit:
         self.events.append(event)
         return "evt"
 
+    def auto_send_enabled(self, review_id: str) -> tuple[bool, str, str]:
+        """Off, and stated rather than defaulted.
+
+        `assemble_round` reads the switch from the audit trail, so every audit double has
+        to answer this. Implemented here rather than tolerated with a `getattr` in the
+        handler: a sink that has quietly stopped answering would mean "auto-send is off",
+        which is a missing method impersonating a decision.
+        """
+        return (False, "", "")
+
 
 class _Repo:
     def __init__(self, value: Any) -> None:

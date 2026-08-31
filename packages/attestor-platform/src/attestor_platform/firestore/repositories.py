@@ -270,6 +270,34 @@ class _AppendOnlyEventRepository(_Repository):
         query = self._db.collection(self._collection).where("review_id", "==", review_id)
         return [dict(d.to_dict() or {}) for d in query.limit(limit).stream(timeout=self._timeout)]
 
+    def auto_send_enabled(self, review_id: str) -> tuple[bool, str, str]:
+        """Whether auto-send is on for this review, from the append-only record.
+
+        Returns `(enabled, who_set_it, when)`. The review *document* also carries the flag
+        and is the fast read for the console, but it is written whole on every state
+        transition -- so a toggle set while a run is in flight is reliably lost, which is
+        what two live tests showed before this existed. `audit_events` is append-only;
+        nothing rewrites it.
+
+        The most recent `auto_send_changed` wins, so turning it off is honoured the same way
+        turning it on is. No event means off, which is the safe direction: a review nobody
+        has spoken about does not email a customer by itself.
+        """
+        changes = [
+            event
+            for event in self.for_review(review_id)
+            if event.get("kind") == "auto_send_changed"
+        ]
+        if not changes:
+            return (False, "", "")
+        latest = max(changes, key=lambda event: str(event.get("occurred_at") or ""))
+        detail = latest.get("detail") or {}
+        return (
+            bool(detail.get("enabled")),
+            str(latest.get("actor") or ""),
+            str(detail.get("at") or latest.get("occurred_at") or ""),
+        )
+
     def for_run(self, run_id: str, limit: int = 500) -> list[dict[str, Any]]:
         query = self._db.collection(self._collection).where("run_id", "==", run_id)
         return [dict(d.to_dict() or {}) for d in query.limit(limit).stream(timeout=self._timeout)]

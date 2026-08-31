@@ -79,11 +79,29 @@ class _Answers:
 
 
 class _Audit:
+    """Append-only, and the source of truth for the switch -- as in production."""
+
     def __init__(self) -> None:
         self.events: list[dict[str, Any]] = []
 
     def append_safe(self, event: dict[str, Any]) -> None:
         self.events.append(event)
+
+    def auto_send_enabled(self, review_id: str) -> tuple[bool, str, str]:
+        changes = [
+            event
+            for event in self.events
+            if event.get("kind") == "auto_send_changed" and event.get("review_id") == review_id
+        ]
+        if not changes:
+            return (False, "", "")
+        latest = changes[-1]
+        detail = latest.get("detail") or {}
+        return (
+            bool(detail.get("enabled")),
+            str(latest.get("actor") or ""),
+            str(detail.get("at") or ""),
+        )
 
 
 class _Publisher:
@@ -132,6 +150,18 @@ def _registry(*, auto_send: bool, held: int) -> tuple[HandlerRegistry, _Audit, _
         + [_answer(100, AnswerStatus.DRAFTED)]
     )
     audit = _Audit()
+    if auto_send:
+        # Where a person flipping the switch actually lands. The review field is the
+        # console's fast read; this is what decides whether a customer gets emailed.
+        audit.append_safe(
+            {
+                "kind": "auto_send_changed",
+                "review_id": REVIEW_ID,
+                "run_id": "-",
+                "actor": "Dana Whitfield",
+                "detail": {"enabled": True, "at": datetime.now(UTC).isoformat()},
+            }
+        )
     fleet = _Fleet(answers)
     registry = HandlerRegistry(
         reviews=_Reviews(review),  # type: ignore[arg-type]
@@ -232,13 +262,16 @@ class TestTheSwitchIsReadWhenItMatters:
 
     def test_a_switch_flipped_mid_run_is_still_honoured(self) -> None:
         registry, audit, fleet = _registry(auto_send=False, held=3)
-        # The console turns it on while the partitions are drafting. The handler's own
-        # `review` still says False.
-        stored = registry.reviews.get(REVIEW_ID)
-        registry.reviews.put(  # type: ignore[union-attr]
-            stored.model_copy(  # type: ignore[union-attr]
-                update={"auto_send": True, "auto_send_enabled_by": "Dana Whitfield"}
-            )
+        # The console turns it on while the partitions are drafting. The review document
+        # is not touched at all -- and that is the point: it is the store that loses this.
+        audit.append_safe(
+            {
+                "kind": "auto_send_changed",
+                "review_id": REVIEW_ID,
+                "run_id": "-",
+                "actor": "Dana Whitfield",
+                "detail": {"enabled": True, "at": datetime.now(UTC).isoformat()},
+            }
         )
 
         result = registry.assemble_round(_envelope())
@@ -252,9 +285,14 @@ class TestTheSwitchIsReadWhenItMatters:
     def test_a_switch_turned_off_mid_run_holds_the_round(self) -> None:
         """The same freshness, in the direction that matters more."""
         registry, audit, fleet = _registry(auto_send=True, held=2)
-        stored = registry.reviews.get(REVIEW_ID)
-        registry.reviews.put(  # type: ignore[union-attr]
-            stored.model_copy(update={"auto_send": False})  # type: ignore[union-attr]
+        audit.append_safe(
+            {
+                "kind": "auto_send_changed",
+                "review_id": REVIEW_ID,
+                "run_id": "-",
+                "actor": "Dana Whitfield",
+                "detail": {"enabled": False, "at": datetime.now(UTC).isoformat()},
+            }
         )
 
         result = registry.assemble_round(_envelope())
@@ -262,3 +300,24 @@ class TestTheSwitchIsReadWhenItMatters:
         assert result.state is ReviewState.AWAITING_HUMAN
         assert fleet.decisions == []
         assert [e for e in audit.events if e["kind"] == "human_decision"] == []
+
+
+def test_the_review_document_is_not_what_decides() -> None:
+    """The bug, as a test.
+
+    `_move` writes the whole review on every state transition from a copy read when the
+    handler started, so a switch flipped mid-run is gone from the document by the time the
+    round assembles. It was measured losing twice. A document that says `False` while the
+    trail says somebody turned it on must not stop the round going back.
+    """
+    registry, audit, fleet = _registry(auto_send=True, held=2)
+    stored = registry.reviews.get(REVIEW_ID)
+    # Exactly what a state transition does to it.
+    registry.reviews.put(  # type: ignore[union-attr]
+        stored.model_copy(update={"auto_send": False})  # type: ignore[union-attr]
+    )
+
+    registry.assemble_round(_envelope())
+
+    assert len(fleet.decisions) == 2
+    assert {e["actor"] for e in audit.events if e["kind"] == "human_decision"} == {"auto-send"}

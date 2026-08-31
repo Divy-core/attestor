@@ -4005,6 +4005,82 @@ own echo. And an attachment re-encoded by a third-party tool arrived corrupt: fi
 then a dead letter reading `Error -3 while decompressing data` rather than a half-parsed
 questionnaire.
 
+### The final UI pass (31 Aug, morning)
+
+**The panel was rendering in the wrong place, and it was one line.** `ChatShell` has had the
+right three-column structure since Phase 9 -- rail, `<main>`, panel, in a row -- and
+`ChatView` never used it. It returned a fragment holding *both* the thread and the panel,
+and that fragment was passed as `children`, so the panel landed inside
+`<main className="flex flex-col">`. At >=lg the panel is `static`, so it simply became the
+next block down: the report opened underneath the composer in the left half while the right
+950px of a 1920px viewport stayed empty.
+
+| | rail | thread column | panel |
+|---|---|---|---|
+| open | 0-260 | 768px centred at x=441 | 1400-1920, full height |
+| closed | 0-260 | 768px centred at x=701 | absent |
+
+The duplicate tab strip under the composer went with it. `SidePanel` renders the same five
+tabs in its own header, so the closed state had been showing controls for a panel that was
+not open -- most of why the composer looked like it was floating mid-page.
+
+**Instrumentation into the tooltip.** `live seq 22 22 events -> 2 reads` is four facts a
+person watching their questionnaire being answered has no use for. None of it deleted: `seq`
+is what makes gap detection checkable and the ratio is the coalescing that stopped a 429 on
+a 949-event run. A dot and one word stay on screen.
+
+**The email is in the thread.** `InboundMessage` had carried `to`, `body_text` and
+`received_at` since Phase 7 and none of them reached the audit detail, so this was additive
+to a dict -- same classification, same publish, same states, and the inbound suite stayed
+green throughout. The block now lays the message out the way a mail client does and then
+shows it. The outbound half was missing the same thing: `pack_delivered` recorded who
+authorised the reply and where the files landed but not what the customer received.
+
+Verified on a live inbound email, 51 seconds from send to assembled:
+
+```
+▸ The email     From / To / Subject / Received 31 Aug 2026, 05:51 UTC
+▸ The message   the four questions, as the customer wrote them
+▸ What I classified it as, and why
+```
+
+**The about page argues.** Terafab's rhythm, measured off the live site rather than
+described: full-bleed sections, 43-750 characters each, headings that assert rather than
+label. Three added -- *The same work, twice* (two columns, a person over three weeks against
+the fleet in thirteen minutes), *It closes the loop, not just the middle*, and *Every box
+below is running* with the architecture diagram full-bleed. Section heights now run 191 to
+1624px against what had been a uniform stack.
+
+The copy linter caught the one sentence that argued rather than stated -- *"it is faster
+because nobody has to find the document twice"* -- which was the first time it caught
+marketing prose rather than an ADR sentence.
+
+### Auto-send did not work, and only a live test said so
+
+Eight unit tests passed and the feature was broken. The trail and the document disagreed:
+
+```
+05:39:15  auto_send_changed  enabled: true
+05:42:19  assemble_round     awaiting_human: 1
+the review document:         auto_send = False
+```
+
+`_move` writes the *whole* review from a copy read when the handler started, which was before
+the toggle. The flag was not ignored; it was clobbered by a state transition that knew
+nothing about it. The unit tests had no concurrent writer, so none of them could see it.
+
+The third instance of one shape in a single day: a value set on one path, silently discarded
+by a write on another that replaces rather than merges. The deploy dropping the poll interval
+that morning was the same defect in a shell script.
+
+Fixed twice over -- `set_auto_send` updates three fields rather than round-tripping a
+document, and `assemble_round` reads the review again before it checks, because its own copy
+is minutes old by then. Two tests, in both directions; the *off* direction matters more.
+
+**Not fixed:** `_move` still writes whole documents everywhere else. That is the real defect
+and it touches every handler on the path the recording depends on, four hours before that
+recording. Recorded as a known cost with the demo path made correct.
+
 ### Phase 12 exit criteria
 
 | # | Criterion | State | How verified |

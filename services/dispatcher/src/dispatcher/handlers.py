@@ -672,13 +672,13 @@ class HandlerRegistry:
         answers = self.answers.for_round(round_.round_id)
         pending = [a for a in answers if a.status.value == "needs_human"]
 
-        # Read again. This handler's copy of the review is minutes old by the time it
-        # assembles -- three drafting partitions ran in between -- and the question being
-        # asked is whether this round may go back without a person, which has to be answered
-        # against the document as it is now.
-        current = self.reviews.get(review.review_id) or review
-        if pending and current.auto_send:
-            review = current
+        # Asked of the audit trail, not of the review document. The document carries the
+        # flag and loses it: `_move` writes the whole review from a stale copy on every
+        # state transition, and three drafting partitions transition between the moment
+        # somebody flips this switch and the moment this line runs. Measured losing it
+        # twice. `audit_events` is append-only and nothing rewrites it.
+        auto_send, enabled_by, enabled_at = self.audit.auto_send_enabled(review.review_id)
+        if pending and auto_send:
             # The gate, deliberately opened for this review. Each answer is still resolved
             # individually and recorded individually; what is skipped is the waiting, not
             # the record. `auto-send` is the actor, never the person who flipped the switch:
@@ -703,8 +703,8 @@ class HandlerRegistry:
                             "edited": False,
                             "round_id": round_.round_id,
                             "automated": True,
-                            "enabled_by": review.auto_send_enabled_by,
-                            "enabled_at": review.auto_send_enabled_at,
+                            "enabled_by": enabled_by,
+                            "enabled_at": enabled_at,
                         },
                     }
                 )
