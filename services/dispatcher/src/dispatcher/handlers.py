@@ -234,6 +234,14 @@ class HandlerResult:
     detail: dict[str, Any] = field(default_factory=dict)
 
 
+#: How much of an inbound email body is kept on the audit trail.
+#:
+#: A questionnaire email is a few hundred words. This is an append-only store that the thread
+#: projection reads on every render, so an unbounded field here is a document nobody decided
+#: to keep, copied on every read, forever.
+INBOUND_BODY_CEILING = 4_000
+
+
 class HandlerRegistry:
     """Maps a `WorkKind` to the function that performs it.
 
@@ -976,11 +984,13 @@ class HandlerRegistry:
             attachments.append((bundle.filename("xlsx"), XLSX_MIME, workbook))
         attachments.append((bundle.filename("pdf"), "application/pdf", evidence))
 
+        reply_subject = f"Re: security review — {review.customer}"
+        reply_body = _covering_note(review, bundle, payload.note)
         sent_id = self.gmail.send_reply(
             thread_id=str(thread["thread_id"]),
             to=str(thread.get("sender") or ""),
-            subject=f"Re: security review — {review.customer}",
-            body=_covering_note(review, bundle, payload.note),
+            subject=reply_subject,
+            body=reply_body,
             attachments=tuple(attachments),
         )
 
@@ -989,6 +999,12 @@ class HandlerRegistry:
             "approved_by": payload.approved_by,
             "thread_id": thread["thread_id"],
             "to": thread.get("sender"),
+            # What was actually sent, not a description of it. The same reasoning as the
+            # inbound body: this is the other end of the claim that a customer got an
+            # answered questionnaire back, and it should be readable rather than asserted.
+            "subject": reply_subject,
+            "reply_body": reply_body[:INBOUND_BODY_CEILING],
+            "attached": [name for name, _mime, _data in attachments],
             "gmail_message_id": sent_id,
             "questions": len(bundle.rows),
             "sendable": bundle.sendable,
@@ -1086,11 +1102,20 @@ class HandlerRegistry:
 
         known_review_id = self.inbox_state.review_for_thread(message.thread_id)
         verdict = self.fleet.classify_inbound(message, known_thread=bool(known_review_id))
+        # The message itself, not just its metadata. This is what makes "an email started
+        # this, and nobody read it" something a reader can check rather than take on trust.
+        body = message.body_text.strip()
         detail: dict[str, Any] = {
             "gmail_message_id": message.message_id,
             "gmail_thread_id": message.thread_id,
             "sender": message.sender,
+            "to": message.to,
             "subject": message.subject[:200],
+            "received_at": message.received_at.isoformat(),
+            "body": body[:INBOUND_BODY_CEILING],
+            # Said rather than implied. A body that stops mid-sentence with no note reads as
+            # a parsing fault, and this trail's whole value is that it does not do that.
+            "body_truncated": len(body) > INBOUND_BODY_CEILING,
             "attachments": [a.filename for a in message.attachments],
             **verdict.as_detail(),
         }

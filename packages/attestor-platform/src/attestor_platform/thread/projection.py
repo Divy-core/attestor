@@ -39,6 +39,7 @@ import re
 from collections import Counter, defaultdict
 from collections.abc import Sequence
 from dataclasses import replace
+from datetime import datetime
 from typing import Any
 
 from attestor_core.domain import Answer, Question, Review, Round
@@ -119,6 +120,21 @@ def _actor(event: dict[str, Any], fallback: str) -> str:
 
 def _question_id(event: dict[str, Any]) -> str:
     return str(event.get("question_id") or "")
+
+
+def _received(iso: str) -> str:
+    """`30 Aug 2026, 14:51 UTC`, or the raw value when it is not a timestamp.
+
+    Never empty and never a guess: a header this system could not parse is shown as it
+    arrived rather than as a blank, which would read as an email with no arrival time.
+    """
+    if not iso:
+        return "—"
+    try:
+        when = datetime.fromisoformat(iso)
+    except ValueError:
+        return iso
+    return when.strftime("%d %b %Y, %H:%M UTC")
 
 
 def _by_kind(events: Sequence[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
@@ -423,7 +439,9 @@ def _inbound_post(
 
     email_rows = [
         Row("From", sender, mono=True),
+        Row("To", str(detail.get("to") or "—"), mono=bool(detail.get("to"))),
         Row("Subject", subject or "—"),
+        Row("Received", _received(str(detail.get("received_at") or ""))),
         Row(
             "Attachment",
             ", ".join(attachments) if attachments else "none",
@@ -434,6 +452,20 @@ def _inbound_post(
     ]
     if deadline:
         email_rows.append(Row("Deadline the customer named", deadline))
+
+    # The message, as its own block and immediately after the header, because it is the
+    # evidence the rest of the post is about. Absent when it was never recorded -- a review
+    # from before the body was stored renders without one rather than with an empty quote.
+    body = str(detail.get("body") or "").strip()
+    body_block: tuple[Detail, ...] = ()
+    if body:
+        body_block = (
+            Detail(
+                "The message",
+                tuple(Row("", line) for line in body.splitlines() if line.strip()),
+                note=("Truncated at 4,000 characters." if detail.get("body_truncated") else ""),
+            ),
+        )
 
     verdict = "a security review" if detail.get("is_security_review") else "not a security review"
     classification = [
@@ -451,6 +483,7 @@ def _inbound_post(
 
     details = [
         Detail("The email", tuple(email_rows)),
+        *body_block,
         Detail("What I classified it as, and why", tuple(classification)),
     ]
     gcs = str(detail.get("gcs_uri") or "")
@@ -1396,17 +1429,36 @@ def _delivery(
     for event in grouped.get("pack_delivered", []):
         detail = _detail(event)
         stored = [item for item in detail.get("artifacts") or [] if isinstance(item, dict)]
+        attached = [str(name) for name in detail.get("attached") or []]
         details = [
             Detail(
                 "The reply",
                 (
+                    Row("To", str(detail.get("to") or ""), mono=True),
+                    Row("Subject", str(detail.get("subject") or "")),
+                    Row(
+                        "Attached",
+                        ", ".join(attached) if attached else "nothing",
+                        mono=bool(attached),
+                    ),
                     Row("Authorised by", _actor(event, ""), mono=True),
+                    Row("Sent at", _received(_at(event))),
                     Row("Gmail message", str(detail.get("gmail_message_id") or ""), mono=True),
                     Row("Questions", str(detail.get("questions") or "")),
                     Row("Approved by a person", str(detail.get("human_approved") or 0)),
                 ),
             )
         ]
+        # The message as it went, for the same reason the inbound block carries the one that
+        # arrived. Absent when it was not recorded rather than rendered as an empty quote.
+        reply_body = str(detail.get("reply_body") or "").strip()
+        if reply_body:
+            details.append(
+                Detail(
+                    "What the customer received",
+                    tuple(Row("", line) for line in reply_body.splitlines() if line.strip()),
+                )
+            )
         if stored:
             details.append(
                 Detail(
@@ -1422,6 +1474,9 @@ def _delivery(
                 )
             )
         sendable = int(detail.get("sendable") or 0)
+        carried = (
+            "workbook and evidence pack attached" if len(attached) > 1 else "evidence pack attached"
+        )
         posts.append(
             Post(
                 post_id=f"delivered-{_at(event)}",
@@ -1429,8 +1484,8 @@ def _delivery(
                 kind="delivery",
                 at=_at(event),
                 summary=(
-                    "Sent the pack back to the customer on the original thread — "
-                    f"{sendable} {_plural(sendable, 'answer')} cleared."
+                    f"Replied to {detail.get('to') or 'the customer'} on their own thread — "
+                    f"{carried}, {sendable} {_plural(sendable, 'answer')} cleared."
                 ),
                 lines=(
                     "Authorised by a named person. The fleet does not email a customer on its own.",
