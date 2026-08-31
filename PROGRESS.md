@@ -4073,9 +4073,21 @@ The third instance of one shape in a single day: a value set on one path, silent
 by a write on another that replaces rather than merges. The deploy dropping the poll interval
 that morning was the same defect in a shell script.
 
-Fixed twice over -- `set_auto_send` updates three fields rather than round-tripping a
-document, and `assemble_round` reads the review again before it checks, because its own copy
-is minutes old by then. Two tests, in both directions; the *off* direction matters more.
+Fixed twice, and the first fix was wrong. `set_auto_send` updating three fields and
+`assemble_round` re-reading the review both missed the point: what the re-read reads is the
+*already clobbered* document, because three drafting partitions transition state between the
+toggle and the assemble and each one writes the whole review from a stale copy. A second live
+test failed identically.
+
+The switch is now read from `audit_events`, which is append-only and hash-chained and which
+nothing in this system rewrites -- exactly the property the review document lacks.
+`auto_send_changed` had carried the answer through both failures.
+
+**The tests were why it shipped broken twice.** They set the flag on the review document,
+the store that does not survive a run, so eight of them passed against a feature that had
+never worked. A double that models the wrong store cannot catch a bug about which store is
+authoritative. They read the trail now, and one of them reproduces the bug directly: a
+document saying `False` while the trail says somebody turned it on must not hold the round.
 
 **Not fixed:** `_move` still writes whole documents everywhere else. That is the real defect
 and it touches every handler on the path the recording depends on, four hours before that
